@@ -1,0 +1,15 @@
+# Never copy host artifacts into the build context — force a clean Linux install.
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.data
+coverage
+.git
+.env
+.env.*
+!.env.example
+*.log
+.claude

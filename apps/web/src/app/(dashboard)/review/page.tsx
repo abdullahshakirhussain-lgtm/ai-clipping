@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiSend, revalidateAll, useAccounts, useClips, type ClipDto } from "@/lib/api";
 import { Button, PageHeader, StatusBadge } from "@/components/ui";
-import { compactNumber, duration } from "@/lib/format";
+import { duration } from "@/lib/format";
 
 type ActionType = "APPROVE" | "REJECT" | "REGENERATE" | "IMPROVE_HOOK" | "IMPROVE_CAPTIONS";
 

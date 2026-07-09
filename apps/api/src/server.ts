@@ -10,7 +10,8 @@ async function main() {
 
   await bootstrapAdmin(container, auth);
 
-  const port = container.env.API_PORT;
+  // Railway (and most PaaS) inject PORT; fall back to the configured API_PORT.
+  const port = Number(process.env.PORT) || container.env.API_PORT;
   await app.listen({ port, host: "0.0.0.0" });
   container.logger.info(
     { port, queue: container.env.QUEUE_DRIVER, ai: container.env.AI_DRIVER, storage: container.env.STORAGE_DRIVER },

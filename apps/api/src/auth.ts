@@ -24,10 +24,14 @@ export function createAuth(env: Env) {
       },
     },
     advanced: {
-      defaultCookieAttributes: {
-        sameSite: "lax",
-        secure: env.NODE_ENV === "production",
-      },
+      // In production the dashboard and API live on different origins (e.g.
+      // separate *.railway.app subdomains), so the session cookie is sent on
+      // cross-site fetches only with SameSite=None + Secure. Locally, Lax over
+      // http is correct. Put both behind a custom domain to use Lax in prod too.
+      defaultCookieAttributes:
+        env.NODE_ENV === "production"
+          ? { sameSite: "none", secure: true }
+          : { sameSite: "lax", secure: false },
     },
   });
 }

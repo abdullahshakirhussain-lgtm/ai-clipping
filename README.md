@@ -31,7 +31,8 @@ packages/
   publishers  PublisherAdapter + TikTok/Instagram/YouTube + mock
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/API.md](docs/API.md).
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md), and
+[docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md).
 
 ## Prerequisites
 
@@ -112,6 +113,15 @@ Configure in `.env`:
 | `pnpm test` | unit tests (vitest) |
 | `pnpm lint` | eslint |
 
+## Deployment
+
+Railway deploy kit is included: `Dockerfile` (backend), `Dockerfile.web`, and
+`railway.api.json` / `railway.web.json` / `railway.worker.json`. The default target is a
+**simple single-service topology** (Postgres + API-with-in-process-pipeline + web, live AI +
+R2 storage, no Redis). Full step-by-step: [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md).
+Scaling to a dedicated worker + Redis is documented there and needs no code changes — just
+`QUEUE_DRIVER=bullmq` and a worker service.
+
 ## Verification status
 
 Verified in this environment:
@@ -121,6 +131,9 @@ Verified in this environment:
 - ✅ **API boots and serves** — container graph, all routes, Better Auth, and OpenAPI
   register; `/health` returns ok. (Admin bootstrap is non-fatal if the DB is down.)
 - ✅ **Dashboard renders** — Next.js serves the app and login.
+- ✅ **Production web build** — `next build` compiles and prerenders all 14 routes (the
+  exact step `Dockerfile.web` runs). Docker images themselves weren't built here (no Docker
+  in this environment), but the build steps they wrap (`next build`, `prisma generate`) pass.
 
 Not exercised here: the full DB-backed data flow, because this sandbox runs as a Windows
 Administrator (Postgres refuses to start) and has no Docker. On a normal account or with
