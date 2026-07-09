@@ -1,0 +1,400 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth (Better Auth managed tables — field names must match Better Auth defaults)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  REVIEWER
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  role          UserRole @default(REVIEWER)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+  reviewActions ReviewAction[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Domain
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum Platform {
+  TIKTOK
+  INSTAGRAM
+  YOUTUBE
+}
+
+enum SourcePlatform {
+  YOUTUBE
+  TWITCH
+  KICK
+  RUMBLE
+  VIMEO
+  OTHER
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
+}
+
+enum SourceVideoStatus {
+  PENDING
+  DOWNLOADING
+  DOWNLOADED
+  TRANSCRIBING
+  TRANSCRIBED
+  DETECTING
+  PROCESSED
+  FAILED
+}
+
+enum ClipStatus {
+  CANDIDATE
+  RENDERING
+  ENHANCING
+  READY_FOR_REVIEW
+  APPROVED
+  REJECTED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+enum ReviewActionType {
+  APPROVE
+  REJECT
+  REGENERATE
+  IMPROVE_HOOK
+  IMPROVE_CAPTIONS
+}
+
+enum SocialAccountStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+}
+
+enum PublishJobStatus {
+  QUEUED
+  SCHEDULED
+  RUNNING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+model Creator {
+  id        String   @id @default(cuid())
+  name      String
+  handle    String   @unique
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns    Campaign[]
+  clipFeatures ClipFeature[]
+}
+
+model Campaign {
+  id                  String         @id @default(cuid())
+  creatorId           String
+  creator             Creator        @relation(fields: [creatorId], references: [id])
+  name                String
+  sourceVideoUrl      String
+  sourcePlatform      SourcePlatform @default(YOUTUBE)
+  allowedPlatforms    Platform[]
+  /// Revenue paid to clippers per 1000 views, in USD
+  revenueRatePerMille Decimal        @default(0) @db.Decimal(10, 4)
+  /// Free-form campaign rules (branding, banned words, watermark, etc.)
+  rules               Json?
+  expiresAt           DateTime?
+  status              CampaignStatus @default(DRAFT)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  sourceVideos SourceVideo[]
+  clips        Clip[]
+  clipFeatures ClipFeature[]
+
+  @@index([status])
+  @@index([creatorId])
+}
+
+model SourceVideo {
+  id          String            @id @default(cuid())
+  campaignId  String
+  campaign    Campaign          @relation(fields: [campaignId], references: [id])
+  originalUrl String
+  status      SourceVideoStatus @default(PENDING)
+  storageKey  String?
+  title       String?
+  durationSec Float?
+  width       Int?
+  height      Int?
+  metadata    Json?
+  error       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  transcript Transcript?
+  clips      Clip[]
+
+  @@index([campaignId])
+  @@index([status])
+}
+
+model Transcript {
+  id            String      @id @default(cuid())
+  sourceVideoId String      @unique
+  sourceVideo   SourceVideo @relation(fields: [sourceVideoId], references: [id], onDelete: Cascade)
+  language      String      @default("en")
+  fullText      String
+  /// Array of { start, end, text, words?: [{ start, end, word }] }
+  segments      Json
+  provider      String      @default("mock")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Clip {
+  id              String     @id @default(cuid())
+  sourceVideoId   String
+  sourceVideo     SourceVideo @relation(fields: [sourceVideoId], references: [id])
+  campaignId      String
+  campaign        Campaign   @relation(fields: [campaignId], references: [id])
+  startSec        Float
+  endSec          Float
+  status          ClipStatus @default(CANDIDATE)
+  storageKey      String?
+  thumbnailKey    String?
+  /// Why the detector picked this window
+  detectionReason String?
+  captionStyle    String     @default("bold-center")
+  error           String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  enhancement   ClipEnhancement?
+  reviewActions ReviewAction[]
+  publishJobs   PublishJob[]
+  feature       ClipFeature?
+
+  @@index([status])
+  @@index([campaignId])
+  @@index([sourceVideoId])
+}
+
+model ClipEnhancement {
+  id                  String   @id @default(cuid())
+  clipId              String   @unique
+  clip                Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  title               String
+  description         String
+  hashtags            String[]
+  /// { variants: string[], selectedIndex: number }
+  hooks               Json
+  qualityScore        Float
+  viralScore          Float
+  estimatedEngagement Float
+  model               String
+  promptVersion       String   @default("v1")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model ReviewAction {
+  id         String           @id @default(cuid())
+  clipId     String
+  clip       Clip             @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  reviewerId String
+  reviewer   User             @relation(fields: [reviewerId], references: [id])
+  action     ReviewActionType
+  note       String?
+  createdAt  DateTime         @default(now())
+
+  @@index([clipId])
+  @@index([reviewerId])
+}
+
+model SocialAccount {
+  id          String              @id @default(cuid())
+  platform    Platform
+  handle      String
+  displayName String?
+  /// Encrypted OAuth credentials / tokens for the platform
+  credentials Json?
+  status      SocialAccountStatus @default(ACTIVE)
+  dailyQuota  Int                 @default(20)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  publishJobs PublishJob[]
+
+  @@unique([platform, handle])
+  @@index([status])
+}
+
+model PublishJob {
+  id              String           @id @default(cuid())
+  clipId          String
+  clip            Clip             @relation(fields: [clipId], references: [id])
+  socialAccountId String
+  socialAccount   SocialAccount    @relation(fields: [socialAccountId], references: [id])
+  scheduledAt     DateTime?
+  status          PublishJobStatus @default(QUEUED)
+  attempts        Int              @default(0)
+  maxAttempts     Int              @default(3)
+  externalPostId  String?
+  externalUrl     String?
+  lastError       String?
+  publishedAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  publishAttempts PublishAttempt[]
+  metrics         ClipMetric[]
+
+  @@index([status])
+  @@index([clipId])
+  @@index([socialAccountId])
+  @@index([scheduledAt])
+}
+
+model PublishAttempt {
+  id           String     @id @default(cuid())
+  publishJobId String
+  publishJob   PublishJob @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
+  startedAt    DateTime   @default(now())
+  finishedAt   DateTime?
+  success      Boolean    @default(false)
+  /// Raw platform API response / error payload
+  response     Json?
+
+  @@index([publishJobId])
+}
+
+/// Append-only time series of platform metrics; latest row per job = current stats
+model ClipMetric {
+  id           String     @id @default(cuid())
+  publishJobId String
+  publishJob   PublishJob @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
+  // Denormalized for fast aggregate queries
+  clipId       String
+  campaignId   String
+  platform     Platform
+  capturedAt   DateTime   @default(now())
+  views        Int        @default(0)
+  likes        Int        @default(0)
+  comments     Int        @default(0)
+  shares       Int        @default(0)
+  watchTimeSec Float      @default(0)
+  revenue      Decimal    @default(0) @db.Decimal(12, 4)
+  rpm          Decimal    @default(0) @db.Decimal(8, 4)
+
+  @@index([publishJobId, capturedAt])
+  @@index([clipId])
+  @@index([campaignId])
+  @@index([platform, capturedAt])
+}
+
+/// Denormalized learning-engine row: one per published clip, refreshed on metric sync
+model ClipFeature {
+  id                 String   @id @default(cuid())
+  clipId             String   @unique
+  clip               Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  creatorId          String
+  creator            Creator  @relation(fields: [creatorId], references: [id])
+  campaignId         String
+  campaign           Campaign @relation(fields: [campaignId], references: [id])
+  platform           Platform
+  hookText           String
+  topic              String?
+  durationSec        Float
+  captionStyle       String
+  publishedAt        DateTime
+  publishedHour      Int
+  publishedDayOfWeek Int
+  views              Int      @default(0)
+  likes              Int      @default(0)
+  comments           Int      @default(0)
+  shares             Int      @default(0)
+  watchTimeSec       Float    @default(0)
+  revenue            Decimal  @default(0) @db.Decimal(12, 4)
+  engagementRate     Float    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([platform])
+  @@index([creatorId])
+  @@index([campaignId])
+}

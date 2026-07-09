@@ -1,0 +1,130 @@
+export interface CaptionWord {
+  start: number;
+  end: number;
+  word: string;
+}
+
+export interface CaptionSegment {
+  start: number;
+  end: number;
+  text: string;
+  words?: CaptionWord[];
+}
+
+export interface CaptionStyleSpec {
+  fontName: string;
+  fontSize: number;
+  primaryColour: string; // ASS &HAABBGGRR
+  outlineColour: string;
+  outline: number;
+  bold: boolean;
+  /** ASS alignment (numpad layout): 2 = bottom-center, 5 = middle-center */
+  alignment: number;
+  marginV: number;
+}
+
+export const CAPTION_STYLES: Record<string, CaptionStyleSpec> = {
+  "bold-center": {
+    fontName: "Arial",
+    fontSize: 84,
+    primaryColour: "&H00FFFFFF",
+    outlineColour: "&H00000000",
+    outline: 5,
+    bold: true,
+    alignment: 5,
+    marginV: 0,
+  },
+  "clean-bottom": {
+    fontName: "Arial",
+    fontSize: 64,
+    primaryColour: "&H00FFFFFF",
+    outlineColour: "&H00000000",
+    outline: 3,
+    bold: false,
+    alignment: 2,
+    marginV: 260,
+  },
+  "yellow-pop": {
+    fontName: "Arial",
+    fontSize: 84,
+    primaryColour: "&H0000E5FF",
+    outlineColour: "&H00000000",
+    outline: 5,
+    bold: true,
+    alignment: 5,
+    marginV: 0,
+  },
+};
+
+function assTime(sec: number): string {
+  const s = Math.max(0, sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rest = s % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${rest.toFixed(2).padStart(5, "0")}`;
+}
+
+const escapeAss = (text: string) => text.replace(/[{}]/g, "").replace(/\r?\n/g, " ");
+
+/**
+ * Builds an ASS subtitle document for one clip. Segment times are absolute in
+ * the source video; `clipStart`/`clipEnd` shift them into clip-relative time.
+ * When word timestamps exist, words are grouped into short punchy caption
+ * chunks (short-form style); otherwise full segment texts are used.
+ */
+export function buildAss(
+  segments: CaptionSegment[],
+  clipStart: number,
+  clipEnd: number,
+  styleName = "bold-center",
+  wordsPerChunk = 3,
+): string {
+  const style = CAPTION_STYLES[styleName] ?? CAPTION_STYLES["bold-center"]!;
+  const events: Array<{ start: number; end: number; text: string }> = [];
+
+  for (const seg of segments) {
+    if (seg.end <= clipStart || seg.start >= clipEnd) continue;
+    if (seg.words && seg.words.length > 0) {
+      for (let i = 0; i < seg.words.length; i += wordsPerChunk) {
+        const chunk = seg.words.slice(i, i + wordsPerChunk);
+        const start = Math.max(chunk[0]!.start, clipStart);
+        const end = Math.min(chunk[chunk.length - 1]!.end, clipEnd);
+        if (end <= start) continue;
+        events.push({
+          start: start - clipStart,
+          end: end - clipStart,
+          text: chunk.map((w) => w.word).join(" ").trim(),
+        });
+      }
+    } else {
+      events.push({
+        start: Math.max(seg.start, clipStart) - clipStart,
+        end: Math.min(seg.end, clipEnd) - clipStart,
+        text: seg.text,
+      });
+    }
+  }
+
+  const header = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,${style.fontName},${style.fontSize},${style.primaryColour},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${style.outline},1,${style.alignment},60,60,${style.marginV},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+
+  const lines = events
+    .map(
+      (e) =>
+        `Dialogue: 0,${assTime(e.start)},${assTime(e.end)},Default,,0,0,0,,${escapeAss(e.text.toUpperCase())}`,
+    )
+    .join("\n");
+
+  return header + lines + "\n";
+}

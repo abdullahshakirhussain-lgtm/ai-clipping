@@ -1,0 +1,68 @@
+import { promises as fs } from "node:fs";
+import { join } from "node:path";
+import { probe, synthesizeTestVideo } from "./ffmpeg.js";
+
+export interface DownloadResult {
+  filePath: string;
+  title: string;
+  durationSec: number;
+  width: number;
+  height: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface DownloadProvider {
+  download(url: string, destDir: string): Promise<DownloadResult>;
+}
+
+/** Real downloads via yt-dlp (lazy-imported so mock mode never needs the binary). */
+export class YtDlpDownloader implements DownloadProvider {
+  async download(url: string, destDir: string): Promise<DownloadResult> {
+    await fs.mkdir(destDir, { recursive: true });
+    const { default: ytdlp } = await import("youtube-dl-exec");
+    const outTemplate = join(destDir, "source.%(ext)s");
+    const info = (await ytdlp(url, {
+      output: outTemplate,
+      format: "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+      mergeOutputFormat: "mp4",
+      printJson: true,
+      noPlaylist: true,
+    })) as unknown as Record<string, unknown>;
+
+    const filePath = join(destDir, "source.mp4");
+    const probed = await probe(filePath);
+    return {
+      filePath,
+      title: String(info.title ?? "Untitled"),
+      durationSec: probed.durationSec,
+      width: probed.width,
+      height: probed.height,
+      metadata: {
+        uploader: info.uploader,
+        webpage_url: info.webpage_url,
+        ext: info.ext,
+        fps: info.fps,
+      },
+    };
+  }
+}
+
+/** Offline driver: synthesizes a real, playable test video with FFmpeg. */
+export class MockDownloader implements DownloadProvider {
+  constructor(private readonly durationSec = 180) {}
+
+  async download(url: string, destDir: string): Promise<DownloadResult> {
+    await fs.mkdir(destDir, { recursive: true });
+    const filePath = join(destDir, "source.mp4");
+    await synthesizeTestVideo(filePath, this.durationSec);
+    const probed = await probe(filePath);
+    return {
+      filePath,
+      title: `Mock video (${url.slice(0, 60)})`,
+      durationSec: probed.durationSec,
+      width: probed.width,
+      height: probed.height,
+      metadata: { driver: "mock", sourceUrl: url },
+    };
+  }
+}

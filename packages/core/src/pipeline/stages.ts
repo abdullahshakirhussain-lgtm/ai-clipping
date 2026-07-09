@@ -1,0 +1,394 @@
+import { promises as fs } from "node:fs";
+import { join } from "node:path";
+import type { TranscriptSegment } from "@clipfactory/ai";
+import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db";
+import { buildAss, extractThumbnail, renderClip } from "@clipfactory/media";
+import type { PublishPlatform } from "@clipfactory/publishers";
+import { PublisherNotConfiguredError } from "@clipfactory/publishers";
+import type { PipelineContext } from "./context.js";
+
+const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
+const thumbKey = (clipId: string) => `clips/${clipId}/thumb.jpg`;
+const sourceKey = (videoId: string) => `sources/${videoId}/source.mp4`;
+
+/** Downloads the source video, probes it, stores it, then queues transcription. */
+export async function runDownload(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+  const moved = await ctx.repos.sourceVideos.transition(
+    sourceVideoId,
+    [SourceVideoStatus.PENDING, SourceVideoStatus.FAILED],
+    SourceVideoStatus.DOWNLOADING,
+  );
+  if (!moved) {
+    ctx.logger.info({ sourceVideoId }, "download skipped (not pending)");
+    return;
+  }
+  const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
+  if (!video) return;
+
+  const workDir = join(ctx.workRoot, sourceVideoId);
+  try {
+    const result = await ctx.downloader.download(video.originalUrl, workDir);
+    await ctx.storage.putFile(sourceKey(sourceVideoId), result.filePath, "video/mp4");
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      status: SourceVideoStatus.DOWNLOADED,
+      storageKey: sourceKey(sourceVideoId),
+      title: result.title,
+      durationSec: result.durationSec,
+      width: result.width,
+      height: result.height,
+      metadata: result.metadata as never,
+      error: null,
+    });
+    await ctx.dispatcher.enqueue("video.transcribe", { sourceVideoId }, { jobId: sourceVideoId });
+  } catch (err) {
+    await failVideo(ctx, sourceVideoId, err);
+    throw err;
+  }
+}
+
+/** Transcribes the stored source video and queues highlight detection. */
+export async function runTranscribe(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+  const moved = await ctx.repos.sourceVideos.transition(
+    sourceVideoId,
+    [SourceVideoStatus.DOWNLOADED],
+    SourceVideoStatus.TRANSCRIBING,
+  );
+  if (!moved) return;
+
+  const workDir = join(ctx.workRoot, sourceVideoId);
+  const localSource = join(workDir, "source.mp4");
+  try {
+    await fs.mkdir(workDir, { recursive: true });
+    if (!(await exists(localSource))) {
+      await ctx.storage.getToFile(sourceKey(sourceVideoId), localSource);
+    }
+    const transcript = await ctx.transcription.transcribe(localSource);
+    await ctx.repos.sourceVideos.upsertTranscript(sourceVideoId, {
+      language: transcript.language,
+      fullText: transcript.text,
+      segments: transcript.segments as never,
+      provider: transcript.provider,
+    });
+    await ctx.repos.sourceVideos.update(sourceVideoId, { status: SourceVideoStatus.TRANSCRIBED });
+    await ctx.dispatcher.enqueue("clip.detect", { sourceVideoId }, { jobId: sourceVideoId });
+  } catch (err) {
+    await failVideo(ctx, sourceVideoId, err);
+    throw err;
+  }
+}
+
+/** Runs highlight detection and creates candidate clips, one render job each. */
+export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+  const moved = await ctx.repos.sourceVideos.transition(
+    sourceVideoId,
+    [SourceVideoStatus.TRANSCRIBED],
+    SourceVideoStatus.DETECTING,
+  );
+  if (!moved) return;
+
+  const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
+  if (!video || !video.transcript) {
+    await failVideo(ctx, sourceVideoId, new Error("missing transcript"));
+    return;
+  }
+  try {
+    const segments = video.transcript.segments as unknown as TranscriptSegment[];
+    const candidates = await ctx.llm.detectHighlights({
+      segments,
+      durationSec: video.durationSec ?? 0,
+      rules: (video.campaign.rules as Record<string, unknown> | null) ?? undefined,
+      maxCandidates: ctx.config.maxCandidatesPerVideo,
+    });
+
+    const created = await ctx.repos.clips.createMany(
+      candidates.map((c) => ({
+        sourceVideoId,
+        campaignId: video.campaignId,
+        startSec: c.startSec,
+        endSec: c.endSec,
+        status: ClipStatus.RENDERING,
+        detectionReason: c.reason,
+        captionStyle: "bold-center",
+      })),
+    );
+    await ctx.repos.sourceVideos.update(sourceVideoId, { status: SourceVideoStatus.PROCESSED });
+    for (const clip of created) {
+      await ctx.dispatcher.enqueue("clip.render", { clipId: clip.id }, { jobId: clip.id });
+    }
+    ctx.logger.info({ sourceVideoId, clips: created.length }, "detected candidate clips");
+  } catch (err) {
+    await failVideo(ctx, sourceVideoId, err);
+    throw err;
+  }
+}
+
+/** Cuts, 9:16-crops and captions a clip, stores it, then queues enhancement. */
+export async function runRender(ctx: PipelineContext, clipId: string): Promise<void> {
+  const clip = await ctx.repos.clips.byId(clipId);
+  if (!clip) return;
+  if (clip.status !== ClipStatus.RENDERING) {
+    const moved = await ctx.repos.clips.transition(
+      clipId,
+      [ClipStatus.CANDIDATE, ClipStatus.FAILED, ClipStatus.READY_FOR_REVIEW],
+      ClipStatus.RENDERING,
+    );
+    if (!moved) {
+      ctx.logger.info({ clipId }, "render skipped");
+      return;
+    }
+  }
+
+  const workDir = join(ctx.workRoot, clip.sourceVideoId);
+  const localSource = join(workDir, "source.mp4");
+  const outPath = join(workDir, `${clipId}.mp4`);
+  const thumbPath = join(workDir, `${clipId}.jpg`);
+  const assName = `${clipId}.ass`;
+  try {
+    await fs.mkdir(workDir, { recursive: true });
+    if (!(await exists(localSource))) {
+      await ctx.storage.getToFile(sourceKey(clip.sourceVideoId), localSource);
+    }
+    const segments = (clip.sourceVideo.transcript?.segments as unknown as TranscriptSegment[]) ?? [];
+    let captionsFileName: string | undefined;
+    if (segments.length > 0) {
+      const ass = buildAss(segments, clip.startSec, clip.endSec, clip.captionStyle);
+      await fs.writeFile(join(workDir, assName), ass, "utf8");
+      captionsFileName = assName;
+    }
+
+    await renderClip({
+      inputPath: localSource,
+      outPath,
+      startSec: clip.startSec,
+      endSec: clip.endSec,
+      captionsFileName,
+      workDir,
+    });
+    await extractThumbnail(outPath, thumbPath, 0.5);
+
+    await ctx.storage.putFile(clipKey(clipId), outPath, "video/mp4");
+    await ctx.storage.putFile(thumbKey(clipId), thumbPath, "image/jpeg");
+    await ctx.repos.clips.update(clipId, {
+      status: ClipStatus.ENHANCING,
+      storageKey: clipKey(clipId),
+      thumbnailKey: thumbKey(clipId),
+      error: null,
+    });
+    await ctx.dispatcher.enqueue("clip.enhance", { clipId }, { jobId: clipId });
+  } catch (err) {
+    await failClip(ctx, clipId, err);
+    throw err;
+  } finally {
+    await Promise.allSettled([fs.rm(outPath, { force: true }), fs.rm(thumbPath, { force: true })]);
+  }
+}
+
+/** Generates metadata + scores, then moves the clip to READY_FOR_REVIEW. */
+export async function runEnhance(ctx: PipelineContext, clipId: string): Promise<void> {
+  const clip = await ctx.repos.clips.byId(clipId);
+  if (!clip) return;
+  if (clip.status !== ClipStatus.ENHANCING) {
+    const moved = await ctx.repos.clips.transition(
+      clipId,
+      [ClipStatus.READY_FOR_REVIEW, ClipStatus.RENDERING],
+      ClipStatus.ENHANCING,
+    );
+    if (!moved) return;
+  }
+
+  try {
+    const segments = (clip.sourceVideo.transcript?.segments as unknown as TranscriptSegment[]) ?? [];
+    const excerpt = segments
+      .filter((s) => s.end > clip.startSec && s.start < clip.endSec)
+      .map((s) => s.text)
+      .join(" ")
+      .trim();
+    const hook = clip.detectionReason ?? excerpt.slice(0, 80);
+    const result = await ctx.llm.enhanceClip({
+      transcriptExcerpt: excerpt || hook,
+      hook,
+      topic: "general",
+      durationSec: clip.endSec - clip.startSec,
+      platformHints: clip.campaign.allowedPlatforms,
+      creatorName: clip.campaign.creator.name,
+    });
+    await ctx.repos.clips.upsertEnhancement(clipId, {
+      title: result.title,
+      description: result.description,
+      hashtags: result.hashtags,
+      hooks: { variants: result.hookVariants, selectedIndex: 0 } as never,
+      qualityScore: result.qualityScore,
+      viralScore: result.viralScore,
+      estimatedEngagement: result.estimatedEngagement,
+      model: result.model,
+    });
+    await ctx.repos.clips.update(clipId, { status: ClipStatus.READY_FOR_REVIEW, error: null });
+    ctx.logger.info({ clipId }, "clip ready for review");
+  } catch (err) {
+    await failClip(ctx, clipId, err);
+    throw err;
+  }
+}
+
+/** Publishes a clip to one platform account with attempt logging + retries. */
+export async function runPublish(ctx: PipelineContext, publishJobId: string): Promise<void> {
+  const moved = await ctx.repos.publish.transition(
+    publishJobId,
+    [PublishJobStatus.QUEUED, PublishJobStatus.SCHEDULED],
+    PublishJobStatus.RUNNING,
+  );
+  if (!moved) {
+    ctx.logger.info({ publishJobId }, "publish skipped (not queued)");
+    return;
+  }
+  const job = await ctx.repos.publish.byId(publishJobId);
+  if (!job) return;
+
+  const attemptNo = job.attempts + 1;
+  await ctx.repos.publish.update(publishJobId, { attempts: attemptNo });
+
+  const workDir = join(ctx.workRoot, "publish", publishJobId);
+  const localClip = join(workDir, "clip.mp4");
+  try {
+    await fs.mkdir(workDir, { recursive: true });
+    if (!job.clip.storageKey) throw new Error("clip has no rendered file");
+    await ctx.storage.getToFile(job.clip.storageKey, localClip);
+    const videoUrl = await ctx.storage.getUrl(job.clip.storageKey);
+    const publisher = ctx.publisherFor(job.socialAccount.platform as PublishPlatform);
+    const enh = job.clip.enhancement;
+
+    const result = await publisher.publish({
+      account: {
+        id: job.socialAccount.id,
+        platform: job.socialAccount.platform as PublishPlatform,
+        handle: job.socialAccount.handle,
+        credentials: (job.socialAccount.credentials as Record<string, unknown> | null) ?? null,
+      },
+      videoFilePath: localClip,
+      videoUrl,
+      title: enh?.title ?? "Clip",
+      description: enh?.description ?? "",
+      hashtags: enh?.hashtags ?? [],
+    });
+
+    await ctx.repos.publish.addAttempt(publishJobId, { success: true, response: result.raw as never });
+    await ctx.repos.publish.update(publishJobId, {
+      status: PublishJobStatus.PUBLISHED,
+      externalPostId: result.externalPostId,
+      externalUrl: result.externalUrl,
+      publishedAt: new Date(),
+      lastError: null,
+    });
+    await ctx.repos.clips.update(job.clipId, { status: ClipStatus.PUBLISHED });
+
+    // Kick off the first metrics poll shortly after publishing
+    await ctx.dispatcher.enqueue("analytics.sync", {}, { delayMs: 5000, jobId: "analytics-sync" });
+    ctx.logger.info({ publishJobId, platform: job.socialAccount.platform }, "published");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await ctx.repos.publish.addAttempt(publishJobId, {
+      success: false,
+      response: { error: message } as never,
+    });
+
+    const notConfigured = err instanceof PublisherNotConfiguredError;
+    const canRetry = !notConfigured && attemptNo < job.maxAttempts;
+    if (canRetry) {
+      await ctx.repos.publish.update(publishJobId, { status: PublishJobStatus.QUEUED, lastError: message });
+      await ctx.dispatcher.enqueue(
+        "publish.execute",
+        { publishJobId },
+        { delayMs: 5000 * 2 ** (attemptNo - 1) },
+      );
+    } else {
+      await ctx.repos.publish.update(publishJobId, { status: PublishJobStatus.FAILED, lastError: message });
+      await ctx.repos.clips.update(job.clipId, { status: ClipStatus.FAILED, error: message });
+    }
+    throw err;
+  } finally {
+    await fs.rm(workDir, { recursive: true, force: true });
+  }
+}
+
+/** Polls metrics for every published post and refreshes the learning features. */
+export async function runAnalyticsSync(ctx: PipelineContext): Promise<void> {
+  const jobs = await ctx.repos.publish.published();
+  for (const job of jobs) {
+    if (!job.externalPostId) continue;
+    try {
+      const publisher = ctx.publisherFor(job.socialAccount.platform as PublishPlatform);
+      const snap = await publisher.fetchMetrics(job.externalPostId, {
+        id: job.socialAccount.id,
+        platform: job.socialAccount.platform as PublishPlatform,
+        handle: job.socialAccount.handle,
+        credentials: (job.socialAccount.credentials as Record<string, unknown> | null) ?? null,
+      });
+      const ratePerMille = Number(job.clip.campaign.revenueRatePerMille);
+      const revenue = (snap.views / 1000) * ratePerMille;
+
+      await ctx.repos.metrics.record({
+        publishJobId: job.id,
+        clipId: job.clipId,
+        campaignId: job.clip.campaignId,
+        platform: job.socialAccount.platform,
+        views: snap.views,
+        likes: snap.likes,
+        comments: snap.comments,
+        shares: snap.shares,
+        watchTimeSec: snap.watchTimeSec,
+        revenue: revenue as never,
+        rpm: ratePerMille as never,
+      });
+
+      // Refresh the learning-engine feature row
+      const publishedAt = job.publishedAt ?? job.createdAt;
+      const engagementRate =
+        snap.views > 0 ? (snap.likes + snap.comments + snap.shares) / snap.views : 0;
+      await ctx.repos.metrics.upsertFeature(job.clipId, {
+        creatorId: job.clip.campaign.creatorId,
+        campaignId: job.clip.campaignId,
+        platform: job.socialAccount.platform,
+        hookText: job.clip.enhancement?.title ?? "",
+        topic: null,
+        durationSec: job.clip.endSec - job.clip.startSec,
+        captionStyle: job.clip.captionStyle,
+        publishedAt,
+        publishedHour: publishedAt.getUTCHours(),
+        publishedDayOfWeek: publishedAt.getUTCDay(),
+        views: snap.views,
+        likes: snap.likes,
+        comments: snap.comments,
+        shares: snap.shares,
+        watchTimeSec: snap.watchTimeSec,
+        revenue: revenue as never,
+        engagementRate,
+      });
+    } catch (err) {
+      ctx.logger.error({ publishJobId: job.id, err: String(err) }, "metrics sync failed for job");
+    }
+  }
+  ctx.logger.info({ jobs: jobs.length }, "analytics sync complete");
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+async function exists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function failVideo(ctx: PipelineContext, id: string, err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  ctx.logger.error({ sourceVideoId: id, err: message }, "video stage failed");
+  await ctx.repos.sourceVideos.update(id, { status: SourceVideoStatus.FAILED, error: message });
+}
+
+async function failClip(ctx: PipelineContext, id: string, err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  ctx.logger.error({ clipId: id, err: message }, "clip stage failed");
+  await ctx.repos.clips.update(id, { status: ClipStatus.FAILED, error: message });
+}
