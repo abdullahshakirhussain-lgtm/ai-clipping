@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "pnpm --filter @clipfactory/api start",
-    "preDeployCommand": "pnpm --filter @clipfactory/db exec prisma migrate reset --force --skip-seed",
+    "preDeployCommand": "pnpm --filter @clipfactory/db exec prisma migrate deploy",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
