@@ -23,22 +23,36 @@ export class YtDlpDownloader implements DownloadProvider {
     const outTemplate = join(destDir, "source.%(ext)s");
     const info = (await ytdlp(url, {
       output: outTemplate,
-      // Prefer <=1080p mp4, but fall back to the best available in any container.
-      format: "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b",
+      // Always require a video stream (bv* = best *video*), plus audio; fall back
+      // to any combined format. Height cap keeps files reasonable.
+      format: "bv*[height<=1080]+ba/bv*+ba/b[height<=1080]/b",
       mergeOutputFormat: "mp4",
-      remuxVideo: "mp4",
       printJson: true,
       noPlaylist: true,
     })) as unknown as Record<string, unknown>;
 
-    // yt-dlp names the file source.<ext>; the ext isn't always mp4 (webm/mkv),
-    // so locate whatever it actually produced instead of assuming .mp4.
-    const produced = (await fs.readdir(destDir)).find((f) => f.startsWith("source."));
+    // The merged output is `source.<ext>`; yt-dlp's per-stream intermediates are
+    // `source.f<id>.<ext>` (e.g. an audio-only fragment). Match only the final
+    // file (no `.f123.` segment) and prefer a video container.
+    const files = await fs.readdir(destDir);
+    const finals = files.filter((f) => /^source\.[^.]+$/.test(f));
+    const order = ["mp4", "mkv", "webm", "mov"];
+    const produced =
+      finals.sort(
+        (a, b) =>
+          (order.indexOf(a.split(".").pop()!) + 1 || 99) -
+          (order.indexOf(b.split(".").pop()!) + 1 || 99),
+      )[0] ?? files.find((f) => f.startsWith("source."));
     if (!produced) {
       throw new Error("yt-dlp finished but produced no output file");
     }
     const filePath = join(destDir, produced);
     const probed = await probe(filePath);
+    if (!probed.width || !probed.height) {
+      throw new Error(
+        "Downloaded source has no video stream (got audio only). Try a different source URL.",
+      );
+    }
     return {
       filePath,
       title: String(info.title ?? "Untitled"),
