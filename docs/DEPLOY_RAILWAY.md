@@ -32,12 +32,20 @@ Redis, no separate worker.
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Backend image (API / worker) |
+| `Dockerfile` | Backend image (API / worker) — includes python3 for yt-dlp |
 | `Dockerfile.web` | Next.js web image |
-| `railway.api.json` | API service: Dockerfile, start cmd, **pre-deploy `prisma migrate deploy`**, `/health` check |
-| `railway.web.json` | Web service config |
+| `railway.json` | **API service** config — auto-detected by Railway: Dockerfile builder, start cmd, **pre-deploy `prisma migrate deploy`**, `/health` check |
+| `railway.web.json` | Web service config (set as the web service's config path — see step 3) |
 | `railway.worker.json` | Worker config (only for the scalable topology) |
 | `.env.production.example` | Every variable to set, annotated `[api]` / `[web]` |
+
+> **Config filename matters.** Railway auto-detects a repo-root `railway.json` /
+> `railway.toml` and applies its `builder: DOCKERFILE` setting. A custom-named file
+> (e.g. `railway.api.json`) is **ignored unless** you point the service's config path
+> at it in Settings — otherwise Railway falls back to its default builder (Railpack)
+> and the Dockerfile is never used. That's why the API config is named `railway.json`.
+> Services that can't use the root default (web, worker) get their config path set
+> explicitly below.
 
 ## Step 1 — Create the project and Postgres
 
@@ -53,8 +61,10 @@ In the Railway dashboard: **New → Database → Add PostgreSQL**. This provides
 
 1. **New → GitHub Repo** (select this repo) — or `railway up` from the repo root.
 2. Open the service → **Settings**:
-   - **Config-as-code / Railway config file:** `railway.api.json`
-     (this points the build at `Dockerfile` and sets the migrate pre-deploy step).
+   - **Builder:** leave as default — Railway auto-detects the repo-root `railway.json`,
+     which forces the **Dockerfile** builder and sets the migrate pre-deploy step. No
+     config-path change is needed for this service. (Confirm the build log shows
+     "Using Detected Dockerfile", not Railpack/Nixpacks.)
    - **Networking:** click **Generate Domain** → note the URL (this is `API_URL`).
 3. **Variables** (from `.env.production.example`, the `[api]` ones):
    - `DATABASE_URL` = `${{ Postgres.DATABASE_URL }}`  ← Railway reference, not a literal
@@ -74,7 +84,9 @@ empty DB, the API creates the admin user from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 ## Step 3 — Create the web service
 
 1. **New → GitHub Repo** (same repo, second service).
-2. **Settings → Config file:** `railway.web.json`.
+2. **Settings → Config-as-code / Railway Config File:** set the path to
+   `railway.web.json` (**required** — otherwise this service picks up the root
+   `railway.json`, which is the API's config, and would build the wrong image).
 3. **Networking → Generate Domain** → this is `WEB_URL`. Go back and set `WEB_URL`
    on the **API** service, then redeploy the API (needed for CORS + auth origins).
 4. **Variables:** set `API_URL` = the API domain. This is read at **build time**

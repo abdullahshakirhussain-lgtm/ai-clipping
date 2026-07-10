@@ -116,7 +116,7 @@ Configure in `.env`:
 ## Deployment
 
 Railway deploy kit is included: `Dockerfile` (backend), `Dockerfile.web`, and
-`railway.api.json` / `railway.web.json` / `railway.worker.json`. The default target is a
+`railway.json` (API, auto-detected) / `railway.web.json` / `railway.worker.json`. The default target is a
 **simple single-service topology** (Postgres + API-with-in-process-pipeline + web, live AI +
 R2 storage, no Redis). Full step-by-step: [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md).
 Scaling to a dedicated worker + Redis is documented there and needs no code changes — just

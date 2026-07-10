@@ -3,9 +3,12 @@
 # command in railway.api.json / railway.worker.json. Build context = repo root.
 FROM node:22-bookworm-slim
 
-# Prisma needs openssl; ffmpeg-static / yt-dlp binaries are fetched by pnpm.
+# - openssl: required by Prisma
+# - python3 / python-is-python3: youtube-dl-exec's install needs Python, and the
+#   downloaded yt-dlp is a Python zipapp that needs python3 at runtime too.
+# - ffmpeg-static provides its own ffmpeg binary (no apt ffmpeg needed).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates python3 python-is-python3 \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PNPM_HOME=/pnpm
