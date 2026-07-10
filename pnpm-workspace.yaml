@@ -4,6 +4,10 @@ packages:
 
 allowBuilds:
   "@embedded-postgres/windows-x64": true
+  "@embedded-postgres/linux-x64": true
+  "@embedded-postgres/linux-arm64": true
+  "@embedded-postgres/darwin-x64": true
+  "@embedded-postgres/darwin-arm64": true
   "@prisma/client": true
   "@prisma/engines": true
   esbuild: true
@@ -14,8 +18,15 @@ allowBuilds:
   sharp: true
   youtube-dl-exec: true
 
+# Packages allowed to run install/build scripts. Must include every platform
+# variant of native deps: the build host's platform decides which one resolves
+# (Railway/Docker = linux-x64; local dev here = windows-x64).
 onlyBuiltDependencies:
   - "@embedded-postgres/windows-x64"
+  - "@embedded-postgres/linux-x64"
+  - "@embedded-postgres/linux-arm64"
+  - "@embedded-postgres/darwin-x64"
+  - "@embedded-postgres/darwin-arm64"
   - "@prisma/client"
   - "@prisma/engines"
   - esbuild
