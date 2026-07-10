@@ -12,18 +12,44 @@ export interface AnthropicLlmOptions {
   model?: string;
 }
 
-/** Extracts the first JSON array/object from an LLM reply, tolerating fences. */
+/**
+ * Extracts the first balanced JSON value from an LLM reply. Tolerates code
+ * fences, leading prose, and trailing text after the JSON (which a naive
+ * slice-to-end parse would choke on).
+ */
 function extractJson<T>(text: string): T {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fenced ? fenced[1]! : text;
-  const start = Math.min(
-    ...["[", "{"].map((c) => {
-      const i = raw.indexOf(c);
-      return i === -1 ? Number.POSITIVE_INFINITY : i;
-    }),
-  );
-  if (!Number.isFinite(start)) throw new Error("No JSON found in LLM response");
-  return JSON.parse(raw.slice(start)) as T;
+  const source = fenced ? fenced[1]! : text;
+  const startIdx = source.search(/[[{]/);
+  if (startIdx === -1) {
+    throw new Error(`No JSON found in LLM response: ${text.slice(0, 200)}`);
+  }
+  const raw = source.slice(startIdx);
+
+  // Walk to the matching close bracket, respecting string literals/escapes.
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let end = -1;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!;
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') {
+      inStr = true;
+    } else if (ch === "{" || ch === "[") {
+      depth++;
+    } else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+  }
+  return JSON.parse(end === -1 ? raw : raw.slice(0, end)) as T;
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number(n) || lo));
@@ -38,16 +64,24 @@ export class AnthropicLlmProvider implements LlmProvider {
     this.model = opts.model ?? "claude-sonnet-5";
   }
 
-  private async complete(prompt: string, maxTokens = 2048): Promise<string> {
+  private async complete(
+    prompt: string,
+    opts?: { maxTokens?: number; prefill?: string },
+  ): Promise<string> {
+    const messages: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
+    // Prefilling the assistant turn with an opening bracket forces the model to
+    // continue as pure JSON — no preamble, no "Here's the JSON:" prose.
+    if (opts?.prefill) messages.push({ role: "assistant", content: opts.prefill });
     const msg = await this.client.messages.create({
       model: this.model,
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: prompt }],
+      max_tokens: opts?.maxTokens ?? 2048,
+      messages,
     });
-    return msg.content
+    const text = msg.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("");
+    return (opts?.prefill ?? "") + text;
   }
 
   async detectHighlights(input: DetectHighlightsInput): Promise<HighlightCandidate[]> {
@@ -66,6 +100,7 @@ Constraints: each clip ${rules.minDurationSec ?? 15}-${rules.maxDurationSec ?? 6
 
 Reply with ONLY a JSON array:
 [{"startSec": number, "endSec": number, "hook": "scroll-stopping opening line", "reason": "why this will perform", "topic": "one-word topic"}]`,
+      { prefill: "[" },
     );
     const parsed = extractJson<HighlightCandidate[]>(text);
     return parsed
@@ -90,6 +125,7 @@ Topic: ${input.topic}
 
 Reply with ONLY a JSON object:
 {"title": "<=90 chars", "description": "2-3 sentences with a CTA", "hashtags": ["#tag", ...max 6], "hookVariants": ["3 alternative hooks"], "qualityScore": 0-100, "viralScore": 0-100, "estimatedEngagement": 0-10}`,
+      { prefill: "{" },
     );
     const p = extractJson<Partial<EnhancementResult>>(text);
     return {
@@ -109,7 +145,7 @@ Reply with ONLY a JSON object:
       `Rewrite this short-form video hook to be more scroll-stopping. Content: """${input.transcriptExcerpt.slice(0, 500)}"""
 Current hook: "${input.currentHook}"
 Reply with ONLY a JSON array of 3 improved hook strings.`,
-      512,
+      { maxTokens: 512, prefill: "[" },
     );
     return extractJson<string[]>(text).map(String).slice(0, 3);
   }
