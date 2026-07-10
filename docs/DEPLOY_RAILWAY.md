@@ -127,6 +127,17 @@ railway run --service <api-service> pnpm --filter @clipfactory/db exec tsx prism
   (see [ARCHITECTURE.md](ARCHITECTURE.md)). Then add per-account credentials and set
   `PUBLISH_DRIVER=live`.
 
+## Troubleshooting the first deploy
+
+| Build/deploy log says | Cause & fix |
+|---|---|
+| `Using Railpack` / `Nixpacks` (no Dockerfile) | The service isn't reading a config file. API uses the auto-detected root `railway.json`; **web/worker must have their config path set** to `railway.web.json` / `railway.worker.json` in Settings. |
+| `ERR_PNPM_IGNORED_BUILDS: @embedded-postgres/linux-x64` | A native dep's platform variant isn't in `onlyBuiltDependencies` (pnpm-workspace.yaml). All linux/darwin/windows variants are listed there now. |
+| `youtube-dl-exec ... Python` during install | The image installs `python3` (both Dockerfiles). If you customized the image, keep `python3`. |
+| `Environment variable not found: DATABASE_URL` (during pre-deploy `prisma migrate deploy`) | The API service has no `DATABASE_URL`. Set it as a **reference** variable: `DATABASE_URL = ${{ Postgres.DATABASE_URL }}` (match your DB service's actual name). It must exist before the deploy, since migrations run in the pre-deploy phase. |
+| API boots but login fails / CORS error | `WEB_URL` on the API must equal the web domain exactly (https, no trailing slash), and the web build's `API_URL` must equal the API domain. Cross-subdomain auth uses `SameSite=None` cookies (already handled). |
+| Missing `R2_*` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` errors after migrations | Set the remaining `[api]` variables from `.env.production.example`. |
+
 ## Scaling up (multi-service topology)
 
 When one container isn't enough for the render/publish throughput (toward 100
