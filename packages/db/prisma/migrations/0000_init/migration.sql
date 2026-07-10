@@ -436,19 +436,3 @@ ALTER TABLE "ClipFeature" ADD CONSTRAINT "ClipFeature_creatorId_fkey" FOREIGN KE
 -- AddForeignKey
 ALTER TABLE "ClipFeature" ADD CONSTRAINT "ClipFeature_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
-node.exe : ┌─────────────────────────────────────────────────────────┐
-At C:\Program Files\nodejs\pnpm.ps1:16 char:5
-+     & "$basedir/node$exe"  "$basedir/node_modules/corepack/dist/pnpm. ...
-+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (┌──────────────...──────────────┐:String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
-│  Update available 6.19.3 -> 7.8.0                       │
-│                                                         │
-│  This is a major update - please follow the guide at    │
-│  https://pris.ly/d/major-version-upgrade                │
-│                                                         │
-│  Run the following to update                            │
-│    npm i --save-dev prisma@latest                       │
-│    npm i @prisma/client@latest                          │
-└─────────────────────────────────────────────────────────┘
