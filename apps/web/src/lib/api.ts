@@ -11,8 +11,9 @@ import type {
   SourceVideoDto,
 } from "@clipfactory/core/contracts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-const V1 = `${API_URL}/api/v1`;
+// Same-origin: Next.js rewrites (next.config.mjs) proxy /api/* to the backend,
+// which keeps the session cookie first-party.
+const V1 = "/api/v1";
 
 export class ApiError extends Error {
   constructor(

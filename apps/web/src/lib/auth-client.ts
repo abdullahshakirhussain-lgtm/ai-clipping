@@ -1,11 +1,13 @@
 "use client";
 import { createAuthClient } from "better-auth/react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
-/** Talks to the API's mounted Better Auth handler; cookies live on the API origin. */
+/**
+ * Same-origin: requests hit the web domain and Next.js proxies them to the API
+ * (next.config.mjs rewrites), so the session cookie is first-party to the web
+ * domain. baseURL is the current origin in the browser.
+ */
 export const authClient = createAuthClient({
-  baseURL: API_URL,
+  baseURL: typeof window !== "undefined" ? window.location.origin : undefined,
   basePath: "/api/auth",
   fetchOptions: { credentials: "include" },
 });
