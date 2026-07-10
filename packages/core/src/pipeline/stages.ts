@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import type { TranscriptSegment } from "@clipfactory/ai";
 import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db";
-import { buildAss, extractThumbnail, renderClip } from "@clipfactory/media";
+import { buildAss, extractAudio, extractThumbnail, renderClip } from "@clipfactory/media";
 import type { PublishPlatform } from "@clipfactory/publishers";
 import { PublisherNotConfiguredError } from "@clipfactory/publishers";
 import type { PipelineContext } from "./context.js";
@@ -62,7 +62,11 @@ export async function runTranscribe(ctx: PipelineContext, sourceVideoId: string)
     if (!(await exists(localSource))) {
       await ctx.storage.getToFile(sourceKey(sourceVideoId), localSource);
     }
-    const transcript = await ctx.transcription.transcribe(localSource);
+    // Transcribe an audio-only track, not the full video: transcription APIs cap
+    // upload size (Groq = 25 MB) and only need the speech.
+    const audioPath = join(workDir, "audio.mp3");
+    await extractAudio(localSource, audioPath);
+    const transcript = await ctx.transcription.transcribe(audioPath);
     await ctx.repos.sourceVideos.upsertTranscript(sourceVideoId, {
       language: transcript.language,
       fullText: transcript.text,

@@ -108,6 +108,25 @@ export async function renderClip(input: RenderClipInput): Promise<void> {
   );
 }
 
+/**
+ * Extract a compact mono 16 kHz MP3 audio track for speech-to-text. Strips the
+ * (large) video stream so the file fits transcription-API size limits — a video
+ * can be hundreds of MB while its speech audio is only a few. ~32 kbps mono is
+ * plenty for Whisper and keeps ~1h40m under the common 25 MB cap.
+ */
+export async function extractAudio(inputPath: string, outPath: string): Promise<void> {
+  await run(bin("ffmpeg"), [
+    "-y",
+    "-i", inputPath,
+    "-vn",
+    "-ac", "1",
+    "-ar", "16000",
+    "-c:a", "libmp3lame",
+    "-b:a", "32k",
+    outPath,
+  ]);
+}
+
 /** Extract a 9:16 JPEG thumbnail at `atSec` (relative to clip file start). */
 export async function extractThumbnail(inputPath: string, outPath: string, atSec = 0.5): Promise<void> {
   await run(bin("ffmpeg"), [
