@@ -23,13 +23,21 @@ export class YtDlpDownloader implements DownloadProvider {
     const outTemplate = join(destDir, "source.%(ext)s");
     const info = (await ytdlp(url, {
       output: outTemplate,
-      format: "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+      // Prefer <=1080p mp4, but fall back to the best available in any container.
+      format: "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b",
       mergeOutputFormat: "mp4",
+      remuxVideo: "mp4",
       printJson: true,
       noPlaylist: true,
     })) as unknown as Record<string, unknown>;
 
-    const filePath = join(destDir, "source.mp4");
+    // yt-dlp names the file source.<ext>; the ext isn't always mp4 (webm/mkv),
+    // so locate whatever it actually produced instead of assuming .mp4.
+    const produced = (await fs.readdir(destDir)).find((f) => f.startsWith("source."));
+    if (!produced) {
+      throw new Error("yt-dlp finished but produced no output file");
+    }
+    const filePath = join(destDir, produced);
     const probed = await probe(filePath);
     return {
       filePath,
