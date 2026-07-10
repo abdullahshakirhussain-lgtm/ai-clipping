@@ -88,8 +88,16 @@ export async function buildApp(container: Container) {
         }),
       );
       reply.status(response.status);
-      response.headers.forEach((value, key) => reply.header(key, value));
-      reply.send(response.body ? await response.text() : null);
+      // Forward headers, but handle Set-Cookie separately: Headers.forEach folds
+      // multiple Set-Cookie values into one comma-joined string, which corrupts
+      // the session cookie. getSetCookie() returns them as a proper array.
+      response.headers.forEach((value, key) => {
+        if (key.toLowerCase() !== "set-cookie") reply.header(key, value);
+      });
+      const setCookies = response.headers.getSetCookie?.() ?? [];
+      if (setCookies.length > 0) reply.header("set-cookie", setCookies);
+      const body = await response.text();
+      reply.send(body.length > 0 ? body : null);
     },
   });
 
