@@ -23,16 +23,28 @@ function bin(name: "ffmpeg" | "ffprobe"): string {
 function run(
   command: string,
   args: string[],
-  opts?: { cwd?: string },
+  opts?: { cwd?: string; timeoutMs?: number },
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: opts?.cwd, windowsHide: true });
     let stdout = "";
     let stderr = "";
+    // Guard against a hung process (e.g. libass/fontconfig stalls) blocking the
+    // whole in-process pipeline: kill and fail fast so the job dead-letters.
+    const timer = opts?.timeoutMs
+      ? setTimeout(() => {
+          child.kill("SIGKILL");
+          reject(new Error(`${command} timed out after ${opts.timeoutMs}ms`));
+        }, opts.timeoutMs)
+      : undefined;
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));
-    child.on("error", reject);
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
     child.on("close", (code) => {
+      if (timer) clearTimeout(timer);
       if (code === 0) resolve({ stdout, stderr });
       else reject(new Error(`${command} exited ${code}: ${stderr.slice(-2000)}`));
     });
@@ -86,10 +98,13 @@ export interface RenderClipInput {
   workDir: string;
 }
 
-/** Cut a window, crop to 9:16 (1080x1920), optionally burn captions. */
+/** Cut a window, fill to 9:16 (1080x1920), optionally burn captions. */
 export async function renderClip(input: RenderClipInput): Promise<void> {
   const duration = input.endSec - input.startSec;
-  const filters = ["crop=ih*9/16:ih", "scale=1080:1920"];
+  // Scale to cover 1080x1920 then centre-crop to exact even dimensions — works
+  // for any source aspect ratio (avoids the non-integer crop the old expression
+  // produced for 16:9 sources).
+  const filters = ["scale=1080:1920:force_original_aspect_ratio=increase", "crop=1080:1920"];
   if (input.captionsFileName) filters.push(`subtitles=${input.captionsFileName}`);
   await run(
     bin("ffmpeg"),
@@ -104,7 +119,7 @@ export async function renderClip(input: RenderClipInput): Promise<void> {
       "-movflags", "+faststart",
       input.outPath,
     ],
-    { cwd: input.workDir },
+    { cwd: input.workDir, timeoutMs: 4 * 60 * 1000 },
   );
 }
 
@@ -115,26 +130,34 @@ export async function renderClip(input: RenderClipInput): Promise<void> {
  * plenty for Whisper and keeps ~1h40m under the common 25 MB cap.
  */
 export async function extractAudio(inputPath: string, outPath: string): Promise<void> {
-  await run(bin("ffmpeg"), [
-    "-y",
-    "-i", inputPath,
-    "-vn",
-    "-ac", "1",
-    "-ar", "16000",
-    "-c:a", "libmp3lame",
-    "-b:a", "32k",
-    outPath,
-  ]);
+  await run(
+    bin("ffmpeg"),
+    [
+      "-y",
+      "-i", inputPath,
+      "-vn",
+      "-ac", "1",
+      "-ar", "16000",
+      "-c:a", "libmp3lame",
+      "-b:a", "32k",
+      outPath,
+    ],
+    { timeoutMs: 8 * 60 * 1000 },
+  );
 }
 
 /** Extract a 9:16 JPEG thumbnail at `atSec` (relative to clip file start). */
 export async function extractThumbnail(inputPath: string, outPath: string, atSec = 0.5): Promise<void> {
-  await run(bin("ffmpeg"), [
-    "-y",
-    "-ss", atSec.toFixed(2),
-    "-i", inputPath,
-    "-frames:v", "1",
-    "-vf", "scale=540:960",
-    outPath,
-  ]);
+  await run(
+    bin("ffmpeg"),
+    [
+      "-y",
+      "-ss", atSec.toFixed(2),
+      "-i", inputPath,
+      "-frames:v", "1",
+      "-vf", "scale=540:960",
+      outPath,
+    ],
+    { timeoutMs: 60 * 1000 },
+  );
 }

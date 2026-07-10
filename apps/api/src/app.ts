@@ -26,7 +26,9 @@ export async function buildApp(container: Container) {
   const { env, logger } = container;
   const auth = createAuth(env);
 
-  const app = Fastify({ loggerInstance: logger }).withTypeProvider<ZodTypeProvider>();
+  // disableRequestLogging: the dashboard polls several endpoints every few
+  // seconds; per-request logs drown out the pipeline logs. Errors still log.
+  const app = Fastify({ loggerInstance: logger, disableRequestLogging: true }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 

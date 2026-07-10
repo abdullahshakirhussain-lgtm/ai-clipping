@@ -160,14 +160,28 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
       captionsFileName = assName;
     }
 
-    await renderClip({
+    const renderArgs = {
       inputPath: localSource,
       outPath,
       startSec: clip.startSec,
       endSec: clip.endSec,
-      captionsFileName,
       workDir,
-    });
+    };
+    try {
+      await renderClip({ ...renderArgs, captionsFileName });
+    } catch (err) {
+      // Never lose a clip to a caption/font issue: retry once without burned
+      // captions so at least a watchable video is produced.
+      if (captionsFileName) {
+        ctx.logger.error(
+          { clipId, err: String(err) },
+          "render with captions failed; retrying without captions",
+        );
+        await renderClip(renderArgs);
+      } else {
+        throw err;
+      }
+    }
     await extractThumbnail(outPath, thumbPath, 0.5);
 
     await ctx.storage.putFile(clipKey(clipId), outPath, "video/mp4");
