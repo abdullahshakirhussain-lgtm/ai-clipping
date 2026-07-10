@@ -15,13 +15,22 @@ export interface DownloadProvider {
   download(url: string, destDir: string): Promise<DownloadResult>;
 }
 
+export interface YtDlpOptions {
+  /** e.g. http://user:pass@host:port — route around datacenter-IP blocks. */
+  proxy?: string;
+  /** Path to a Netscape cookies.txt (e.g. exported YouTube cookies). */
+  cookiesFile?: string;
+}
+
 /** Real downloads via yt-dlp (lazy-imported so mock mode never needs the binary). */
 export class YtDlpDownloader implements DownloadProvider {
+  constructor(private readonly opts: YtDlpOptions = {}) {}
+
   async download(url: string, destDir: string): Promise<DownloadResult> {
     await fs.mkdir(destDir, { recursive: true });
     const { default: ytdlp } = await import("youtube-dl-exec");
     const outTemplate = join(destDir, "source.%(ext)s");
-    const info = (await ytdlp(url, {
+    const ytdlpArgs: Record<string, unknown> = {
       output: outTemplate,
       // Always require a video stream (bv* = best *video*), plus audio; fall back
       // to any combined format. Height cap keeps files reasonable.
@@ -29,7 +38,11 @@ export class YtDlpDownloader implements DownloadProvider {
       mergeOutputFormat: "mp4",
       printJson: true,
       noPlaylist: true,
-    })) as unknown as Record<string, unknown>;
+    };
+    // Optional: proxy (for YouTube/geo blocks) and cookies (for logged-in sites).
+    if (this.opts.proxy) ytdlpArgs.proxy = this.opts.proxy;
+    if (this.opts.cookiesFile) ytdlpArgs.cookies = this.opts.cookiesFile;
+    const info = (await ytdlp(url, ytdlpArgs)) as unknown as Record<string, unknown>;
 
     // The merged output is `source.<ext>`; yt-dlp's per-stream intermediates are
     // `source.f<id>.<ext>` (e.g. an audio-only fragment). Match only the final

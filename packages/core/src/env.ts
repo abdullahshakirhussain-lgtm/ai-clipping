@@ -26,6 +26,10 @@ const EnvSchema = z.object({
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),
+  /** Optional yt-dlp proxy (http://user:pass@host:port) for YouTube/geo blocks. */
+  YTDLP_PROXY: z.string().optional().default(""),
+  /** Optional path to a Netscape cookies.txt for logged-in downloads. */
+  YTDLP_COOKIES_FILE: z.string().optional().default(""),
 
   PUBLISH_DRIVER: z.enum(["mock", "live"]).default("mock"),
 

@@ -95,7 +95,10 @@ function buildAiProviders(env: Env, logger: Logger): {
 
 function buildDownloader(env: Env): DownloadProvider {
   return env.DOWNLOAD_DRIVER === "ytdlp"
-    ? new YtDlpDownloader()
+    ? new YtDlpDownloader({
+        proxy: env.YTDLP_PROXY || undefined,
+        cookiesFile: env.YTDLP_COOKIES_FILE || undefined,
+      })
     : new MockDownloader(env.MOCK_VIDEO_DURATION_SEC);
 }
 
