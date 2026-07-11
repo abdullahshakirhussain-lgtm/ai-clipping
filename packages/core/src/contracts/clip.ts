@@ -22,7 +22,7 @@ export const SourceVideoDtoSchema = z.object({
   campaignId: z.string(),
   campaignName: z.string(),
   creatorName: z.string(),
-  originalUrl: z.string(),
+  originalUrl: z.string().nullable(),
   status: SourceVideoStatusSchema,
   title: z.string().nullable(),
   durationSec: z.number().nullable(),
@@ -67,8 +67,14 @@ export const ClipDtoSchema = z.object({
   hashtags: z.array(z.string()),
   hooks: HooksSchema.nullable(),
   qualityScore: z.number().nullable(),
-  viralScore: z.number().nullable(),
   estimatedEngagement: z.number().nullable(),
+  // Authoritative transparent scores (computed at detection, live on the clip).
+  hookScore: z.number(),
+  viralScore: z.number(),
+  overallScore: z.number(),
+  scoreBreakdown: z.record(z.unknown()).nullable(),
+  detectionSource: z.string().nullable(),
+  kept: z.boolean(),
   publishJobs: z.array(ClipPublishSummarySchema),
   createdAt: z.string(),
 });
@@ -80,7 +86,7 @@ export const ClipDetailDtoSchema = ClipDtoSchema.extend({
     z.object({
       action: ReviewActionTypeSchema,
       note: z.string().nullable(),
-      reviewerName: z.string(),
+      reviewerName: z.string().nullable(),
       createdAt: z.string(),
     }),
   ),
@@ -91,7 +97,14 @@ export const ClipListQuerySchema = z.object({
   status: ClipStatusSchema.optional(),
   campaignId: z.string().optional(),
   sourceVideoId: z.string().optional(),
-  take: z.coerce.number().int().min(1).max(100).default(50),
+  /** Grid cull filter: only kept (true) or only discarded (false) clips. */
+  kept: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+  /** "score" (best first, for the grid) or "recent" (newest first). */
+  sort: z.enum(["score", "recent"]).default("recent"),
+  take: z.coerce.number().int().min(1).max(500).default(50),
   skip: z.coerce.number().int().min(0).default(0),
 });
 export type ClipListQuery = z.infer<typeof ClipListQuerySchema>;
@@ -106,3 +119,10 @@ export const ReviewInputSchema = z.object({
   note: z.string().max(1000).optional(),
 });
 export type ReviewInput = z.infer<typeof ReviewInputSchema>;
+
+export const ClipBulkInputSchema = z.object({
+  ids: z.array(z.string()).min(1),
+  /** keep = restore to the grid, discard = cull it. */
+  action: z.enum(["keep", "discard"]),
+});
+export type ClipBulkInput = z.infer<typeof ClipBulkInputSchema>;

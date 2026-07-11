@@ -146,6 +146,98 @@ export async function extractAudio(inputPath: string, outPath: string): Promise<
   );
 }
 
+export interface LoudnessTimeline {
+  /** Normalized 0-1 loudness, one sample per second of source. */
+  energy: number[];
+  durationSec: number;
+}
+
+export interface LoudnessPeak {
+  atSec: number;
+  /** Normalized 0-1 energy at the peak. */
+  energy: number;
+}
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
+
+/**
+ * Momentary-loudness envelope via ffmpeg's `ebur128` filter, bucketed to one
+ * normalized energy value (0-1) per second. Used to (a) find non-speech
+ * highlight moments — laughs, hype, action spikes — and (b) score a clip's
+ * opening energy. Degrades to an empty timeline on any failure, so callers can
+ * treat "no audio signal" as simply skipping the audio path.
+ */
+export async function analyzeLoudness(inputPath: string): Promise<LoudnessTimeline> {
+  let stderr = "";
+  try {
+    const res = await run(
+      bin("ffmpeg"),
+      ["-nostats", "-hide_banner", "-i", inputPath, "-filter_complex", "ebur128=metadata=1", "-f", "null", "-"],
+      { timeoutMs: 8 * 60 * 1000 },
+    );
+    stderr = res.stderr;
+  } catch (err) {
+    // ebur128 can exit non-zero on odd audio; salvage whatever it printed.
+    stderr = err instanceof Error ? err.message : "";
+  }
+  // Lines look like: [Parsed_ebur128_0 @ ..] t: 1.2  TARGET:-23 LUFS  M: -20.6 S:...
+  const perSecondMax = new Map<number, number>();
+  const re = /t:\s*([0-9]+(?:\.[0-9]+)?)\s+.*?M:\s*(-?[0-9]+(?:\.[0-9]+)?|-?inf|nan)/g;
+  let match: RegExpExecArray | null;
+  let maxT = 0;
+  while ((match = re.exec(stderr))) {
+    const t = Number(match[1]);
+    const raw = match[2]!;
+    const lufs = raw === "-inf" || raw === "nan" ? -70 : Number(raw);
+    const sec = Math.floor(t);
+    const prev = perSecondMax.get(sec);
+    if (prev === undefined || lufs > prev) perSecondMax.set(sec, lufs);
+    if (t > maxT) maxT = t;
+  }
+  const seconds = Math.max(0, Math.ceil(maxT));
+  const energy: number[] = [];
+  for (let s = 0; s < seconds; s++) {
+    const lufs = perSecondMax.get(s) ?? -70;
+    // Map momentary LUFS (~ -40 quiet .. -8 loud) into 0-1.
+    energy.push(clamp01((lufs + 40) / 32));
+  }
+  return { energy, durationSec: seconds };
+}
+
+/**
+ * Local maxima in the energy timeline that stand out above the track's own
+ * baseline (mean + k·stddev), spaced at least `minGapSec` apart. These are
+ * candidate highlight centers for non-speech moments.
+ */
+export function findLoudnessPeaks(
+  timeline: LoudnessTimeline,
+  opts?: { minGapSec?: number; k?: number; max?: number },
+): LoudnessPeak[] {
+  const { energy } = timeline;
+  if (energy.length < 5) return [];
+  const minGap = opts?.minGapSec ?? 20;
+  const k = opts?.k ?? 1.0;
+  const mean = energy.reduce((a, b) => a + b, 0) / energy.length;
+  const variance = energy.reduce((a, b) => a + (b - mean) ** 2, 0) / energy.length;
+  const std = Math.sqrt(variance);
+  const threshold = mean + k * std;
+  const peaks: LoudnessPeak[] = [];
+  for (let i = 1; i < energy.length - 1; i++) {
+    const e = energy[i]!;
+    if (e >= threshold && e >= energy[i - 1]! && e >= energy[i + 1]!) {
+      peaks.push({ atSec: i, energy: e });
+    }
+  }
+  // Strongest first, then greedily drop peaks too close to a stronger one.
+  peaks.sort((a, b) => b.energy - a.energy);
+  const kept: LoudnessPeak[] = [];
+  for (const p of peaks) {
+    if (kept.every((q) => Math.abs(q.atSec - p.atSec) >= minGap)) kept.push(p);
+    if (opts?.max && kept.length >= opts.max) break;
+  }
+  return kept.sort((a, b) => a.atSec - b.atSec);
+}
+
 /** Extract a 9:16 JPEG thumbnail at `atSec` (relative to clip file start). */
 export async function extractThumbnail(inputPath: string, outPath: string, atSec = 0.5): Promise<void> {
   await run(

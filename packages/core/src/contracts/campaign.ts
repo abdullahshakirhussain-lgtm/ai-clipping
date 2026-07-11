@@ -14,7 +14,7 @@ export const CampaignDtoSchema = z.object({
   id: z.string(),
   name: z.string(),
   creator: z.object({ id: z.string(), name: z.string(), handle: z.string() }),
-  sourceVideoUrl: z.string(),
+  sourceVideoUrl: z.string().nullable(),
   sourcePlatform: SourcePlatformSchema,
   allowedPlatforms: z.array(PlatformSchema),
   revenueRatePerMille: z.number(),
@@ -30,7 +30,8 @@ export type CampaignDto = z.infer<typeof CampaignDtoSchema>;
 export const CreateCampaignInputSchema = z
   .object({
     name: z.string().min(1).max(200),
-    sourceVideoUrl: z.string().url(),
+    /** Optional: only for URL/yt-dlp ingest. Upload-only projects omit it. */
+    sourceVideoUrl: z.string().url().optional(),
     sourcePlatform: SourcePlatformSchema.default("YOUTUBE"),
     allowedPlatforms: z.array(PlatformSchema).min(1),
     revenueRatePerMille: z.number().min(0).default(0),

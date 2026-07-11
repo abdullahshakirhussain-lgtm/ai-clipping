@@ -1,6 +1,7 @@
 export * from "./env.js";
 export * from "./logger.js";
 export * from "./errors.js";
+export * from "./detection.js";
 export * from "./mappers.js";
 export * from "./container.js";
 export * from "./contracts/index.js";

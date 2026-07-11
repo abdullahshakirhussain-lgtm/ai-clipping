@@ -22,8 +22,24 @@ export interface PipelineContext {
   /** Root dir for scratch files during rendering. */
   workRoot: string;
   config: {
-    maxCandidatesPerVideo: number;
+    /** Clip detection + scoring knobs (env-driven; see env.ts DETECT_*). */
+    detection: DetectionConfig;
     /** How often analytics.sync re-polls a published post, ms. */
     metricsSyncIntervalMs: number;
   };
+}
+
+export interface DetectionConfig {
+  /** Hard ceiling on clips kept per source video after scoring/ranking. */
+  maxClips: number;
+  /** Overall-score floor (0-100): candidates below this are discarded. */
+  minScore: number;
+  /** Shortest allowed clip, seconds. */
+  minDurationSec: number;
+  /** Longest allowed clip, seconds. */
+  maxDurationSec: number;
+  /** Transcript chunk size for the LLM pass, minutes. */
+  chunkMinutes: number;
+  /** Whether to run the audio-energy peak detector alongside transcript hooks. */
+  audioPeaks: boolean;
 }

@@ -1,10 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type {
+  ClipSignals,
   DetectHighlightsInput,
   EnhanceClipInput,
   EnhancementResult,
   HighlightCandidate,
+  HookType,
   LlmProvider,
+  TranscriptSegment,
 } from "./types.js";
 
 export interface AnthropicLlmOptions {
@@ -14,13 +17,56 @@ export interface AnthropicLlmOptions {
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number(n) || lo));
 
+const HOOK_TYPES: HookType[] = [
+  "question",
+  "bold_claim",
+  "curiosity_gap",
+  "number_list",
+  "controversy",
+  "cliffhanger",
+  "story",
+  "none",
+];
+
+interface RawClip {
+  startSec: number;
+  endSec: number;
+  hook?: string;
+  reason?: string;
+  topic?: string;
+  hookType?: string;
+  hookStrength?: number;
+  frontLoading?: number;
+  selfContained?: number;
+  emotion?: number;
+  loopability?: number;
+}
+
+/** Split segments into windows of ~chunkSec so long videos aren't crammed into one call. */
+function chunkSegments(segments: TranscriptSegment[], chunkSec: number): TranscriptSegment[][] {
+  if (segments.length === 0) return [];
+  const chunks: TranscriptSegment[][] = [];
+  let current: TranscriptSegment[] = [];
+  let windowStart = segments[0]!.start;
+  for (const seg of segments) {
+    if (seg.start - windowStart >= chunkSec && current.length > 0) {
+      chunks.push(current);
+      current = [];
+      windowStart = seg.start;
+    }
+    current.push(seg);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 /**
- * Claude-backed highlight detection, metadata generation, and scoring.
+ * Claude-backed highlight detection, metadata generation, and scoring signals.
  *
- * Uses forced tool-calling instead of asking for JSON in prose: the model must
- * return a structured object matching the tool's input schema, so there's no
- * fragile parsing of free-form text (and no reliance on assistant prefill, which
- * newer models reject).
+ * Detection is chunked across long transcripts and asks for *all* strong moments
+ * in each window (no fixed count), each annotated with sub-signals the scoring
+ * model in packages/core turns into an explainable hook/viral score. Uses forced
+ * tool-calling so output is structured, not fragile prose.
  */
 export class AnthropicLlmProvider implements LlmProvider {
   private readonly client: Anthropic;
@@ -32,7 +78,7 @@ export class AnthropicLlmProvider implements LlmProvider {
   }
 
   /** Force a single tool call and return its (already-parsed) input object. */
-  private async callTool<T>(prompt: string, tool: Anthropic.Tool, maxTokens = 2048): Promise<T> {
+  private async callTool<T>(prompt: string, tool: Anthropic.Tool, maxTokens = 4096): Promise<T> {
     const msg = await this.client.messages.create({
       model: this.model,
       max_tokens: maxTokens,
@@ -40,31 +86,50 @@ export class AnthropicLlmProvider implements LlmProvider {
       tool_choice: { type: "tool", name: tool.name },
       messages: [{ role: "user", content: prompt }],
     });
-    const block = msg.content.find(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
-    );
+    const block = msg.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (!block) throw new Error("Claude did not return the expected tool call");
     return block.input as T;
   }
 
   async detectHighlights(input: DetectHighlightsInput): Promise<HighlightCandidate[]> {
-    const rules = (input.rules ?? {}) as { minDurationSec?: number; maxDurationSec?: number };
-    const transcript = input.segments
+    const chunkSec = Math.max(60, input.chunkMinutes * 60);
+    const chunks = chunkSegments(input.segments, chunkSec);
+    const all: HighlightCandidate[] = [];
+    for (const chunk of chunks) {
+      if (chunk.length === 0) continue;
+      const cands = await this.detectChunk(chunk, input);
+      all.push(...cands);
+    }
+    return all;
+  }
+
+  private async detectChunk(
+    chunk: TranscriptSegment[],
+    input: DetectHighlightsInput,
+  ): Promise<HighlightCandidate[]> {
+    const chunkStart = chunk[0]!.start;
+    const chunkEnd = chunk[chunk.length - 1]!.end;
+    const transcript = chunk
       .map((s) => `[${s.start.toFixed(1)}-${s.end.toFixed(1)}] ${s.text}`)
       .join("\n");
+    const peaksInChunk = (input.audioPeaks ?? []).filter((p) => p >= chunkStart && p <= chunkEnd);
+    const peakHint = peaksInChunk.length
+      ? `\nHigh audio-energy moments (laughs/reactions/action) were detected near these timestamps — consider clips around them even if the words are ordinary: ${peaksInChunk.map((p) => p.toFixed(0) + "s").join(", ")}.`
+      : "";
 
-    const result = await this.callTool<{ clips?: HighlightCandidate[] }>(
-      `You are a short-form video editor who finds viral moments in long-form content.
+    const result = await this.callTool<{ clips?: RawClip[] }>(
+      `You are a short-form video editor who finds every viral-worthy moment in long-form content.
 
-Transcript with timestamps (video is ${input.durationSec.toFixed(0)}s long):
+Transcript window with timestamps:
 ${transcript}
+${peakHint}
 
-Find the ${input.maxCandidates ?? 4} best self-contained moments for vertical short-form clips.
-Constraints: each clip ${rules.minDurationSec ?? 15}-${rules.maxDurationSec ?? 60} seconds; must start/end at natural sentence boundaries; must make sense with zero context.
-Call submit_highlights with your picks.`,
+Return ALL self-contained moments worth clipping for vertical short-form (TikTok/Reels/Shorts) — could be a few or many, however many are genuinely good. Do not pad with weak ones.
+Each clip must be ${input.minDurationSec}-${input.maxDurationSec} seconds, start/end on natural sentence boundaries, and make sense with zero context.
+For each clip also rate the sub-signals honestly (0-100) so it can be scored. Call submit_highlights.`,
       {
         name: "submit_highlights",
-        description: "Submit the selected highlight clips.",
+        description: "Submit the selected highlight clips with scoring signals.",
         input_schema: {
           type: "object",
           properties: {
@@ -78,8 +143,30 @@ Call submit_highlights with your picks.`,
                   hook: { type: "string", description: "scroll-stopping opening line" },
                   reason: { type: "string", description: "why this will perform" },
                   topic: { type: "string", description: "one-word topic" },
+                  hookType: {
+                    type: "string",
+                    enum: HOOK_TYPES,
+                    description: "shape of the opening hook",
+                  },
+                  hookStrength: { type: "number", description: "0-100 strength of the opening line" },
+                  frontLoading: { type: "number", description: "0-100 payoff in the first ~3s" },
+                  selfContained: { type: "number", description: "0-100 makes sense with zero context and resolves" },
+                  emotion: { type: "number", description: "0-100 funny/shocking/insightful/satisfying intensity" },
+                  loopability: { type: "number", description: "0-100 rewatch/replay/stitch potential" },
                 },
-                required: ["startSec", "endSec", "hook", "reason", "topic"],
+                required: [
+                  "startSec",
+                  "endSec",
+                  "hook",
+                  "reason",
+                  "topic",
+                  "hookType",
+                  "hookStrength",
+                  "frontLoading",
+                  "selfContained",
+                  "emotion",
+                  "loopability",
+                ],
               },
             },
           },
@@ -90,13 +177,30 @@ Call submit_highlights with your picks.`,
 
     return (result.clips ?? [])
       .filter((c) => Number.isFinite(c.startSec) && Number.isFinite(c.endSec) && c.endSec > c.startSec)
-      .map((c) => ({
-        startSec: clamp(c.startSec, 0, input.durationSec),
-        endSec: clamp(c.endSec, 0, input.durationSec),
-        hook: String(c.hook ?? "").slice(0, 200),
-        reason: String(c.reason ?? ""),
-        topic: String(c.topic ?? "general"),
-      }));
+      .map((c) => {
+        const startSec = clamp(c.startSec, 0, input.durationSec);
+        let endSec = clamp(c.endSec, 0, input.durationSec);
+        // Enforce max duration; drop below-min happens after scoring in core.
+        if (endSec - startSec > input.maxDurationSec) endSec = startSec + input.maxDurationSec;
+        const signals: ClipSignals = {
+          hookType: HOOK_TYPES.includes(c.hookType as HookType) ? (c.hookType as HookType) : "none",
+          hookStrength: clamp(c.hookStrength ?? 50, 0, 100),
+          frontLoading: clamp(c.frontLoading ?? 50, 0, 100),
+          selfContained: clamp(c.selfContained ?? 50, 0, 100),
+          emotion: clamp(c.emotion ?? 50, 0, 100),
+          loopability: clamp(c.loopability ?? 50, 0, 100),
+        };
+        return {
+          startSec,
+          endSec,
+          hook: String(c.hook ?? "").slice(0, 200),
+          reason: String(c.reason ?? ""),
+          topic: String(c.topic ?? "general"),
+          source: "transcript" as const,
+          signals,
+        };
+      })
+      .filter((c) => c.endSec > c.startSec);
   }
 
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {
@@ -119,13 +223,11 @@ Call submit_metadata with optimized fields.`,
             description: { type: "string", description: "2-3 sentences with a CTA" },
             hashtags: { type: "array", items: { type: "string" }, description: "max 6, with #" },
             hookVariants: { type: "array", items: { type: "string" }, description: "3 alternative hooks" },
-            qualityScore: { type: "number", description: "0-100" },
-            viralScore: { type: "number", description: "0-100" },
-            estimatedEngagement: { type: "number", description: "0-10" },
           },
-          required: ["title", "description", "hashtags", "hookVariants", "qualityScore", "viralScore", "estimatedEngagement"],
+          required: ["title", "description", "hashtags", "hookVariants"],
         },
       },
+      1024,
     );
 
     return {
@@ -133,9 +235,6 @@ Call submit_metadata with optimized fields.`,
       description: String(p.description ?? ""),
       hashtags: (p.hashtags ?? []).map(String).slice(0, 6),
       hookVariants: (p.hookVariants ?? [input.hook]).map(String).slice(0, 3),
-      qualityScore: clamp(p.qualityScore ?? 50, 0, 100),
-      viralScore: clamp(p.viralScore ?? 50, 0, 100),
-      estimatedEngagement: clamp(p.estimatedEngagement ?? 5, 0, 10),
       model: this.model,
     };
   }

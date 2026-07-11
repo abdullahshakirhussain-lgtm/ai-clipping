@@ -6,14 +6,9 @@ import { useOverview } from "@/lib/api";
 
 const NAV: Array<{ href: string; label: string; badge?: "review" }> = [
   { href: "/", label: "Overview" },
-  { href: "/campaigns", label: "Campaigns" },
+  { href: "/upload", label: "Upload" },
   { href: "/videos", label: "Video Queue" },
-  { href: "/review", label: "Review Queue", badge: "review" },
-  { href: "/publishing", label: "Publishing Queue" },
-  { href: "/published", label: "Published" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/revenue", label: "Revenue" },
-  { href: "/accounts", label: "Accounts" },
+  { href: "/library", label: "Library" },
   { href: "/settings", label: "Settings" },
 ];
 

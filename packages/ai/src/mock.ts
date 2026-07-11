@@ -59,19 +59,23 @@ export class MockTranscriptionProvider implements TranscriptionProvider {
   }
 }
 
-/** Deterministic highlight/enhancement generation for offline dev. */
+/**
+ * Deterministic offline stub for local dev WITHOUT API keys. This is NOT the
+ * real detector — it just spaces a few plausible candidates across the transcript
+ * so the UI has something to render. Set AI_DRIVER=live for real detection.
+ */
 export class MockLlmProvider implements LlmProvider {
   async detectHighlights(input: DetectHighlightsInput): Promise<HighlightCandidate[]> {
-    const max = input.maxCandidates ?? 4;
-    const rules = (input.rules ?? {}) as { minDurationSec?: number; maxDurationSec?: number };
-    const minLen = rules.minDurationSec ?? 15;
-    const maxLen = rules.maxDurationSec ?? 45;
+    const minLen = input.minDurationSec;
+    const maxLen = input.maxDurationSec;
     const seed = hash(JSON.stringify(input.segments.slice(0, 2)));
-    const candidates: HighlightCandidate[] = [];
+    // Emit a variable (not fixed) number of stub candidates based on length.
+    const count = Math.max(1, Math.min(input.segments.length, Math.floor(input.durationSec / 60) + 2));
     const usable = Math.max(input.durationSec - maxLen, minLen);
-    for (let i = 0; i < max; i++) {
-      const start = Math.round(((seed % 97) + i * (usable / max)) % usable);
-      const len = minLen + ((seed + i * 13) % (maxLen - minLen));
+    const candidates: HighlightCandidate[] = [];
+    for (let i = 0; i < count; i++) {
+      const start = Math.round(((seed % 97) + i * (usable / count)) % usable);
+      const len = minLen + ((seed + i * 13) % Math.max(1, maxLen - minLen));
       const end = Math.min(start + len, input.durationSec);
       if (end - start < minLen) continue;
       const nearSeg = input.segments.find((s) => s.start >= start) ?? input.segments[0];
@@ -81,13 +85,21 @@ export class MockLlmProvider implements LlmProvider {
         hook: nearSeg ? nearSeg.text.slice(0, 80) : "You won't believe what happens next",
         reason: "Mock detector: self-contained moment with a strong opening line",
         topic: ["startups", "money", "mindset", "growth"][(seed + i) % 4]!,
+        source: "transcript",
+        signals: {
+          hookType: "curiosity_gap",
+          hookStrength: 55 + ((seed + i) % 40),
+          frontLoading: 50 + ((seed + i * 3) % 40),
+          selfContained: 50 + ((seed + i * 7) % 45),
+          emotion: 45 + ((seed + i * 5) % 50),
+          loopability: 40 + ((seed + i * 9) % 50),
+        },
       });
     }
     return candidates;
   }
 
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {
-    const seed = hash(input.hook + input.transcriptExcerpt.slice(0, 50));
     return {
       title: `${input.hook.replace(/[.!?]+$/, "").slice(0, 60)}`,
       description: `${input.hook} — full breakdown in this clip. Follow for more ${input.topic} content.`,
@@ -97,9 +109,6 @@ export class MockLlmProvider implements LlmProvider {
         `POV: ${input.hook.charAt(0).toLowerCase()}${input.hook.slice(1)}`,
         `The truth about ${input.topic} nobody says out loud`,
       ],
-      qualityScore: 55 + (seed % 40),
-      viralScore: 45 + ((seed >> 3) % 50),
-      estimatedEngagement: 3 + ((seed >> 6) % 70) / 10,
       model: "mock",
     };
   }

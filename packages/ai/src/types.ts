@@ -23,6 +23,38 @@ export interface TranscriptionProvider {
   transcribe(localFilePath: string): Promise<TranscriptionResult>;
 }
 
+/** Categorical opening-hook shape the LLM classifies for each candidate. */
+export type HookType =
+  | "question"
+  | "bold_claim"
+  | "curiosity_gap"
+  | "number_list"
+  | "controversy"
+  | "cliffhanger"
+  | "story"
+  | "none";
+
+/**
+ * LLM-judged qualities of a candidate clip (0-100 unless noted). These feed the
+ * transparent scoring model in packages/core alongside measured audio signals.
+ */
+export interface ClipSignals {
+  hookType: HookType;
+  /** How strong the opening line itself is. */
+  hookStrength: number;
+  /** Payoff lands in the first ~3s vs buried later. */
+  frontLoading: number;
+  /** Makes sense with zero context and actually resolves. */
+  selfContained: number;
+  /** Funny / shocking / insightful / satisfying intensity. */
+  emotion: number;
+  /** Rewatch / replay / stitch potential. */
+  loopability: number;
+}
+
+/** Where a candidate window came from. */
+export type DetectionSource = "transcript" | "audio" | "hybrid";
+
 export interface HighlightCandidate {
   startSec: number;
   endSec: number;
@@ -31,14 +63,20 @@ export interface HighlightCandidate {
   /** Why this window was selected. */
   reason: string;
   topic: string;
+  source: DetectionSource;
+  /** LLM sub-scores; absent for pure audio-energy candidates. */
+  signals?: ClipSignals;
 }
 
 export interface DetectHighlightsInput {
   segments: TranscriptSegment[];
   durationSec: number;
-  /** Campaign rules, e.g. { minDurationSec, maxDurationSec, bannedWords } */
-  rules?: Record<string, unknown>;
-  maxCandidates?: number;
+  minDurationSec: number;
+  maxDurationSec: number;
+  /** Transcript is chunked into windows of this many minutes per LLM call. */
+  chunkMinutes: number;
+  /** Optional audio-energy peak timestamps (seconds) fed to the LLM as hints. */
+  audioPeaks?: number[];
 }
 
 export interface EnhanceClipInput {
@@ -50,14 +88,12 @@ export interface EnhanceClipInput {
   creatorName?: string;
 }
 
+/** Metadata only — scoring is computed in packages/core, not here. */
 export interface EnhancementResult {
   title: string;
   description: string;
   hashtags: string[];
   hookVariants: string[];
-  qualityScore: number;
-  viralScore: number;
-  estimatedEngagement: number;
   model: string;
 }
 

@@ -170,7 +170,8 @@ model Campaign {
   creatorId           String
   creator             Creator        @relation(fields: [creatorId], references: [id])
   name                String
-  sourceVideoUrl      String
+  /// Optional default source URL for URL-based ingest; null for upload-only projects.
+  sourceVideoUrl      String?
   sourcePlatform      SourcePlatform @default(YOUTUBE)
   allowedPlatforms    Platform[]
   /// Revenue paid to clippers per 1000 views, in USD
@@ -191,11 +192,14 @@ model Campaign {
 }
 
 model SourceVideo {
-  id          String            @id @default(cuid())
-  campaignId  String
-  campaign    Campaign          @relation(fields: [campaignId], references: [id])
-  originalUrl String
-  status      SourceVideoStatus @default(PENDING)
+  id               String            @id @default(cuid())
+  campaignId       String
+  campaign         Campaign          @relation(fields: [campaignId], references: [id])
+  /// Set for URL/yt-dlp ingest; null when the file was uploaded directly.
+  originalUrl      String?
+  /// Original filename for uploaded sources.
+  originalFilename String?
+  status           SourceVideoStatus @default(PENDING)
   storageKey  String?
   title       String?
   durationSec Float?
@@ -239,7 +243,17 @@ model Clip {
   thumbnailKey    String?
   /// Why the detector picked this window
   detectionReason String?
+  /// Which detector surfaced this window: "transcript" | "audio" | "hybrid"
+  detectionSource String?
   captionStyle    String     @default("bold-center")
+  /// Bulk-cull flag: false = discarded by the user in the grid.
+  kept            Boolean    @default(true)
+  /// Transparent scoring, computed at detection (see packages/core scoring.ts). 0-100.
+  hookScore       Float      @default(0)
+  viralScore      Float      @default(0)
+  overallScore    Float      @default(0)
+  /// Named sub-signal breakdown behind the scores (measured + LLM-judged).
+  scoreBreakdown  Json?
   error           String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
@@ -252,6 +266,7 @@ model Clip {
   @@index([status])
   @@index([campaignId])
   @@index([sourceVideoId])
+  @@index([overallScore])
 }
 
 model ClipEnhancement {
@@ -276,8 +291,8 @@ model ReviewAction {
   id         String           @id @default(cuid())
   clipId     String
   clip       Clip             @relation(fields: [clipId], references: [id], onDelete: Cascade)
-  reviewerId String
-  reviewer   User             @relation(fields: [reviewerId], references: [id])
+  reviewerId String?
+  reviewer   User?            @relation(fields: [reviewerId], references: [id])
   action     ReviewActionType
   note       String?
   createdAt  DateTime         @default(now())

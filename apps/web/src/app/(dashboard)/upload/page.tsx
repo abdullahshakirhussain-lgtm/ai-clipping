@@ -1,0 +1,125 @@
+"use client";
+import { useRef, useState } from "react";
+import { apiUpload, revalidateAll, useVideos, type SourceVideoDto } from "@/lib/api";
+import { Button, Card, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
+import { timeAgo } from "@/lib/format";
+
+export default function UploadPage() {
+  const { data: videos } = useVideos();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  async function upload(file: File) {
+    setBusy(true);
+    setError(null);
+    setProgress(0);
+    try {
+      await apiUpload<{ sourceVideoId: string }>("/videos/upload", file, setProgress);
+      await revalidateAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBusy(false);
+      setProgress(0);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Upload"
+        subtitle="Drop your own source video. It transcribes, detects clips, scores them, and renders 9:16 automatically."
+      />
+
+      <Card className="mb-6">
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) void upload(file);
+          }}
+          className="rounded-xl border-2 border-dashed p-10 text-center transition-colors"
+          style={{
+            borderColor: dragging ? "var(--primary)" : "var(--border)",
+            background: dragging ? "var(--surface-2)" : "transparent",
+          }}
+        >
+          {busy ? (
+            <div>
+              <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
+                Uploading… {Math.round(progress * 100)}%
+              </p>
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
+                <div
+                  className="h-full transition-all"
+                  style={{ width: `${Math.round(progress * 100)}%`, background: "var(--primary)" }}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="font-medium">Drag & drop a video here</p>
+              <p className="text-sm mt-1 mb-4" style={{ color: "var(--muted)" }}>
+                MP4, MOV, MKV, WebM — up to 8 GB
+              </p>
+              <Button onClick={() => inputRef.current?.click()}>Choose file</Button>
+            </>
+          )}
+          <input
+            ref={inputRef}
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void upload(file);
+            }}
+          />
+        </div>
+        {error && (
+          <p className="text-sm mt-3" style={{ color: "var(--danger)" }}>
+            {error}
+          </p>
+        )}
+      </Card>
+
+      <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--muted)" }}>
+        Recent uploads
+      </h2>
+      {!videos || videos.length === 0 ? (
+        <EmptyState title="Nothing uploaded yet" hint="Your uploaded videos and their processing status appear here." />
+      ) : (
+        <div className="space-y-2">
+          {videos.map((v) => (
+            <VideoRow key={v.id} video={v} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VideoRow({ video }: { video: SourceVideoDto }) {
+  return (
+    <div className="card p-4 flex items-center justify-between gap-4">
+      <div className="min-w-0">
+        <div className="font-medium truncate">{video.title ?? video.originalUrl ?? "Untitled"}</div>
+        <div className="text-xs" style={{ color: "var(--muted)" }}>
+          {video.clipCount} clip{video.clipCount === 1 ? "" : "s"} · {timeAgo(video.createdAt)}
+          {video.error ? ` · ${video.error}` : ""}
+        </div>
+      </div>
+      <StatusBadge status={video.status} />
+    </div>
+  );
+}

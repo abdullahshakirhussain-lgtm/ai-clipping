@@ -25,6 +25,8 @@ export class ClipRepository {
     status?: ClipStatus | ClipStatus[];
     campaignId?: string;
     sourceVideoId?: string;
+    kept?: boolean;
+    sort?: "score" | "recent";
     take?: number;
     skip?: number;
   }) {
@@ -32,7 +34,10 @@ export class ClipRepository {
       status: Array.isArray(filter?.status) ? { in: filter.status } : filter?.status,
       campaignId: filter?.campaignId,
       sourceVideoId: filter?.sourceVideoId,
+      kept: filter?.kept,
     };
+    const orderBy: Prisma.ClipOrderByWithRelationInput =
+      filter?.sort === "score" ? { overallScore: "desc" } : { createdAt: "desc" };
     return this.prisma.$transaction([
       this.prisma.clip.findMany({
         where,
@@ -41,12 +46,17 @@ export class ClipRepository {
           campaign: { include: { creator: true } },
           publishJobs: { include: { socialAccount: true } },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy,
         take: filter?.take ?? 50,
         skip: filter?.skip ?? 0,
       }),
       this.prisma.clip.count({ where }),
     ]);
+  }
+
+  /** Bulk cull flag toggle used by the grid. */
+  setKept(ids: string[], kept: boolean) {
+    return this.prisma.clip.updateMany({ where: { id: { in: ids } }, data: { kept } });
   }
 
   update(id: string, data: Prisma.ClipUncheckedUpdateInput) {

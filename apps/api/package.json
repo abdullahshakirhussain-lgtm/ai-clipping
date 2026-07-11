@@ -13,14 +13,17 @@
     "@clipfactory/db": "workspace:*",
     "@clipfactory/storage": "workspace:*",
     "@fastify/cors": "^10.0.2",
+    "@fastify/multipart": "^9.0.3",
     "@fastify/swagger": "^9.4.2",
     "@scalar/fastify-api-reference": "^1.25.0",
+    "archiver": "^7.0.1",
     "better-auth": "^1.6.0",
     "fastify": "^5.2.1",
     "fastify-type-provider-zod": "^4.0.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.3",
     "@types/node": "^22.13.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"

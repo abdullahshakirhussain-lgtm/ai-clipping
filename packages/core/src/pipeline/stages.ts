@@ -2,9 +2,17 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import type { TranscriptSegment } from "@clipfactory/ai";
 import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db";
-import { buildAss, extractAudio, extractThumbnail, renderClip } from "@clipfactory/media";
+import {
+  analyzeLoudness,
+  buildAss,
+  extractAudio,
+  extractThumbnail,
+  findLoudnessPeaks,
+  renderClip,
+} from "@clipfactory/media";
 import type { PublishPlatform } from "@clipfactory/publishers";
 import { PublisherNotConfiguredError } from "@clipfactory/publishers";
+import { buildAudioCandidates, mergeCandidates, scoreCandidate } from "../detection.js";
 import type { PipelineContext } from "./context.js";
 
 const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
@@ -24,6 +32,13 @@ export async function runDownload(ctx: PipelineContext, sourceVideoId: string): 
   }
   const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
   if (!video) return;
+
+  if (!video.originalUrl) {
+    // Uploaded sources have no URL and skip this stage entirely; if we somehow
+    // land here without one, fail loudly rather than call the downloader with null.
+    await failVideo(ctx, sourceVideoId, new Error("source has no originalUrl to download"));
+    return;
+  }
 
   const workDir = join(ctx.workRoot, sourceVideoId);
   try {
@@ -96,30 +111,83 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
     return;
   }
   try {
+    const det = ctx.config.detection;
     const segments = video.transcript.segments as unknown as TranscriptSegment[];
-    const candidates = await ctx.llm.detectHighlights({
+    const durationSec = video.durationSec ?? segments[segments.length - 1]?.end ?? 0;
+    const bounds = { minDurationSec: det.minDurationSec, maxDurationSec: det.maxDurationSec };
+
+    // Best-effort audio-energy pass powers both the non-speech (audio) detector
+    // and the "opening energy / pacing" measured scoring signals. Never fatal —
+    // detection degrades to transcript-only if ffmpeg/ebur128 fails.
+    let energy: number[] = [];
+    let peaks: number[] = [];
+    if (det.audioPeaks) {
+      try {
+        const workDir = join(ctx.workRoot, sourceVideoId);
+        const localSource = join(workDir, "source.mp4");
+        await fs.mkdir(workDir, { recursive: true });
+        if (!(await exists(localSource))) {
+          await ctx.storage.getToFile(sourceKey(sourceVideoId), localSource);
+        }
+        const timeline = await analyzeLoudness(localSource);
+        energy = timeline.energy;
+        peaks = findLoudnessPeaks(timeline, {
+          minGapSec: det.minDurationSec,
+          max: det.maxClips * 2,
+        }).map((p) => p.atSec);
+      } catch (err) {
+        ctx.logger.warn(
+          { sourceVideoId, err: String(err) },
+          "audio analysis failed; transcript-only detection",
+        );
+      }
+    }
+
+    // Hybrid detection: LLM transcript hooks + audio-energy peaks, merged.
+    const llmCandidates = await ctx.llm.detectHighlights({
       segments,
-      durationSec: video.durationSec ?? 0,
-      rules: (video.campaign.rules as Record<string, unknown> | null) ?? undefined,
-      maxCandidates: ctx.config.maxCandidatesPerVideo,
+      durationSec,
+      minDurationSec: det.minDurationSec,
+      maxDurationSec: det.maxDurationSec,
+      chunkMinutes: det.chunkMinutes,
+      audioPeaks: peaks,
     });
+    const audioCandidates = buildAudioCandidates(peaks, llmCandidates, bounds, durationSec);
+    const merged = mergeCandidates([...llmCandidates, ...audioCandidates], bounds);
+
+    // Score every candidate with the transparent model, keep those above the
+    // floor, best-first, up to the cap. Clip count now varies with content.
+    const scored = merged
+      .map((candidate) => ({ candidate, score: scoreCandidate({ candidate, segments, energy }) }))
+      .filter((x) => x.candidate.endSec - x.candidate.startSec >= det.minDurationSec)
+      .filter((x) => x.score.overallScore >= det.minScore)
+      .sort((a, b) => b.score.overallScore - a.score.overallScore)
+      .slice(0, det.maxClips);
 
     const created = await ctx.repos.clips.createMany(
-      candidates.map((c) => ({
+      scored.map(({ candidate, score }) => ({
         sourceVideoId,
         campaignId: video.campaignId,
-        startSec: c.startSec,
-        endSec: c.endSec,
+        startSec: candidate.startSec,
+        endSec: candidate.endSec,
         status: ClipStatus.RENDERING,
-        detectionReason: c.reason,
+        detectionReason: candidate.reason,
+        detectionSource: candidate.source,
         captionStyle: "bold-center",
+        hookScore: score.hookScore,
+        viralScore: score.viralScore,
+        overallScore: score.overallScore,
+        scoreBreakdown: score as never,
       })),
     );
     await ctx.repos.sourceVideos.update(sourceVideoId, { status: SourceVideoStatus.PROCESSED });
     for (const clip of created) {
       await ctx.dispatcher.enqueue("clip.render", { clipId: clip.id }, { jobId: clip.id });
     }
-    ctx.logger.info({ sourceVideoId, clips: created.length }, "detected candidate clips");
+    ctx.logger.info(
+      { sourceVideoId, clips: created.length, candidates: merged.length },
+      "detected candidate clips",
+    );
   } catch (err) {
     await failVideo(ctx, sourceVideoId, err);
     throw err;
@@ -230,18 +298,22 @@ export async function runEnhance(ctx: PipelineContext, clipId: string): Promise<
       platformHints: clip.campaign.allowedPlatforms,
       creatorName: clip.campaign.creator.name,
     });
+    // Scores were computed at detection time and live on the Clip; mirror them
+    // into the enhancement row so existing readers keep working.
     await ctx.repos.clips.upsertEnhancement(clipId, {
       title: result.title,
       description: result.description,
       hashtags: result.hashtags,
       hooks: { variants: result.hookVariants, selectedIndex: 0 } as never,
-      qualityScore: result.qualityScore,
-      viralScore: result.viralScore,
-      estimatedEngagement: result.estimatedEngagement,
+      qualityScore: clip.overallScore,
+      viralScore: clip.viralScore,
+      estimatedEngagement: clip.overallScore / 10,
       model: result.model,
     });
-    await ctx.repos.clips.update(clipId, { status: ClipStatus.READY_FOR_REVIEW, error: null });
-    ctx.logger.info({ clipId }, "clip ready for review");
+    // Auto-approve: clips land straight in the grid (kept=true) for bulk culling
+    // rather than a one-at-a-time manual gate.
+    await ctx.repos.clips.update(clipId, { status: ClipStatus.APPROVED, error: null });
+    ctx.logger.info({ clipId }, "clip enhanced and auto-approved");
   } catch (err) {
     await failClip(ctx, clipId, err);
     throw err;

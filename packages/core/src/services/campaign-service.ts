@@ -65,10 +65,15 @@ export class CampaignService {
     return toCampaignDto(updated);
   }
 
-  /** Kicks off the intake pipeline for the campaign's source video. */
+  /** Kicks off the URL/yt-dlp intake pipeline for the campaign's source video. */
   async ingest(campaignId: string): Promise<{ sourceVideoId: string }> {
     const campaign = await this.repos.campaigns.byId(campaignId);
     if (!campaign) throw new NotFoundError("Campaign", campaignId);
+    if (!campaign.sourceVideoUrl) {
+      throw new ValidationError(
+        "This project has no source URL. Upload a file to /videos/upload instead.",
+      );
+    }
 
     const video = await this.repos.sourceVideos.create({
       campaignId,

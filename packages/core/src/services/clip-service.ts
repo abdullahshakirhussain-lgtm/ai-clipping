@@ -29,6 +29,12 @@ export class ClipService {
     return { items, total };
   }
 
+  /** Bulk grid cull: keep restores, discard hides a batch of clips. */
+  async bulkCull(ids: string[], keep: boolean): Promise<{ updated: number }> {
+    const res = await this.repos.clips.setKept(ids, keep);
+    return { updated: res.count };
+  }
+
   async get(id: string): Promise<ClipDetailDto> {
     const clip = await this.repos.clips.byId(id);
     if (!clip) throw new NotFoundError("Clip", id);
@@ -42,7 +48,7 @@ export class ClipService {
       reviewActions: clip.reviewActions.map((a) => ({
         action: a.action,
         note: a.note,
-        reviewerName: a.reviewer.name,
+        reviewerName: a.reviewer?.name ?? null,
         createdAt: a.createdAt.toISOString(),
       })),
     };

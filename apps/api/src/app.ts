@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import apiReference from "@scalar/fastify-api-reference";
 import { AppError, type Container } from "@clipfactory/core";
@@ -35,6 +36,12 @@ export async function buildApp(container: Container) {
   await app.register(cors, {
     origin: [env.WEB_URL],
     credentials: true,
+  });
+
+  // Direct video upload (the primary ingest path). Large files stream to disk;
+  // 8 GB ceiling comfortably covers long source recordings.
+  await app.register(multipart, {
+    limits: { fileSize: 8 * 1024 * 1024 * 1024, files: 1 },
   });
 
   // Uniform error envelope

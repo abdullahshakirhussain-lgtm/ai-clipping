@@ -31,6 +31,23 @@ const EnvSchema = z.object({
   /** Optional path to a Netscape cookies.txt for logged-in downloads. */
   YTDLP_COOKIES_FILE: z.string().optional().default(""),
 
+  // ── Clip detection knobs (no more hardcoded "always 4") ──────────────────────
+  /** Hard ceiling on clips kept per source video after scoring/ranking. */
+  DETECT_MAX_CLIPS: z.coerce.number().int().min(1).default(30),
+  /** Overall-score floor (0-100): candidates below this are discarded. */
+  DETECT_MIN_SCORE: z.coerce.number().min(0).max(100).default(55),
+  /** Shortest allowed clip, seconds. */
+  DETECT_MIN_DURATION_SEC: z.coerce.number().min(1).default(12),
+  /** Longest allowed clip, seconds. */
+  DETECT_MAX_DURATION_SEC: z.coerce.number().min(1).default(60),
+  /** Transcript is chunked into windows of this many minutes for the LLM pass. */
+  DETECT_CHUNK_MIN: z.coerce.number().min(1).default(12),
+  /** Enable the audio-energy peak detector (catches non-speech moments). */
+  DETECT_AUDIO_PEAKS: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+
   PUBLISH_DRIVER: z.enum(["mock", "live"]).default("mock"),
 
   BETTER_AUTH_SECRET: z.string().default("dev-only-secret-change-me"),
