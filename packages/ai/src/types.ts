@@ -9,6 +9,8 @@ export interface TranscriptSegment {
   end: number;
   text: string;
   words?: TranscriptWord[];
+  /** Speaker label when the transcription provider diarizes (e.g. "0", "1"). */
+  speaker?: string;
 }
 
 export interface TranscriptionResult {

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import {
   AnthropicLlmProvider,
+  DeepgramTranscriptionProvider,
   GroqWhisperProvider,
   MockLlmProvider,
   MockTranscriptionProvider,
@@ -80,11 +81,24 @@ function buildAiProviders(env: Env, logger: Logger): {
   llm: LlmProvider;
 } {
   if (env.AI_DRIVER === "live") {
-    if (!env.GROQ_API_KEY || !env.ANTHROPIC_API_KEY) {
-      throw new Error("AI_DRIVER=live requires GROQ_API_KEY and ANTHROPIC_API_KEY");
+    if (!env.ANTHROPIC_API_KEY) throw new Error("AI_DRIVER=live requires ANTHROPIC_API_KEY");
+
+    let transcription: TranscriptionProvider;
+    if (env.TRANSCRIBE_PROVIDER === "deepgram") {
+      if (!env.DEEPGRAM_API_KEY) {
+        throw new Error("TRANSCRIBE_PROVIDER=deepgram requires DEEPGRAM_API_KEY");
+      }
+      logger.info("using Deepgram transcription (diarized)");
+      transcription = new DeepgramTranscriptionProvider({
+        apiKey: env.DEEPGRAM_API_KEY,
+        model: env.DEEPGRAM_MODEL,
+      });
+    } else {
+      if (!env.GROQ_API_KEY) throw new Error("TRANSCRIBE_PROVIDER=groq requires GROQ_API_KEY");
+      transcription = new GroqWhisperProvider({ apiKey: env.GROQ_API_KEY, model: env.GROQ_WHISPER_MODEL });
     }
     return {
-      transcription: new GroqWhisperProvider({ apiKey: env.GROQ_API_KEY, model: env.GROQ_WHISPER_MODEL }),
+      transcription,
       llm: new AnthropicLlmProvider({ apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL }),
     };
   }

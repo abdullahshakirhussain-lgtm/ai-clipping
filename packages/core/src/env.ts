@@ -23,6 +23,15 @@ const EnvSchema = z.object({
   GROQ_WHISPER_MODEL: z.string().default("whisper-large-v3-turbo"),
   ANTHROPIC_API_KEY: z.string().optional().default(""),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5"),
+  // ── Wave 3 (cloud): transcription provider. "groq" = Whisper (no diarization);
+  //    "deepgram" = word-level + speaker labels. Needs DEEPGRAM_API_KEY.
+  TRANSCRIBE_PROVIDER: z.enum(["groq", "deepgram"]).default("groq"),
+  DEEPGRAM_API_KEY: z.string().optional().default(""),
+  DEEPGRAM_MODEL: z.string().default("nova-2"),
+  // ── Wave 3 (cloud): subject-aware reframing. "center" = current 9:16 crop;
+  //    "cloud" = face/active-speaker tracking via a vision API (REFRAME_API_KEY).
+  REFRAME_PROVIDER: z.enum(["center", "cloud"]).default("center"),
+  REFRAME_API_KEY: z.string().optional().default(""),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),
