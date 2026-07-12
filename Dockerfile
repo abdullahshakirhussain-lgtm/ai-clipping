@@ -8,8 +8,12 @@ FROM node:22-bookworm-slim
 #   downloaded yt-dlp is a Python zipapp that needs python3 at runtime too.
 # - curl / unzip: to fetch the deno runtime below.
 # - ffmpeg-static provides its own ffmpeg binary (no apt ffmpeg needed).
+# - fontconfig + fonts-liberation: WITHOUT these, ffmpeg's libass has no font to
+#   render burned-in captions, so clips come out with the subtitles silently
+#   dropped. fontconfig aliases "Arial" (our caption style) -> Liberation Sans.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates python3 python-is-python3 curl unzip \
+  && apt-get install -y --no-install-recommends openssl ca-certificates python3 python-is-python3 curl unzip fontconfig fonts-liberation \
+  && fc-cache -f \
   && rm -rf /var/lib/apt/lists/*
 
 # deno: yt-dlp needs a JavaScript runtime to extract video formats from sites
