@@ -55,7 +55,11 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
       schema: {
         tags: ["videos"],
         consumes: ["multipart/form-data"],
-        querystring: z.object({ campaignId: z.string().optional() }),
+        querystring: z.object({
+          campaignId: z.string().optional(),
+          captionStyle: z.enum(["bold-center", "yellow-pop", "clean-bottom"]).optional(),
+          captionPosition: z.enum(["top", "middle", "bottom"]).optional(),
+        }),
         response: { 200: z.object({ sourceVideoId: z.string() }) },
       },
     },
@@ -81,7 +85,13 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
         throw new ValidationError("File exceeds the 8 GB upload limit");
       }
 
-      return svc.ingestUpload({ localPath: tmpPath, filename: safe, campaignId: req.query.campaignId });
+      return svc.ingestUpload({
+        localPath: tmpPath,
+        filename: safe,
+        campaignId: req.query.campaignId,
+        captionStyle: req.query.captionStyle,
+        captionPosition: req.query.captionPosition,
+      });
     },
   );
 };

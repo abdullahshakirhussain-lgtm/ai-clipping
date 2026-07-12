@@ -214,7 +214,8 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
         // enhance step, and the grid's fallback title.
         detectionReason: candidate.hook || candidate.reason,
         detectionSource: candidate.source,
-        captionStyle: "bold-center",
+        captionStyle: video.captionStyle,
+        captionPosition: video.captionPosition,
         hookScore: score.hookScore,
         viralScore: score.viralScore,
         overallScore: score.overallScore,
@@ -276,6 +277,7 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
       clipStart: clip.startSec,
       clipEnd: clip.endSec,
       styleName: clip.captionStyle,
+      position: clip.captionPosition as "top" | "middle" | "bottom",
       hookText: clip.detectionReason ?? undefined,
     });
     let captionsFileName: string | undefined;

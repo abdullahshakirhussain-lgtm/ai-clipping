@@ -50,6 +50,8 @@ export class VideoService {
     localPath: string;
     filename: string;
     campaignId?: string;
+    captionStyle?: string;
+    captionPosition?: string;
   }): Promise<{ sourceVideoId: string }> {
     const campaignId = input.campaignId ?? (await this.getOrCreateDefaultCampaignId());
     // Create the row immediately so the video shows up in the queue at once.
@@ -59,6 +61,8 @@ export class VideoService {
       originalFilename: input.filename,
       title: input.filename,
       status: "PENDING",
+      captionStyle: input.captionStyle ?? "bold-center",
+      captionPosition: input.captionPosition ?? "bottom",
     });
     // Probing + copying a large file to storage can take tens of seconds — far
     // longer than a proxy will hold the request open (Railway closes long

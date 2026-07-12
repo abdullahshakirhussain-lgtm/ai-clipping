@@ -25,6 +25,18 @@ const LEADING_FILLERS = new Set([
 const ASS_HIGHLIGHT = "&H0000E5FF"; // amber (BBGGRR) — the "sung" word
 const ASS_BASE = "&H00FFFFFF"; // white — upcoming words
 
+export type CaptionPosition = "top" | "middle" | "bottom";
+
+/** Selectable caption looks (maps to CAPTION_STYLES) shown in the UI. */
+export const CAPTION_STYLE_OPTIONS = ["bold-center", "yellow-pop", "clean-bottom"] as const;
+
+/** Vertical placement → ASS alignment (numpad) + vertical margin. */
+const POSITION_MAP: Record<CaptionPosition, { alignment: number; marginV: number }> = {
+  top: { alignment: 8, marginV: 240 },
+  middle: { alignment: 5, marginV: 0 },
+  bottom: { alignment: 2, marginV: 260 },
+};
+
 const assTime = (sec: number): string => {
   const s = Math.max(0, sec);
   const h = Math.floor(s / 3600);
@@ -50,6 +62,7 @@ export function planClipEdit(input: {
   clipStart: number;
   clipEnd: number;
   styleName?: string;
+  position?: CaptionPosition;
   hookText?: string;
   maxGapSec?: number;
   padSec?: number;
@@ -128,7 +141,8 @@ export function planClipEdit(input: {
   const cutWords = words.map((w) => ({ word: w.word, start: mapTime(w.start), end: mapTime(w.end) }));
 
   const styleName = input.styleName && CAPTION_STYLES[input.styleName] ? input.styleName : "bold-center";
-  const ass = buildKaraokeAss(cutWords, keptDur, styleName, wordsPerLine, input.hookText, hookSeconds);
+  const position = input.position ?? "bottom";
+  const ass = buildKaraokeAss(cutWords, keptDur, styleName, position, wordsPerLine, input.hookText, hookSeconds);
 
   return {
     selectSpans: spans.map((sp) => ({ s: sp.s - input.clipStart, e: sp.e - input.clipStart })),
@@ -148,11 +162,13 @@ function buildKaraokeAss(
   words: CutWord[],
   clipDur: number,
   styleName: string,
+  position: CaptionPosition,
   wordsPerLine: number,
   hookText: string | undefined,
   hookSeconds: number,
 ): string {
   const style = CAPTION_STYLES[styleName] ?? CAPTION_STYLES["bold-center"]!;
+  const place = POSITION_MAP[position] ?? POSITION_MAP.bottom;
   const events: string[] = [];
 
   // Group into short lines; also break a line when a big pause precedes a word.
@@ -194,7 +210,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,${style.fontName},${style.fontSize},${ASS_HIGHLIGHT},${ASS_BASE},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${style.outline},2,${style.alignment},60,60,${style.marginV},1
+Style: Karaoke,${style.fontName},${style.fontSize},${ASS_HIGHLIGHT},${ASS_BASE},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${style.outline},2,${place.alignment},60,60,${place.marginV},1
 Style: Hook,${style.fontName},72,&H00FFFFFF,&H00FFFFFF,&H00000000,&HB0000000,-1,0,3,4,0,8,80,80,120,1
 
 [Events]

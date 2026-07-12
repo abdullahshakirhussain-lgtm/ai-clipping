@@ -11,13 +11,16 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [style, setStyle] = useState("bold-center");
+  const [position, setPosition] = useState("bottom");
 
   async function upload(file: File) {
     setBusy(true);
     setError(null);
     setProgress(0);
     try {
-      await apiUpload<{ sourceVideoId: string }>("/videos/upload", file, setProgress);
+      const qs = `?captionStyle=${style}&captionPosition=${position}`;
+      await apiUpload<{ sourceVideoId: string }>(`/videos/upload${qs}`, file, setProgress);
       await revalidateAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -36,6 +39,34 @@ export default function UploadPage() {
       />
 
       <Card className="mb-6">
+        <div className="flex gap-4 mb-4 flex-wrap">
+          <label className="text-sm">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Caption style</span>
+            <select
+              value={style}
+              onChange={(e) => setStyle(e.target.value)}
+              className="px-3 py-2 rounded-lg surface-2 border text-sm"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <option value="bold-center">Bold white</option>
+              <option value="yellow-pop">Yellow pop</option>
+              <option value="clean-bottom">Clean / subtle</option>
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Position</span>
+            <select
+              value={position}
+              onChange={(e) => setPosition(e.target.value)}
+              className="px-3 py-2 rounded-lg surface-2 border text-sm"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <option value="bottom">Bottom</option>
+              <option value="middle">Middle</option>
+              <option value="top">Top</option>
+            </select>
+          </label>
+        </div>
         <div
           onDragOver={(e) => {
             e.preventDefault();

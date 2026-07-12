@@ -37,6 +37,15 @@ describe("planClipEdit", () => {
     expect(plan.ass.toUpperCase()).not.toContain("UM ");
   });
 
+  it("places captions per the selected position (ASS alignment)", () => {
+    const w = words([{ w: "top", at: 0 }, { w: "line", at: 0.5 }]);
+    const top = planClipEdit({ words: w, clipStart: 0, clipEnd: 3, position: "top" });
+    const bottom = planClipEdit({ words: w, clipStart: 0, clipEnd: 3, position: "bottom" });
+    // Karaoke style line ends with "...,<alignment>,ML,MR,MV,1"; alignment 8=top, 2=bottom.
+    expect(top.ass).toMatch(/Style: Karaoke,[^\n]*,8,60,60,\d+,1/);
+    expect(bottom.ass).toMatch(/Style: Karaoke,[^\n]*,2,60,60,\d+,1/);
+  });
+
   it("emits karaoke captions (\\k tags) plus a hook banner", () => {
     const w = words([
       { w: "this", at: 0 },

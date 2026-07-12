@@ -197,6 +197,9 @@ model SourceVideo {
   height      Int?
   metadata    Json?
   error       String?
+  /// Caption look + placement chosen at upload; inherited by this video's clips.
+  captionStyle    String        @default("bold-center")
+  captionPosition String        @default("bottom")
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
@@ -236,6 +239,7 @@ model Clip {
   /// Which detector surfaced this window: "transcript" | "audio" | "hybrid"
   detectionSource String?
   captionStyle    String     @default("bold-center")
+  captionPosition String     @default("bottom")
   /// Bulk-cull flag: false = discarded by the user in the grid.
   kept            Boolean    @default(true)
   /// Transparent scoring, computed at detection (see packages/core scoring.ts). 0-100.
