@@ -5,12 +5,16 @@ import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db
 import {
   analyzeLoudness,
   type CaptionWord,
+  type EditPlan,
   extractAudio,
   extractSmartThumbnail,
   findLoudnessPeaks,
+  mixSfx,
   planClipEdit,
   planReframe,
   renderClip,
+  resolveSfxFile,
+  type SfxMix,
 } from "@clipfactory/media";
 import type { PublishPlatform } from "@clipfactory/publishers";
 import { PublisherNotConfiguredError } from "@clipfactory/publishers";
@@ -218,6 +222,7 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
         captionStyle: video.captionStyle,
         captionPosition: video.captionPosition,
         reframe: video.reframe,
+        autoEnhance: video.autoEnhance,
         hookScore: score.hookScore,
         viralScore: score.viralScore,
         overallScore: score.overallScore,
@@ -331,9 +336,22 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
         "jump-cut dead air removed",
       );
     }
-    await extractSmartThumbnail(outPath, thumbPath);
 
-    await ctx.storage.putFile(clipKey(clipId), outPath, "video/mp4");
+    // Opt-in auto sound-effects, applied SPARSELY. Best-effort — any failure
+    // leaves the un-enhanced clip untouched.
+    let finalClip = outPath;
+    if (clip.autoEnhance) {
+      try {
+        const enhanced = await applyAutoSfx(ctx, clip, plan, outPath, workDir);
+        if (enhanced) finalClip = enhanced;
+      } catch (err) {
+        ctx.logger.warn({ clipId, err: String(err) }, "auto-sfx failed; using un-enhanced clip");
+      }
+    }
+
+    await extractSmartThumbnail(finalClip, thumbPath);
+
+    await ctx.storage.putFile(clipKey(clipId), finalClip, "video/mp4");
     await ctx.storage.putFile(thumbKey(clipId), thumbPath, "image/jpeg");
     await ctx.repos.clips.update(clipId, {
       status: ClipStatus.ENHANCING,
@@ -346,8 +364,63 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
     await failClip(ctx, clipId, err);
     throw err;
   } finally {
-    await Promise.allSettled([fs.rm(outPath, { force: true }), fs.rm(thumbPath, { force: true })]);
+    await Promise.allSettled([
+      fs.rm(outPath, { force: true }),
+      fs.rm(thumbPath, { force: true }),
+      fs.rm(join(workDir, `${clipId}-sfx.mp4`), { force: true }),
+    ]);
   }
+}
+
+/**
+ * Plan + mix sparse sound effects into a rendered clip. Enforces tightness in
+ * code (cap 2, ≥4s apart), maps cue times through the jump-cut plan, and skips
+ * any cue whose asset file is missing (e.g. an unprovided faaaaa.mp3). Returns
+ * the enhanced clip path, or null when nothing was applied.
+ */
+async function applyAutoSfx(
+  ctx: PipelineContext,
+  clip: { id: string; startSec: number; endSec: number; sourceVideo: { transcript: { segments: unknown } | null } },
+  plan: EditPlan,
+  clipPath: string,
+  workDir: string,
+): Promise<string | null> {
+  const segments = (clip.sourceVideo.transcript?.segments as unknown as TranscriptSegment[]) ?? [];
+  const lines = segments
+    .filter((s) => s.end > clip.startSec && s.start < clip.endSec)
+    .map((s) => `[${(s.start - clip.startSec).toFixed(1)}-${(s.end - clip.startSec).toFixed(1)}] ${s.text}`)
+    .join("\n");
+  if (!lines.trim()) return null;
+
+  const cues = await ctx.llm.planEnhancements({
+    transcript: lines,
+    durationSec: clip.endSec - clip.startSec,
+    maxCues: 2,
+  });
+  if (cues.length === 0) return null;
+
+  const chosen: SfxMix[] = [];
+  const usedTimes: number[] = [];
+  for (const cue of cues) {
+    if (chosen.length >= 2) break;
+    const clipT = plan.mapSourceTime(clip.startSec + cue.atSec);
+    if (clipT === null) continue; // moment was cut out
+    if (usedTimes.some((t) => Math.abs(t - clipT) < 4)) continue; // keep them spaced
+    const file = await resolveSfxFile(cue.sound);
+    if (!file) {
+      ctx.logger.info({ clipId: clip.id, sound: cue.sound }, "sfx asset missing; cue skipped");
+      continue;
+    }
+    chosen.push({ atSec: clipT, file });
+    usedTimes.push(clipT);
+  }
+  if (chosen.length === 0) return null;
+
+  const out = join(workDir, `${clip.id}-sfx.mp4`);
+  await mixSfx(clipPath, out, chosen, workDir);
+  await ctx.repos.clips.update(clip.id, { edl: { sfx: cues } as never });
+  ctx.logger.info({ clipId: clip.id, cues: chosen.length }, "auto-sfx applied");
+  return out;
 }
 
 /** Generates metadata + scores, then moves the clip to READY_FOR_REVIEW. */

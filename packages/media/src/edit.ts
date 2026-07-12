@@ -15,6 +15,8 @@ export interface EditPlan {
   ass: string;
   /** How many seconds of dead air / filler were removed. */
   removedSec: number;
+  /** Map a source-absolute time to POST-CUT clip time, or null if it was cut. */
+  mapSourceTime: (sourceSec: number) => number | null;
 }
 
 /** Leading filler words trimmed off the very start so clips open on the hook. */
@@ -92,13 +94,14 @@ export function planClipEdit(input: {
     trimmed += 1;
   }
 
-  // No usable speech → keep the whole window, no captions.
+  // No usable speech → keep the whole window, no captions, linear time map.
   if (words.length === 0) {
     return {
       selectSpans: [{ s: 0, e: clipDur }],
       clipDurationSec: clipDur,
       ass: input.hookText ? hookOnlyAss(input.hookText, clipDur, hookSeconds) : "",
       removedSec: 0,
+      mapSourceTime: (t) => (t >= input.clipStart && t <= input.clipEnd ? t - input.clipStart : null),
     };
   }
 
@@ -149,6 +152,14 @@ export function planClipEdit(input: {
     clipDurationSec: keptDur,
     ass,
     removedSec: Math.max(0, clipDur - keptDur),
+    // Source-absolute time → post-cut clip time; null if the moment was cut out.
+    mapSourceTime: (t) => {
+      for (let k = 0; k < spans.length; k++) {
+        const sp = spans[k]!;
+        if (t >= sp.s && t <= sp.e) return prefix[k]! + (t - sp.s);
+      }
+      return null;
+    },
   };
 }
 

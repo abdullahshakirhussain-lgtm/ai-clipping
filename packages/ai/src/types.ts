@@ -108,6 +108,25 @@ export interface RefineHighlightsInput {
   }>;
 }
 
+/** Sound effects available for auto-enhancement. */
+export type SfxSound = "whoosh" | "boom" | "faaaaa";
+
+/** A single SFX cue placed at a clip-source-time moment. */
+export interface SfxCue {
+  /** Seconds within the clip window (source time). */
+  atSec: number;
+  sound: SfxSound;
+  reason: string;
+}
+
+export interface PlanEnhancementsInput {
+  /** Clip transcript lines prefixed with [start-end] timestamps. */
+  transcript: string;
+  durationSec: number;
+  /** Hard ceiling on cues (restraint). */
+  maxCues: number;
+}
+
 /** LLM reasoning tasks (Claude in production). */
 export interface LlmProvider {
   detectHighlights(input: DetectHighlightsInput): Promise<HighlightCandidate[]>;
@@ -116,6 +135,11 @@ export interface LlmProvider {
    * drops clips that look good on paper but don't stand alone or don't pay off.
    */
   refineHighlights(input: RefineHighlightsInput): Promise<number[]>;
+  /**
+   * Sparingly place sound-effect cues. Restraint is the goal — most clips get
+   * zero. "faaaaa" is reserved for genuinely absurd/dumb statements.
+   */
+  planEnhancements(input: PlanEnhancementsInput): Promise<SfxCue[]>;
   enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult>;
   improveHooks(input: { currentHook: string; transcriptExcerpt: string }): Promise<string[]>;
 }

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 
 // ffprobe-static ships no type declarations; load it via require so the untyped
@@ -323,6 +324,57 @@ export async function extractFrames(
     if (await stat(p).then(() => true).catch(() => false)) files.push(p);
   }
   return files;
+}
+
+const SFX_DIR = fileURLToPath(new URL("../assets/sfx/", import.meta.url));
+
+/** Resolve a sound name to its bundled asset path, or null if the file is absent. */
+export async function resolveSfxFile(name: string): Promise<string | null> {
+  const p = join(SFX_DIR, `${name}.mp3`);
+  return (await stat(p).then(() => true).catch(() => false)) ? p : null;
+}
+
+export interface SfxMix {
+  /** Clip-time (post-cut) seconds to play the effect at. */
+  atSec: number;
+  /** Absolute path to the sfx audio file. */
+  file: string;
+  /** Volume scale (default 0.7 so it sits under the speech). */
+  gain?: number;
+}
+
+/**
+ * Mix short sound effects into a rendered clip's audio at the given clip-times.
+ * Video is stream-copied (no re-encode) so it's fast. Throws if `sfx` is empty.
+ */
+export async function mixSfx(
+  inputClip: string,
+  outPath: string,
+  sfx: SfxMix[],
+  workDir: string,
+): Promise<void> {
+  if (sfx.length === 0) throw new Error("mixSfx: no cues");
+  const chains: string[] = [];
+  const labels: string[] = [];
+  sfx.forEach((s, i) => {
+    const ms = Math.max(0, Math.round(s.atSec * 1000));
+    const gain = s.gain ?? 0.7;
+    // input i+1 (0 is the clip); delay to the moment on both channels, scale volume.
+    chains.push(`[${i + 1}:a]adelay=${ms}|${ms},volume=${gain.toFixed(2)}[s${i}]`);
+    labels.push(`[s${i}]`);
+  });
+  const filter = `${chains.join(";")};[0:a]${labels.join("")}amix=inputs=${sfx.length + 1}:normalize=0:duration=first[a]`;
+
+  const args = ["-y", "-i", inputClip];
+  for (const s of sfx) args.push("-i", s.file);
+  args.push(
+    "-filter_complex", filter,
+    "-map", "0:v", "-map", "[a]",
+    "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+    "-movflags", "+faststart",
+    outPath,
+  );
+  await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 2 * 60 * 1000 });
 }
 
 /**

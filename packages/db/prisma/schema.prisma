@@ -202,6 +202,8 @@ model SourceVideo {
   captionPosition String        @default("bottom")
   /// Opt-in subject-aware reframing (face-tracking crop) for this video's clips.
   reframe         Boolean       @default(false)
+  /// Opt-in auto sound-effects (whoosh/boom/faaaaa on absurd moments), kept sparse.
+  autoEnhance     Boolean       @default(false)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
@@ -244,6 +246,10 @@ model Clip {
   captionPosition String     @default("bottom")
   /// Opt-in subject-aware reframing (face-tracking crop).
   reframe         Boolean    @default(false)
+  /// Opt-in auto sound-effects.
+  autoEnhance     Boolean    @default(false)
+  /// Edit-decision list applied at render (sfx cues; zoom/emoji later).
+  edl             Json?
   /// Bulk-cull flag: false = discarded by the user in the grid.
   kept            Boolean    @default(true)
   /// Transparent scoring, computed at detection (see packages/core scoring.ts). 0-100.

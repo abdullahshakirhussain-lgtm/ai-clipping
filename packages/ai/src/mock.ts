@@ -4,7 +4,9 @@ import type {
   EnhancementResult,
   HighlightCandidate,
   LlmProvider,
+  PlanEnhancementsInput,
   RefineHighlightsInput,
+  SfxCue,
   TranscriptionProvider,
   TranscriptionResult,
   TranscriptSegment,
@@ -103,6 +105,11 @@ export class MockLlmProvider implements LlmProvider {
   async refineHighlights(input: RefineHighlightsInput): Promise<number[]> {
     // Offline stub: keep everything (real critique needs the LLM).
     return input.clips.map((c) => c.index);
+  }
+
+  async planEnhancements(_input: PlanEnhancementsInput): Promise<SfxCue[]> {
+    // Offline stub: no SFX (real placement needs the LLM's judgment).
+    return [];
   }
 
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {

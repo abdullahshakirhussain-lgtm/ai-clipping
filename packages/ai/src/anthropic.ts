@@ -7,7 +7,10 @@ import type {
   HighlightCandidate,
   HookType,
   LlmProvider,
+  PlanEnhancementsInput,
   RefineHighlightsInput,
+  SfxCue,
+  SfxSound,
   TranscriptSegment,
 } from "./types.js";
 
@@ -235,6 +238,54 @@ Call submit_review with the indices to KEEP.`,
       1024,
     );
     return (result.keep ?? []).map(Number).filter((n) => Number.isInteger(n));
+  }
+
+  async planEnhancements(input: PlanEnhancementsInput): Promise<SfxCue[]> {
+    const valid: SfxSound[] = ["whoosh", "boom", "faaaaa"];
+    const result = await this.callTool<{ cues?: Array<{ atSec?: number; sound?: string; reason?: string }> }>(
+      `You add sound effects to a short-form clip — with EXTREME restraint. Over-used SFX ruin a video; most clips deserve ZERO. Only place a cue where it genuinely lands.
+
+Transcript (times in seconds within this ${input.durationSec.toFixed(0)}s clip):
+${input.transcript}
+
+Sounds:
+- "faaaaa": ONLY for a genuinely absurd, dumb, or wild statement — the "did he really just say that" moment. This is the point of the whole thing; use it when someone says something stupid/ridiculous, and essentially never otherwise.
+- "boom": a hard punchline or big impact landing. Rare.
+- "whoosh": a quick reveal/transition. Rare.
+
+Rules: at most ${input.maxCues} cues total; most clips should get 0-1; never cluster them; place atSec on the exact moment. If nothing truly warrants a sound, return an empty list. Call submit_cues.`,
+      {
+        name: "submit_cues",
+        description: "Submit sparse sound-effect cues (empty if none warranted).",
+        input_schema: {
+          type: "object",
+          properties: {
+            cues: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  atSec: { type: "number", description: "seconds into the clip" },
+                  sound: { type: "string", enum: valid },
+                  reason: { type: "string", description: "why this exact moment" },
+                },
+                required: ["atSec", "sound", "reason"],
+              },
+            },
+          },
+          required: ["cues"],
+        },
+      },
+      1024,
+    );
+
+    return (result.cues ?? [])
+      .filter((c) => Number.isFinite(c.atSec) && valid.includes(c.sound as SfxSound))
+      .map((c) => ({
+        atSec: clamp(c.atSec!, 0, input.durationSec),
+        sound: c.sound as SfxSound,
+        reason: String(c.reason ?? ""),
+      }));
   }
 
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {
