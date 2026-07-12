@@ -11,8 +11,11 @@ FROM node:22-bookworm-slim
 # - fontconfig + fonts-liberation: WITHOUT these, ffmpeg's libass has no font to
 #   render burned-in captions, so clips come out with the subtitles silently
 #   dropped. fontconfig aliases "Arial" (our caption style) -> Liberation Sans.
+# - libgomp1: OpenMP runtime required by onnxruntime-node (face-detection for the
+#   opt-in reframing); without it onnxruntime fails to load and reframing silently
+#   falls back to the center crop.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates python3 python-is-python3 curl unzip fontconfig fonts-liberation \
+  && apt-get install -y --no-install-recommends openssl ca-certificates python3 python-is-python3 curl unzip fontconfig fonts-liberation libgomp1 \
   && fc-cache -f \
   && rm -rf /var/lib/apt/lists/*
 
