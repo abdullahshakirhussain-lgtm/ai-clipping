@@ -35,6 +35,17 @@ export class ClipService {
     return { updated: res.count };
   }
 
+  /** Label a clip's real-world outcome (feeds score calibration). */
+  async setOutcome(
+    id: string,
+    outcome: "FLOP" | "OK" | "HIT" | null,
+  ): Promise<{ id: string; outcome: "FLOP" | "OK" | "HIT" | null }> {
+    const clip = await this.repos.clips.byId(id);
+    if (!clip) throw new NotFoundError("Clip", id);
+    await this.repos.clips.setOutcome(id, outcome);
+    return { id, outcome };
+  }
+
   async get(id: string): Promise<ClipDetailDto> {
     const clip = await this.repos.clips.byId(id);
     if (!clip) throw new NotFoundError("Clip", id);

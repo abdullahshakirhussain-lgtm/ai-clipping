@@ -103,6 +103,7 @@ export async function toClipDto(clip: ClipListRow, storage: ObjectStorage): Prom
     scoreBreakdown: (clip.scoreBreakdown as Record<string, unknown> | null) ?? null,
     detectionSource: clip.detectionSource,
     kept: clip.kept,
+    outcome: clip.outcome ?? null,
     publishJobs: clip.publishJobs.map((j) => ({
       jobId: j.id,
       platform: j.socialAccount.platform,

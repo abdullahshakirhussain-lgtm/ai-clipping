@@ -1,4 +1,4 @@
-import type { ClipStatus, PrismaClient, Prisma, ReviewActionType } from "@prisma/client";
+import type { ClipOutcome, ClipStatus, PrismaClient, Prisma, ReviewActionType } from "@prisma/client";
 
 const detailInclude = {
   enhancement: true,
@@ -57,6 +57,19 @@ export class ClipRepository {
   /** Bulk cull flag toggle used by the grid. */
   setKept(ids: string[], kept: boolean) {
     return this.prisma.clip.updateMany({ where: { id: { in: ids } }, data: { kept } });
+  }
+
+  /** Label a clip's real-world outcome (feeds score calibration). */
+  setOutcome(id: string, outcome: ClipOutcome | null) {
+    return this.prisma.clip.update({ where: { id }, data: { outcome } });
+  }
+
+  /** All outcome-labeled clips with their stored score breakdown, for calibration. */
+  labeledForCalibration(): Promise<Array<{ scoreBreakdown: Prisma.JsonValue; outcome: ClipOutcome | null }>> {
+    return this.prisma.clip.findMany({
+      where: { outcome: { not: null } },
+      select: { scoreBreakdown: true, outcome: true },
+    });
   }
 
   update(id: string, data: Prisma.ClipUncheckedUpdateInput) {

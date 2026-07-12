@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  ClipOutcomeSchema,
   ClipStatusSchema,
   PlatformSchema,
   PublishJobStatusSchema,
@@ -73,6 +74,7 @@ export const ClipDtoSchema = z.object({
   scoreBreakdown: z.record(z.unknown()).nullable(),
   detectionSource: z.string().nullable(),
   kept: z.boolean(),
+  outcome: ClipOutcomeSchema.nullable(),
   publishJobs: z.array(ClipPublishSummarySchema),
   createdAt: z.string(),
 });
@@ -124,3 +126,6 @@ export const ClipBulkInputSchema = z.object({
   action: z.enum(["keep", "discard"]),
 });
 export type ClipBulkInput = z.infer<typeof ClipBulkInputSchema>;
+
+export const SetOutcomeInputSchema = z.object({ outcome: ClipOutcomeSchema.nullable() });
+export type SetOutcomeInput = z.infer<typeof SetOutcomeInputSchema>;

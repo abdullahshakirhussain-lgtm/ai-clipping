@@ -30,6 +30,7 @@ import { buildHandlers } from "./pipeline/handlers.js";
 import type { PipelineContext } from "./pipeline/context.js";
 import { AccountService } from "./services/account-service.js";
 import { AnalyticsService } from "./services/analytics-service.js";
+import { CalibrationService } from "./services/calibration-service.js";
 import { CampaignService } from "./services/campaign-service.js";
 import { ClipService } from "./services/clip-service.js";
 import { PublishService } from "./services/publish-service.js";
@@ -52,6 +53,7 @@ export interface Container {
     publish: PublishService;
     accounts: AccountService;
     analytics: AnalyticsService;
+    calibration: CalibrationService;
   };
   shutdown(): Promise<void>;
 }
@@ -185,6 +187,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     publish: new PublishService(repos, dispatcher),
     accounts: new AccountService(repos),
     analytics: new AnalyticsService(repos, dispatcher),
+    calibration: new CalibrationService(repos),
   };
 
   return {

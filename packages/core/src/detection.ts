@@ -15,11 +15,17 @@ import type {
  * duration) and some LLM-JUDGED (hook type, self-containment, emotion). Weights
  * live here so they can be tuned; nothing is a black box.
  */
-export const SCORING_WEIGHTS = {
+export interface ScoringWeights {
+  hook: { type: number; frontLoading: number; openingEnergy: number };
+  viral: { selfContained: number; emotion: number; pacing: number; durationFit: number; loopability: number };
+  overall: { hook: number; viral: number };
+}
+
+export const SCORING_WEIGHTS: ScoringWeights = {
   hook: { type: 0.45, frontLoading: 0.3, openingEnergy: 0.25 },
   viral: { selfContained: 0.28, emotion: 0.28, pacing: 0.18, durationFit: 0.14, loopability: 0.12 },
   overall: { hook: 0.5, viral: 0.5 },
-} as const;
+};
 
 /** Base strength of each hook shape (0-100), blended 50/50 with the LLM's hookStrength. */
 export const HOOK_TYPE_BASE: Record<HookType, number> = {
@@ -69,6 +75,8 @@ export interface ScoreCandidateInput {
   segments: TranscriptSegment[];
   /** Per-second normalized (0-1) loudness for the whole source; may be empty. */
   energy: number[];
+  /** Learned weight overrides; defaults to SCORING_WEIGHTS. */
+  weights?: ScoringWeights;
 }
 
 /** Duration fit: 100 inside the ideal band, linear falloff outside, floor 20. */
@@ -166,7 +174,7 @@ export function scoreCandidate(input: ScoreCandidateInput): ScoreBreakdown {
   if (energyVariance < 25 && energy.length > 0) notes.push("some dead air");
   if (durationSec >= IDEAL_MIN && durationSec <= IDEAL_MAX) notes.push(`tight ${Math.round(durationSec)}s`);
 
-  const w = SCORING_WEIGHTS;
+  const w = input.weights ?? SCORING_WEIGHTS;
   const hookScore =
     w.hook.type * hookTypeScore + w.hook.frontLoading * frontLoading + w.hook.openingEnergy * openingEnergy;
   const viralScore =
@@ -271,6 +279,108 @@ export function selectDiverse(pool: ScoredCandidate[], max: number, topicPenalty
     topicCount.set(t, (topicCount.get(t) ?? 0) + 1);
   }
   return picked;
+}
+
+// ── Learning loop: calibrate scoring weights from real outcomes ────────────────
+
+/** The 8 named sub-signals as stored in a clip's scoreBreakdown.signals. */
+export interface StoredSignals {
+  hookType: number;
+  frontLoading: number;
+  openingEnergy: number;
+  selfContained: number;
+  emotion: number;
+  pacing: number;
+  durationFit: number;
+  loopability: number;
+}
+
+export type ClipOutcomeLabel = "FLOP" | "OK" | "HIT";
+
+export interface LabeledClip {
+  signals: StoredSignals;
+  outcome: ClipOutcomeLabel;
+}
+
+export interface CalibrationResult {
+  weights: ScoringWeights;
+  sampleSize: number;
+  /** Per-signal correlation with real outcomes, best predictor first. */
+  insights: Array<{ signal: string; correlation: number }>;
+  /** Whether enough data existed to actually override the defaults. */
+  applied: boolean;
+}
+
+const OUTCOME_VALUE: Record<ClipOutcomeLabel, number> = { FLOP: 0, OK: 0.5, HIT: 1 };
+const MIN_SAMPLE = 6;
+const HOOK_SIGNALS = ["hookType", "frontLoading", "openingEnergy"] as const;
+const VIRAL_SIGNALS = ["selfContained", "emotion", "pacing", "durationFit", "loopability"] as const;
+
+function pearson(xs: number[], ys: number[]): number {
+  const n = xs.length;
+  if (n < 2) return 0;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let dx = 0;
+  let dy = 0;
+  for (let i = 0; i < n; i++) {
+    const a = xs[i]! - mx;
+    const b = ys[i]! - my;
+    num += a * b;
+    dx += a * a;
+    dy += b * b;
+  }
+  const den = Math.sqrt(dx * dy);
+  return den === 0 ? 0 : num / den;
+}
+
+function normalizeGroup(
+  keys: readonly string[],
+  predictiveness: Record<string, number>,
+): number[] {
+  const vals = keys.map((k) => Math.max(0.05, predictiveness[k] ?? 0)); // floor so nothing vanishes
+  const sum = vals.reduce((a, b) => a + b, 0);
+  return vals.map((v) => v / sum);
+}
+
+/**
+ * Recompute scoring weights from labeled clip outcomes. For each sub-signal we
+ * measure how well it correlated with real results (FLOP/OK/HIT), then weight
+ * each group (hook, viral) proportionally to its signals' predictiveness. Below
+ * MIN_SAMPLE labeled clips it returns the defaults unchanged (won't chase noise).
+ */
+export function computeCalibration(labeled: LabeledClip[]): CalibrationResult {
+  const outcomes = labeled.map((l) => OUTCOME_VALUE[l.outcome]);
+  const allSignals = [...HOOK_SIGNALS, ...VIRAL_SIGNALS];
+  const predictiveness: Record<string, number> = {};
+  const insights: Array<{ signal: string; correlation: number }> = [];
+  for (const sig of allSignals) {
+    const xs = labeled.map((l) => l.signals[sig as keyof StoredSignals] ?? 50);
+    const r = pearson(xs, outcomes);
+    predictiveness[sig] = Math.max(0, r);
+    insights.push({ signal: sig, correlation: Number(r.toFixed(3)) });
+  }
+  insights.sort((a, b) => b.correlation - a.correlation);
+
+  if (labeled.length < MIN_SAMPLE) {
+    return { weights: SCORING_WEIGHTS, sampleSize: labeled.length, insights, applied: false };
+  }
+
+  const hookW = normalizeGroup(HOOK_SIGNALS, predictiveness);
+  const viralW = normalizeGroup(VIRAL_SIGNALS, predictiveness);
+  const weights: ScoringWeights = {
+    hook: { type: hookW[0]!, frontLoading: hookW[1]!, openingEnergy: hookW[2]! },
+    viral: {
+      selfContained: viralW[0]!,
+      emotion: viralW[1]!,
+      pacing: viralW[2]!,
+      durationFit: viralW[3]!,
+      loopability: viralW[4]!,
+    },
+    overall: { hook: 0.5, viral: 0.5 },
+  };
+  return { weights, sampleSize: labeled.length, insights, applied: true };
 }
 
 /** Merge overlapping candidate windows so we don't render near-duplicates. */

@@ -39,6 +39,8 @@ export const ReviewActionTypeSchema = z.enum([
   "IMPROVE_CAPTIONS",
 ]);
 
+export const ClipOutcomeSchema = z.enum(["FLOP", "OK", "HIT"]);
+
 export const SocialAccountStatusSchema = z.enum(["ACTIVE", "DISABLED", "ERROR"]);
 
 export const PublishJobStatusSchema = z.enum([

@@ -138,6 +138,13 @@ enum ReviewActionType {
   IMPROVE_CAPTIONS
 }
 
+/// User-reported real-world result of a posted clip — feeds score calibration.
+enum ClipOutcome {
+  FLOP
+  OK
+  HIT
+}
+
 enum SocialAccountStatus {
   ACTIVE
   DISABLED
@@ -237,6 +244,8 @@ model Clip {
   overallScore    Float      @default(0)
   /// Named sub-signal breakdown behind the scores (measured + LLM-judged).
   scoreBreakdown  Json?
+  /// Real-world result once posted (user-labeled); null = not yet labeled.
+  outcome         ClipOutcome?
   error           String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
@@ -249,6 +258,7 @@ model Clip {
   @@index([campaignId])
   @@index([sourceVideoId])
   @@index([overallScore])
+  @@index([outcome])
 }
 
 model ClipEnhancement {
@@ -336,4 +346,16 @@ model PublishAttempt {
   response     Json?
 
   @@index([publishJobId])
+}
+
+/// Singleton store for learned scoring weights (calibrated from clip outcomes).
+model Calibration {
+  id         String   @id @default("default")
+  /// Learned weight overrides (same shape as detection.ts SCORING_WEIGHTS).
+  weights    Json
+  /// How many labeled clips the current weights were computed from.
+  sampleSize Int      @default(0)
+  /// Per-signal predictiveness + notes, for display.
+  insights   Json?
+  updatedAt  DateTime @updatedAt
 }

@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { CalibrationRepository } from "./repositories/calibration.js";
 import { CampaignRepository } from "./repositories/campaign.js";
 import { ClipRepository } from "./repositories/clip.js";
 import { PublishRepository } from "./repositories/publish.js";
@@ -6,6 +7,7 @@ import { SocialAccountRepository } from "./repositories/social-account.js";
 import { SourceVideoRepository } from "./repositories/source-video.js";
 
 export { getPrisma, disconnectPrisma } from "./client.js";
+export * from "./repositories/calibration.js";
 export * from "./repositories/campaign.js";
 export * from "./repositories/clip.js";
 export * from "./repositories/publish.js";
@@ -17,6 +19,7 @@ export {
   Prisma,
   type PrismaClient,
   ClipStatus,
+  ClipOutcome,
   CampaignStatus,
   Platform,
   SourcePlatform,
@@ -33,6 +36,7 @@ export interface Repositories {
   clips: ClipRepository;
   socialAccounts: SocialAccountRepository;
   publish: PublishRepository;
+  calibration: CalibrationRepository;
 }
 
 export function createRepositories(prisma: PrismaClient): Repositories {
@@ -42,5 +46,6 @@ export function createRepositories(prisma: PrismaClient): Repositories {
     clips: new ClipRepository(prisma),
     socialAccounts: new SocialAccountRepository(prisma),
     publish: new PublishRepository(prisma),
+    calibration: new CalibrationRepository(prisma),
   };
 }

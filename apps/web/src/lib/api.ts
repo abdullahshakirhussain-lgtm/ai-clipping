@@ -1,6 +1,7 @@
 "use client";
 import useSWR, { type SWRConfiguration, mutate as globalMutate } from "swr";
 import type {
+  CalibrationDto,
   CampaignDto,
   ClipDetailDto,
   ClipDto,
@@ -137,7 +138,10 @@ export function clipExportUrl(ids?: string[]): string {
 
 export const useClip = (id: string | null) => useApi<ClipDetailDto>(id ? `/clips/${id}` : null);
 
+export const useCalibration = () => useApi<CalibrationDto>("/calibration", { refreshInterval: 15000 });
+
 export type {
+  CalibrationDto,
   CampaignDto,
   ClipDto,
   ClipDetailDto,

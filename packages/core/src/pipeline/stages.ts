@@ -13,7 +13,13 @@ import {
 } from "@clipfactory/media";
 import type { PublishPlatform } from "@clipfactory/publishers";
 import { PublisherNotConfiguredError } from "@clipfactory/publishers";
-import { buildAudioCandidates, mergeCandidates, scoreCandidate, selectDiverse } from "../detection.js";
+import {
+  buildAudioCandidates,
+  mergeCandidates,
+  scoreCandidate,
+  selectDiverse,
+  type ScoringWeights,
+} from "../detection.js";
 import type { PipelineContext } from "./context.js";
 
 const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
@@ -156,10 +162,14 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
     const audioCandidates = buildAudioCandidates(peaks, llmCandidates, bounds, durationSec);
     const merged = mergeCandidates([...llmCandidates, ...audioCandidates], bounds);
 
+    // Use learned weights if the outcome-calibration has run, else defaults.
+    const calib = await ctx.repos.calibration.get();
+    const weights = (calib?.weights as ScoringWeights | null) ?? undefined;
+
     // Score every candidate with the transparent model, keep those above the
     // floor, best-first. Clip count now varies with content.
     const scoredAll = merged
-      .map((candidate) => ({ candidate, score: scoreCandidate({ candidate, segments, energy }) }))
+      .map((candidate) => ({ candidate, score: scoreCandidate({ candidate, segments, energy, weights }) }))
       .filter((x) => x.candidate.endSec - x.candidate.startSec >= det.minDurationSec)
       .filter((x) => x.score.overallScore >= det.minScore)
       .sort((a, b) => b.score.overallScore - a.score.overallScore);

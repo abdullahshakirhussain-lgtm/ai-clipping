@@ -2,10 +2,14 @@ import type { HighlightCandidate, TranscriptSegment } from "@clipfactory/ai";
 import { describe, expect, it } from "vitest";
 import {
   buildAudioCandidates,
+  computeCalibration,
   mergeCandidates,
   scoreCandidate,
   selectDiverse,
+  SCORING_WEIGHTS,
+  type LabeledClip,
   type ScoredCandidate,
+  type StoredSignals,
 } from "./detection.js";
 
 /** Build a transcript segment stream at ~2.7 words/sec (ideal talking pace). */
@@ -151,6 +155,45 @@ describe("selectDiverse", () => {
   it("never returns more than max", () => {
     const pool = [mk("a", 90), mk("b", 85), mk("c", 80)];
     expect(selectDiverse(pool, 2)).toHaveLength(2);
+  });
+});
+
+describe("computeCalibration", () => {
+  const baseSignals: StoredSignals = {
+    hookType: 50, frontLoading: 50, openingEnergy: 50,
+    selfContained: 50, emotion: 50, pacing: 50, durationFit: 50, loopability: 50,
+  };
+
+  it("keeps default weights below the minimum sample size", () => {
+    const labeled: LabeledClip[] = [
+      { signals: baseSignals, outcome: "HIT" },
+      { signals: baseSignals, outcome: "FLOP" },
+    ];
+    const res = computeCalibration(labeled);
+    expect(res.applied).toBe(false);
+    expect(res.weights).toEqual(SCORING_WEIGHTS);
+  });
+
+  it("learns to weight the signal that predicts real outcomes", () => {
+    // 8 clips where `emotion` tracks the outcome and everything else is flat.
+    const labeled: LabeledClip[] = [
+      { signals: { ...baseSignals, emotion: 95 }, outcome: "HIT" },
+      { signals: { ...baseSignals, emotion: 90 }, outcome: "HIT" },
+      { signals: { ...baseSignals, emotion: 85 }, outcome: "HIT" },
+      { signals: { ...baseSignals, emotion: 70 }, outcome: "OK" },
+      { signals: { ...baseSignals, emotion: 60 }, outcome: "OK" },
+      { signals: { ...baseSignals, emotion: 20 }, outcome: "FLOP" },
+      { signals: { ...baseSignals, emotion: 15 }, outcome: "FLOP" },
+      { signals: { ...baseSignals, emotion: 10 }, outcome: "FLOP" },
+    ];
+    const res = computeCalibration(labeled);
+    expect(res.applied).toBe(true);
+    expect(res.sampleSize).toBe(8);
+    expect(res.insights[0]!.signal).toBe("emotion");
+    // emotion should now carry the most weight within the viral group.
+    const v = res.weights.viral;
+    const maxViral = Math.max(v.selfContained, v.emotion, v.pacing, v.durationFit, v.loopability);
+    expect(v.emotion).toBe(maxViral);
   });
 });
 

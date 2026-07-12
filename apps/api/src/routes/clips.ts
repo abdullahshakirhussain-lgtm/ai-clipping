@@ -6,10 +6,12 @@ import {
   ClipDetailDtoSchema,
   ClipListQuerySchema,
   ClipListResponseSchema,
+  ClipOutcomeSchema,
   IdParamSchema,
   PublishJobDtoSchema,
   PublishRequestSchema,
   ReviewInputSchema,
+  SetOutcomeInputSchema,
 } from "@clipfactory/core";
 import archiver from "archiver";
 import { z } from "zod";
@@ -68,6 +70,20 @@ export const clipRoutes: RouteModule = (app, { container }): void => {
       },
     },
     (req) => publish.publishClip(req.params.id, req.body),
+  );
+
+  // Label a clip's real-world outcome (feeds score calibration).
+  app.post(
+    "/clips/:id/outcome",
+    {
+      schema: {
+        tags: ["clips"],
+        params: IdParamSchema,
+        body: SetOutcomeInputSchema,
+        response: { 200: z.object({ id: z.string(), outcome: ClipOutcomeSchema.nullable() }) },
+      },
+    },
+    (req) => clips.setOutcome(req.params.id, req.body.outcome),
   );
 
   // Bulk grid cull: keep/discard many clips at once.

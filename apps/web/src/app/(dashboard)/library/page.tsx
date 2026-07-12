@@ -1,7 +1,14 @@
 "use client";
 import { useMemo, useState } from "react";
-import { apiSend, clipExportUrl, revalidateAll, useClipGrid, type ClipDto } from "@/lib/api";
-import { Button, EmptyState, PageHeader, Spinner } from "@/components/ui";
+import {
+  apiSend,
+  clipExportUrl,
+  revalidateAll,
+  useCalibration,
+  useClipGrid,
+  type ClipDto,
+} from "@/lib/api";
+import { Button, Card, EmptyState, PageHeader, Spinner } from "@/components/ui";
 
 /** Pull the human-readable "why" tags out of the score breakdown JSON. */
 function notesOf(clip: ClipDto): string[] {
@@ -64,6 +71,8 @@ export default function LibraryPage() {
           </div>
         }
       />
+
+      <CalibrationBar />
 
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--surface-2)" }}>
@@ -200,7 +209,85 @@ function ClipCard({
             {clip.hashtags.join(" ")}
           </div>
         )}
+        <OutcomeRow clipId={clip.id} current={clip.outcome} />
       </div>
     </div>
+  );
+}
+
+const OUTCOMES: Array<{ key: "FLOP" | "OK" | "HIT"; label: string; color: string }> = [
+  { key: "FLOP", label: "Flop", color: "var(--danger)" },
+  { key: "OK", label: "OK", color: "var(--warning)" },
+  { key: "HIT", label: "Hit", color: "var(--success)" },
+];
+
+/** Once you've posted a clip, tag how it did — this trains the score model. */
+function OutcomeRow({ clipId, current }: { clipId: string; current: ClipDto["outcome"] }) {
+  const [busy, setBusy] = useState(false);
+  async function set(outcome: "FLOP" | "OK" | "HIT" | null) {
+    setBusy(true);
+    try {
+      await apiSend(`/clips/${clipId}/outcome`, "POST", { outcome });
+      await revalidateAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex items-center gap-1 pt-1" title="How did this clip perform once posted?">
+      <span className="text-[10px] mr-1" style={{ color: "var(--muted)" }}>
+        Result:
+      </span>
+      {OUTCOMES.map((o) => (
+        <button
+          key={o.key}
+          disabled={busy}
+          onClick={() => set(current === o.key ? null : o.key)}
+          className="text-[10px] px-1.5 py-0.5 rounded border"
+          style={{
+            background: current === o.key ? o.color : "transparent",
+            color: current === o.key ? "#fff" : "var(--muted)",
+            borderColor: "var(--border)",
+          }}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Shows how many outcomes are labeled + which signals actually predict wins. */
+function CalibrationBar() {
+  const { data } = useCalibration();
+  const [busy, setBusy] = useState(false);
+  if (!data) return null;
+  const top = data.insights[0];
+  async function recompute() {
+    setBusy(true);
+    try {
+      await apiSend("/calibration/recompute", "POST");
+      await revalidateAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className="mb-4 flex items-center justify-between gap-4 flex-wrap py-3">
+      <div className="text-sm">
+        <span className="font-medium">Score learning</span>
+        <span style={{ color: "var(--muted)" }}>
+          {" "}
+          · {data.sampleSize} labeled clip{data.sampleSize === 1 ? "" : "s"}
+          {data.applied ? " · weights calibrated to your results" : " · using default weights"}
+          {top && data.sampleSize > 0
+            ? ` · best predictor so far: ${top.signal} (${top.correlation >= 0 ? "+" : ""}${top.correlation})`
+            : ""}
+        </span>
+      </div>
+      <Button variant="secondary" onClick={recompute} disabled={busy}>
+        {busy ? "Recalibrating…" : "Recalibrate"}
+      </Button>
+    </Card>
   );
 }

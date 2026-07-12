@@ -13,6 +13,7 @@ export * from "./services/review-service.js";
 export * from "./services/publish-service.js";
 export * from "./services/account-service.js";
 export * from "./services/analytics-service.js";
+export * from "./services/calibration-service.js";
 
 export * from "./pipeline/context.js";
 export * from "./pipeline/handlers.js";

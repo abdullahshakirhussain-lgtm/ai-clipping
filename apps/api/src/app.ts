@@ -15,6 +15,7 @@ import { createAuth } from "./auth.js";
 import { requireAuth } from "./plugins/auth-context.js";
 import { accountRoutes } from "./routes/accounts.js";
 import { analyticsRoutes } from "./routes/analytics.js";
+import { calibrationRoutes } from "./routes/calibration.js";
 import { campaignRoutes } from "./routes/campaigns.js";
 import { clipRoutes } from "./routes/clips.js";
 import { fileRoutes } from "./routes/files.js";
@@ -131,6 +132,7 @@ export async function buildApp(container: Container) {
       publishRoutes(typed, deps);
       accountRoutes(typed, deps);
       analyticsRoutes(typed, deps);
+      calibrationRoutes(typed, deps);
       systemRoutes(typed, deps);
     },
     { prefix: "/api/v1" },
