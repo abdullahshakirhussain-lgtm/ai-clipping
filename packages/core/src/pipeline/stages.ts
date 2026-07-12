@@ -6,14 +6,14 @@ import {
   analyzeLoudness,
   type CaptionWord,
   extractAudio,
-  extractThumbnail,
+  extractSmartThumbnail,
   findLoudnessPeaks,
   planClipEdit,
   renderClip,
 } from "@clipfactory/media";
 import type { PublishPlatform } from "@clipfactory/publishers";
 import { PublisherNotConfiguredError } from "@clipfactory/publishers";
-import { buildAudioCandidates, mergeCandidates, scoreCandidate } from "../detection.js";
+import { buildAudioCandidates, mergeCandidates, scoreCandidate, selectDiverse } from "../detection.js";
 import type { PipelineContext } from "./context.js";
 
 const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
@@ -157,13 +157,41 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
     const merged = mergeCandidates([...llmCandidates, ...audioCandidates], bounds);
 
     // Score every candidate with the transparent model, keep those above the
-    // floor, best-first, up to the cap. Clip count now varies with content.
-    const scored = merged
+    // floor, best-first. Clip count now varies with content.
+    const scoredAll = merged
       .map((candidate) => ({ candidate, score: scoreCandidate({ candidate, segments, energy }) }))
       .filter((x) => x.candidate.endSec - x.candidate.startSec >= det.minDurationSec)
       .filter((x) => x.score.overallScore >= det.minScore)
-      .sort((a, b) => b.score.overallScore - a.score.overallScore)
-      .slice(0, det.maxClips);
+      .sort((a, b) => b.score.overallScore - a.score.overallScore);
+
+    // Self-critique: shortlist a bit more than we need, then let the LLM cut the
+    // ones that don't stand alone or don't pay off. Never drop everything.
+    const shortlist = scoredAll.slice(0, Math.min(scoredAll.length, det.maxClips * 2, 40));
+    let survivors = shortlist;
+    if (shortlist.length > det.maxClips) {
+      try {
+        const keep = await ctx.llm.refineHighlights({
+          clips: shortlist.map((s, i) => ({
+            index: i,
+            hook: s.candidate.hook,
+            durationSec: s.candidate.endSec - s.candidate.startSec,
+            transcript: segments
+              .filter((sg) => sg.end > s.candidate.startSec && sg.start < s.candidate.endSec)
+              .map((sg) => sg.text)
+              .join(" ")
+              .trim(),
+          })),
+        });
+        const keepSet = new Set(keep);
+        const filtered = shortlist.filter((_, i) => keepSet.has(i));
+        if (filtered.length > 0) survivors = filtered;
+      } catch (err) {
+        ctx.logger.warn({ sourceVideoId, err: String(err) }, "self-critique failed; skipping");
+      }
+    }
+
+    // Diversity-aware final selection so the batch spreads across topics.
+    const scored = selectDiverse(survivors, det.maxClips);
 
     const created = await ctx.repos.clips.createMany(
       scored.map(({ candidate, score }) => ({
@@ -272,7 +300,7 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
         "jump-cut dead air removed",
       );
     }
-    await extractThumbnail(outPath, thumbPath, 0.5);
+    await extractSmartThumbnail(outPath, thumbPath);
 
     await ctx.storage.putFile(clipKey(clipId), outPath, "video/mp4");
     await ctx.storage.putFile(thumbKey(clipId), thumbPath, "image/jpeg");

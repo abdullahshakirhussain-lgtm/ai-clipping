@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import ffmpegPath from "ffmpeg-static";
 
@@ -272,4 +273,24 @@ export async function extractThumbnail(inputPath: string, outPath: string, atSec
     ],
     { timeoutMs: 60 * 1000 },
   );
+}
+
+/**
+ * Pick a representative cover frame with ffmpeg's `thumbnail` filter (the most
+ * salient frame across a batch) instead of a fixed timestamp — avoids blank,
+ * transitional, or mid-blink covers. Falls back to a fixed grab on any issue.
+ */
+export async function extractSmartThumbnail(inputPath: string, outPath: string): Promise<void> {
+  try {
+    await run(
+      bin("ffmpeg"),
+      ["-y", "-i", inputPath, "-vf", "thumbnail=n=300,scale=540:960", "-frames:v", "1", outPath],
+      { timeoutMs: 90 * 1000 },
+    );
+    const st = await stat(outPath).catch(() => null);
+    if (st && st.size > 0) return;
+  } catch {
+    /* fall through to the fixed-timestamp grab */
+  }
+  await extractThumbnail(inputPath, outPath, 0.5);
 }

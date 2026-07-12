@@ -7,6 +7,7 @@ import type {
   HighlightCandidate,
   HookType,
   LlmProvider,
+  RefineHighlightsInput,
   TranscriptSegment,
 } from "./types.js";
 
@@ -201,6 +202,39 @@ For each clip also rate the sub-signals honestly (0-100) so it can be scored. Ca
         };
       })
       .filter((c) => c.endSec > c.startSec);
+  }
+
+  async refineHighlights(input: RefineHighlightsInput): Promise<number[]> {
+    if (input.clips.length === 0) return [];
+    const list = input.clips
+      .map(
+        (c) =>
+          `#${c.index} (${c.durationSec.toFixed(0)}s) hook: "${c.hook}"\n  transcript: ${c.transcript.slice(0, 400)}`,
+      )
+      .join("\n\n");
+
+    const result = await this.callTool<{ keep?: number[] }>(
+      `You are a ruthless short-form video editor doing a final quality gate.
+For each candidate clip below, keep it ONLY if it: (a) makes complete sense with zero context, (b) actually pays off / resolves (not just a setup), and (c) has a genuine scroll-stopping hook. Cut anything mediocre — it's better to ship fewer great clips.
+
+Candidates:
+${list}
+
+Call submit_review with the indices to KEEP.`,
+      {
+        name: "submit_review",
+        description: "Submit the indices of clips worth keeping.",
+        input_schema: {
+          type: "object",
+          properties: {
+            keep: { type: "array", items: { type: "number" }, description: "indices to keep" },
+          },
+          required: ["keep"],
+        },
+      },
+      1024,
+    );
+    return (result.keep ?? []).map(Number).filter((n) => Number.isInteger(n));
   }
 
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {

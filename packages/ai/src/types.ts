@@ -97,9 +97,23 @@ export interface EnhancementResult {
   model: string;
 }
 
+export interface RefineHighlightsInput {
+  clips: Array<{
+    index: number;
+    hook: string;
+    transcript: string;
+    durationSec: number;
+  }>;
+}
+
 /** LLM reasoning tasks (Claude in production). */
 export interface LlmProvider {
   detectHighlights(input: DetectHighlightsInput): Promise<HighlightCandidate[]>;
+  /**
+   * Self-critique pass: given a shortlist, return the indices worth keeping —
+   * drops clips that look good on paper but don't stand alone or don't pay off.
+   */
+  refineHighlights(input: RefineHighlightsInput): Promise<number[]>;
   enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult>;
   improveHooks(input: { currentHook: string; transcriptExcerpt: string }): Promise<string[]>;
 }

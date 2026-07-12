@@ -1,6 +1,12 @@
 import type { HighlightCandidate, TranscriptSegment } from "@clipfactory/ai";
 import { describe, expect, it } from "vitest";
-import { buildAudioCandidates, mergeCandidates, scoreCandidate } from "./detection.js";
+import {
+  buildAudioCandidates,
+  mergeCandidates,
+  scoreCandidate,
+  selectDiverse,
+  type ScoredCandidate,
+} from "./detection.js";
 
 /** Build a transcript segment stream at ~2.7 words/sec (ideal talking pace). */
 function segmentsFor(startSec: number, endSec: number): TranscriptSegment[] {
@@ -113,6 +119,38 @@ describe("buildAudioCandidates", () => {
     expect(out[0]!.source).toBe("audio");
     expect(out[0]!.startSec).toBeLessThanOrEqual(80);
     expect(out[0]!.endSec).toBeGreaterThan(out[0]!.startSec);
+  });
+});
+
+describe("selectDiverse", () => {
+  const mk = (topic: string, overall: number): ScoredCandidate => ({
+    candidate: { startSec: 0, endSec: 20, hook: "h", reason: "r", topic, source: "transcript" },
+    score: {
+      hookScore: overall,
+      viralScore: overall,
+      overallScore: overall,
+      signals: {} as never,
+      measured: {} as never,
+      notes: [],
+    },
+  });
+
+  it("spreads picks across topics instead of taking all of the top topic", () => {
+    // Five high-scoring "money" clips and a couple lower "mindset"/"growth" ones.
+    const pool: ScoredCandidate[] = [
+      mk("money", 95), mk("money", 93), mk("money", 91), mk("money", 90),
+      mk("mindset", 80), mk("growth", 78),
+    ];
+    const picked = selectDiverse(pool, 3);
+    const topics = picked.map((p) => p.candidate.topic);
+    // Without diversity it'd be money/money/money; the penalty forces a spread.
+    expect(new Set(topics).size).toBeGreaterThan(1);
+    expect(topics[0]).toBe("money"); // still leads with the best clip
+  });
+
+  it("never returns more than max", () => {
+    const pool = [mk("a", 90), mk("b", 85), mk("c", 80)];
+    expect(selectDiverse(pool, 2)).toHaveLength(2);
   });
 });
 

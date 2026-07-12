@@ -4,6 +4,7 @@ import type {
   EnhancementResult,
   HighlightCandidate,
   LlmProvider,
+  RefineHighlightsInput,
   TranscriptionProvider,
   TranscriptionResult,
   TranscriptSegment,
@@ -97,6 +98,11 @@ export class MockLlmProvider implements LlmProvider {
       });
     }
     return candidates;
+  }
+
+  async refineHighlights(input: RefineHighlightsInput): Promise<number[]> {
+    // Offline stub: keep everything (real critique needs the LLM).
+    return input.clips.map((c) => c.index);
   }
 
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {

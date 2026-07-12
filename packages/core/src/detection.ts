@@ -239,6 +239,40 @@ export function buildAudioCandidates(
   return out;
 }
 
+export interface ScoredCandidate {
+  candidate: HighlightCandidate;
+  score: ScoreBreakdown;
+}
+
+/**
+ * Diversity-aware selection (MMR-style): pick best-scored clips but penalize
+ * repeated topics so one long video yields a *spread* of clips, not five
+ * variations of the same moment. `pool` must be pre-sorted best-first.
+ */
+export function selectDiverse(pool: ScoredCandidate[], max: number, topicPenalty = 8): ScoredCandidate[] {
+  const remaining = [...pool];
+  const picked: ScoredCandidate[] = [];
+  const topicCount = new Map<string, number>();
+  while (picked.length < max && remaining.length > 0) {
+    let bestIdx = 0;
+    let bestVal = -Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const it = remaining[i]!;
+      const used = topicCount.get(it.candidate.topic) ?? 0;
+      const adjusted = it.score.overallScore - used * topicPenalty;
+      if (adjusted > bestVal) {
+        bestVal = adjusted;
+        bestIdx = i;
+      }
+    }
+    const [chosen] = remaining.splice(bestIdx, 1);
+    picked.push(chosen!);
+    const t = chosen!.candidate.topic;
+    topicCount.set(t, (topicCount.get(t) ?? 0) + 1);
+  }
+  return picked;
+}
+
 /** Merge overlapping candidate windows so we don't render near-duplicates. */
 export function mergeCandidates(
   candidates: HighlightCandidate[],
