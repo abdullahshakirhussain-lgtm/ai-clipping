@@ -17,6 +17,7 @@ allowBuilds:
   prisma: true
   sharp: true
   youtube-dl-exec: true
+  onnxruntime-node: true
 
 # Packages allowed to run install/build scripts. Must include every platform
 # variant of native deps: the build host's platform decides which one resolves
@@ -36,3 +37,4 @@ onlyBuiltDependencies:
   - prisma
   - sharp
   - youtube-dl-exec
+  - onnxruntime-node

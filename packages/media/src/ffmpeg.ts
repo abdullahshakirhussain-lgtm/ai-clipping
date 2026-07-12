@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import ffmpegPath from "ffmpeg-static";
 
 // ffprobe-static ships no type declarations; load it via require so the untyped
@@ -102,6 +103,12 @@ export interface RenderClipInput {
    * air. When omitted (or a single full-window span) the clip renders unchanged.
    */
   selectSpans?: Array<{ s: number; e: number }>;
+  /**
+   * Normalized 0-1 horizontal focus (dominant face center) to crop around. When
+   * set, the 9:16 crop shifts toward it so an off-center subject stays framed;
+   * omitted → the default center crop.
+   */
+  focusX?: number;
   workDir: string;
 }
 
@@ -122,8 +129,14 @@ export async function renderClip(input: RenderClipInput): Promise<void> {
     vFilters.push(`select='${between}'`, "setpts=N/FRAME_RATE/TB");
     aFilters.push(`aselect='${between}'`, "asetpts=N/SR/TB");
   }
-  // Scale to cover 1080x1920 then centre-crop — works for any source aspect ratio.
-  vFilters.push("scale=1080:1920:force_original_aspect_ratio=increase", "crop=1080:1920");
+  // Scale to cover 1080x1920, then crop. Default centers; with a focus point the
+  // crop shifts horizontally to keep the subject framed. `iw` is the scaled width;
+  // normalized position is preserved under scaling, so focusX*iw is the subject's x.
+  const cropFilter =
+    input.focusX !== undefined
+      ? `crop=1080:1920:x=clip(${input.focusX.toFixed(4)}*iw-540\\,0\\,iw-1080):y=0`
+      : "crop=1080:1920";
+  vFilters.push("scale=1080:1920:force_original_aspect_ratio=increase", cropFilter);
   if (input.captionsFileName) vFilters.push(`subtitles=${input.captionsFileName}`);
 
   const args = [
@@ -273,6 +286,43 @@ export async function extractThumbnail(inputPath: string, outPath: string, atSec
     ],
     { timeoutMs: 60 * 1000 },
   );
+}
+
+/**
+ * Extract up to `count` frames evenly spaced across [startSec, endSec], scaled to
+ * `w`x`h`, as JPEGs in `outDir`. Returns the produced file paths. Used to sample a
+ * clip for face detection (reframing).
+ */
+export async function extractFrames(
+  inputPath: string,
+  startSec: number,
+  endSec: number,
+  count: number,
+  outDir: string,
+  w = 320,
+  h = 240,
+): Promise<string[]> {
+  const dur = Math.max(0.2, endSec - startSec);
+  const fps = Math.max(0.1, count / dur);
+  await run(
+    bin("ffmpeg"),
+    [
+      "-y",
+      "-ss", startSec.toFixed(3),
+      "-i", inputPath,
+      "-t", dur.toFixed(3),
+      "-vf", `fps=${fps.toFixed(4)},scale=${w}:${h}`,
+      "-frames:v", String(count),
+      join(outDir, "f-%03d.jpg"),
+    ],
+    { timeoutMs: 60 * 1000 },
+  );
+  const files: string[] = [];
+  for (let i = 1; i <= count; i++) {
+    const p = join(outDir, `f-${String(i).padStart(3, "0")}.jpg`);
+    if (await stat(p).then(() => true).catch(() => false)) files.push(p);
+  }
+  return files;
 }
 
 /**

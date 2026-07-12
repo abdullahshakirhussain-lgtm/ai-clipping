@@ -59,6 +59,7 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
           campaignId: z.string().optional(),
           captionStyle: z.enum(["bold-center", "yellow-pop", "clean-bottom"]).optional(),
           captionPosition: z.enum(["top", "middle", "bottom"]).optional(),
+          reframe: z.enum(["true", "false"]).optional(),
         }),
         response: { 200: z.object({ sourceVideoId: z.string() }) },
       },
@@ -91,6 +92,7 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
         campaignId: req.query.campaignId,
         captionStyle: req.query.captionStyle,
         captionPosition: req.query.captionPosition,
+        reframe: req.query.reframe === "true",
       });
     },
   );

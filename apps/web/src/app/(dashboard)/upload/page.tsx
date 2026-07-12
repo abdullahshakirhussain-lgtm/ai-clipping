@@ -13,13 +13,14 @@ export default function UploadPage() {
   const [dragging, setDragging] = useState(false);
   const [style, setStyle] = useState("bold-center");
   const [position, setPosition] = useState("bottom");
+  const [reframe, setReframe] = useState(false);
 
   async function upload(file: File) {
     setBusy(true);
     setError(null);
     setProgress(0);
     try {
-      const qs = `?captionStyle=${style}&captionPosition=${position}`;
+      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}`;
       await apiUpload<{ sourceVideoId: string }>(`/videos/upload${qs}`, file, setProgress);
       await revalidateAll();
     } catch (err) {
@@ -65,6 +66,13 @@ export default function UploadPage() {
               <option value="middle">Middle</option>
               <option value="top">Top</option>
             </select>
+          </label>
+          <label className="text-sm flex flex-col justify-end">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Smart framing (beta)</span>
+            <span className="flex items-center gap-2 px-3 py-2 rounded-lg surface-2 border" style={{ borderColor: "var(--border)" }}>
+              <input type="checkbox" checked={reframe} onChange={(e) => setReframe(e.target.checked)} />
+              <span className="text-xs" style={{ color: "var(--muted)" }}>Track speaker</span>
+            </span>
           </label>
         </div>
         <div

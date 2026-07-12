@@ -9,6 +9,7 @@ import {
   extractSmartThumbnail,
   findLoudnessPeaks,
   planClipEdit,
+  planReframe,
   renderClip,
 } from "@clipfactory/media";
 import type { PublishPlatform } from "@clipfactory/publishers";
@@ -216,6 +217,7 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
         detectionSource: candidate.source,
         captionStyle: video.captionStyle,
         captionPosition: video.captionPosition,
+        reframe: video.reframe,
         hookScore: score.hookScore,
         viralScore: score.viralScore,
         overallScore: score.overallScore,
@@ -286,11 +288,28 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
       captionsFileName = assName;
     }
 
+    // Opt-in subject-aware reframing: find the dominant face and crop toward it.
+    // Best-effort — any failure/no-face leaves focusX undefined → center crop.
+    let focusX: number | undefined;
+    if (clip.reframe) {
+      const rf = await planReframe({
+        inputPath: localSource,
+        startSec: clip.startSec,
+        endSec: clip.endSec,
+        workDir,
+      });
+      if (rf) {
+        focusX = rf.focusX;
+        ctx.logger.info({ clipId, focusX: Number(rf.focusX.toFixed(3)), samples: rf.samples }, "reframed to subject");
+      }
+    }
+
     const baseArgs = {
       inputPath: localSource,
       outPath,
       startSec: clip.startSec,
       endSec: clip.endSec,
+      focusX,
       workDir,
     };
     // Progressive fallback so a caption/filter hiccup never loses the clip:
