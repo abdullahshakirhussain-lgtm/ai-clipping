@@ -16,7 +16,6 @@ export class AccountService {
       platform: input.platform,
       handle: input.handle,
       displayName: input.displayName,
-      dailyQuota: input.dailyQuota,
       credentials: (input.credentials ?? undefined) as never,
     });
     // Re-read with the _count relation the DTO mapper needs
@@ -31,7 +30,6 @@ export class AccountService {
     await this.repos.socialAccounts.update(id, {
       displayName: input.displayName,
       status: input.status,
-      dailyQuota: input.dailyQuota,
       credentials: (input.credentials ?? undefined) as never,
     });
     const rows = await this.repos.socialAccounts.list();

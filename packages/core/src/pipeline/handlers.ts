@@ -1,7 +1,6 @@
 import type { HandlerRegistry } from "@clipfactory/queue";
 import type { PipelineContext } from "./context.js";
 import {
-  runAnalyticsSync,
   runDetect,
   runDownload,
   runEnhance,
@@ -19,6 +18,5 @@ export function buildHandlers(ctx: PipelineContext): HandlerRegistry {
     "clip.render": (p) => runRender(ctx, p.clipId),
     "clip.enhance": (p) => runEnhance(ctx, p.clipId),
     "publish.execute": (p) => runPublish(ctx, p.publishJobId),
-    "analytics.sync": () => runAnalyticsSync(ctx),
   };
 }

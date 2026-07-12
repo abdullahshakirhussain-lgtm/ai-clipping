@@ -3,7 +3,7 @@ import type { ClipStatus, PrismaClient, Prisma, ReviewActionType } from "@prisma
 const detailInclude = {
   enhancement: true,
   sourceVideo: { include: { transcript: true } },
-  campaign: { include: { creator: true } },
+  campaign: true,
   reviewActions: { orderBy: { createdAt: "desc" as const }, include: { reviewer: true } },
   publishJobs: { include: { socialAccount: true } },
 } satisfies Prisma.ClipInclude;
@@ -43,7 +43,7 @@ export class ClipRepository {
         where,
         include: {
           enhancement: true,
-          campaign: { include: { creator: true } },
+          campaign: true,
           publishJobs: { include: { socialAccount: true } },
         },
         orderBy,
@@ -102,7 +102,7 @@ export class ClipRepository {
   byIds(ids: string[]) {
     return this.prisma.clip.findMany({
       where: { id: { in: ids } },
-      include: { enhancement: true, campaign: { include: { creator: true } } },
+      include: { enhancement: true, campaign: true },
     });
   }
 

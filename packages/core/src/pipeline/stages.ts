@@ -296,7 +296,6 @@ export async function runEnhance(ctx: PipelineContext, clipId: string): Promise<
       topic: "general",
       durationSec: clip.endSec - clip.startSec,
       platformHints: clip.campaign.allowedPlatforms,
-      creatorName: clip.campaign.creator.name,
     });
     // Scores were computed at detection time and live on the Clip; mirror them
     // into the enhancement row so existing readers keep working.
@@ -370,9 +369,6 @@ export async function runPublish(ctx: PipelineContext, publishJobId: string): Pr
       lastError: null,
     });
     await ctx.repos.clips.update(job.clipId, { status: ClipStatus.PUBLISHED });
-
-    // Kick off the first metrics poll shortly after publishing
-    await ctx.dispatcher.enqueue("analytics.sync", {}, { delayMs: 5000, jobId: "analytics-sync" });
     ctx.logger.info({ publishJobId, platform: job.socialAccount.platform }, "published");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -398,66 +394,6 @@ export async function runPublish(ctx: PipelineContext, publishJobId: string): Pr
   } finally {
     await fs.rm(workDir, { recursive: true, force: true });
   }
-}
-
-/** Polls metrics for every published post and refreshes the learning features. */
-export async function runAnalyticsSync(ctx: PipelineContext): Promise<void> {
-  const jobs = await ctx.repos.publish.published();
-  for (const job of jobs) {
-    if (!job.externalPostId) continue;
-    try {
-      const publisher = ctx.publisherFor(job.socialAccount.platform as PublishPlatform);
-      const snap = await publisher.fetchMetrics(job.externalPostId, {
-        id: job.socialAccount.id,
-        platform: job.socialAccount.platform as PublishPlatform,
-        handle: job.socialAccount.handle,
-        credentials: (job.socialAccount.credentials as Record<string, unknown> | null) ?? null,
-      });
-      const ratePerMille = Number(job.clip.campaign.revenueRatePerMille);
-      const revenue = (snap.views / 1000) * ratePerMille;
-
-      await ctx.repos.metrics.record({
-        publishJobId: job.id,
-        clipId: job.clipId,
-        campaignId: job.clip.campaignId,
-        platform: job.socialAccount.platform,
-        views: snap.views,
-        likes: snap.likes,
-        comments: snap.comments,
-        shares: snap.shares,
-        watchTimeSec: snap.watchTimeSec,
-        revenue: revenue as never,
-        rpm: ratePerMille as never,
-      });
-
-      // Refresh the learning-engine feature row
-      const publishedAt = job.publishedAt ?? job.createdAt;
-      const engagementRate =
-        snap.views > 0 ? (snap.likes + snap.comments + snap.shares) / snap.views : 0;
-      await ctx.repos.metrics.upsertFeature(job.clipId, {
-        creatorId: job.clip.campaign.creatorId,
-        campaignId: job.clip.campaignId,
-        platform: job.socialAccount.platform,
-        hookText: job.clip.enhancement?.title ?? "",
-        topic: null,
-        durationSec: job.clip.endSec - job.clip.startSec,
-        captionStyle: job.clip.captionStyle,
-        publishedAt,
-        publishedHour: publishedAt.getUTCHours(),
-        publishedDayOfWeek: publishedAt.getUTCDay(),
-        views: snap.views,
-        likes: snap.likes,
-        comments: snap.comments,
-        shares: snap.shares,
-        watchTimeSec: snap.watchTimeSec,
-        revenue: revenue as never,
-        engagementRate,
-      });
-    } catch (err) {
-      ctx.logger.error({ publishJobId: job.id, err: String(err) }, "metrics sync failed for job");
-    }
-  }
-  ctx.logger.info({ jobs: jobs.length }, "analytics sync complete");
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

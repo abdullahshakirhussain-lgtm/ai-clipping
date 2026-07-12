@@ -1,7 +1,7 @@
 import type { PrismaClient, Prisma, PublishJobStatus } from "@prisma/client";
 
 const jobInclude = {
-  clip: { include: { enhancement: true, campaign: { include: { creator: true } } } },
+  clip: { include: { enhancement: true, campaign: true } },
   socialAccount: true,
   publishAttempts: { orderBy: { startedAt: "desc" as const } },
 } satisfies Prisma.PublishJobInclude;

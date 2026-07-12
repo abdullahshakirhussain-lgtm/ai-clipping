@@ -12,7 +12,7 @@ export class SourceVideoRepository {
       where: { id },
       include: {
         transcript: true,
-        campaign: { include: { creator: true } },
+        campaign: true,
         clips: { orderBy: { startSec: "asc" }, include: { enhancement: true } },
       },
     });
@@ -25,7 +25,7 @@ export class SourceVideoRepository {
         status: filter?.status,
       },
       include: {
-        campaign: { include: { creator: true } },
+        campaign: true,
         _count: { select: { clips: true } },
       },
       orderBy: { createdAt: "desc" },

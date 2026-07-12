@@ -6,7 +6,6 @@ import type {
   ClipDto,
   OverviewDto,
   PublishJobDto,
-  RevenueDto,
   SocialAccountDto,
   SourceVideoDto,
 } from "@clipfactory/core/contracts";
@@ -108,7 +107,6 @@ function useApi<T>(path: string | null, config?: SWRConfiguration) {
 }
 
 export const useOverview = () => useApi<OverviewDto>("/analytics/overview", { refreshInterval: 5000 });
-export const useRevenue = () => useApi<RevenueDto>("/analytics/revenue");
 export const useCampaigns = () => useApi<CampaignDto[]>("/campaigns", { refreshInterval: 8000 });
 export const useVideos = () => useApi<SourceVideoDto[]>("/videos", { refreshInterval: 4000 });
 export const useAccounts = () => useApi<SocialAccountDto[]>("/accounts");
@@ -145,7 +143,6 @@ export type {
   ClipDetailDto,
   OverviewDto,
   PublishJobDto,
-  RevenueDto,
   SocialAccountDto,
   SourceVideoDto,
 };

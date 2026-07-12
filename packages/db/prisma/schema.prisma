@@ -153,42 +153,25 @@ enum PublishJobStatus {
   CANCELLED
 }
 
-model Creator {
-  id        String   @id @default(cuid())
-  name      String
-  handle    String   @unique
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  campaigns    Campaign[]
-  clipFeatures ClipFeature[]
-}
-
+/// A project/batch grouping for uploaded (or URL-ingested) source videos.
 model Campaign {
-  id                  String         @id @default(cuid())
-  creatorId           String
-  creator             Creator        @relation(fields: [creatorId], references: [id])
-  name                String
+  id               String         @id @default(cuid())
+  name             String
   /// Optional default source URL for URL-based ingest; null for upload-only projects.
-  sourceVideoUrl      String?
-  sourcePlatform      SourcePlatform @default(YOUTUBE)
-  allowedPlatforms    Platform[]
-  /// Revenue paid to clippers per 1000 views, in USD
-  revenueRatePerMille Decimal        @default(0) @db.Decimal(10, 4)
-  /// Free-form campaign rules (branding, banned words, watermark, etc.)
-  rules               Json?
-  expiresAt           DateTime?
-  status              CampaignStatus @default(DRAFT)
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  sourceVideoUrl   String?
+  sourcePlatform   SourcePlatform @default(YOUTUBE)
+  allowedPlatforms Platform[]
+  /// Free-form project rules (banned words, min/max clip length, etc.)
+  rules            Json?
+  expiresAt        DateTime?
+  status           CampaignStatus @default(DRAFT)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   sourceVideos SourceVideo[]
   clips        Clip[]
-  clipFeatures ClipFeature[]
 
   @@index([status])
-  @@index([creatorId])
 }
 
 model SourceVideo {
@@ -261,7 +244,6 @@ model Clip {
   enhancement   ClipEnhancement?
   reviewActions ReviewAction[]
   publishJobs   PublishJob[]
-  feature       ClipFeature?
 
   @@index([status])
   @@index([campaignId])
@@ -309,7 +291,6 @@ model SocialAccount {
   /// Encrypted OAuth credentials / tokens for the platform
   credentials Json?
   status      SocialAccountStatus @default(ACTIVE)
-  dailyQuota  Int                 @default(20)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
@@ -337,7 +318,6 @@ model PublishJob {
   updatedAt       DateTime         @updatedAt
 
   publishAttempts PublishAttempt[]
-  metrics         ClipMetric[]
 
   @@index([status])
   @@index([clipId])
@@ -356,60 +336,4 @@ model PublishAttempt {
   response     Json?
 
   @@index([publishJobId])
-}
-
-/// Append-only time series of platform metrics; latest row per job = current stats
-model ClipMetric {
-  id           String     @id @default(cuid())
-  publishJobId String
-  publishJob   PublishJob @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
-  // Denormalized for fast aggregate queries
-  clipId       String
-  campaignId   String
-  platform     Platform
-  capturedAt   DateTime   @default(now())
-  views        Int        @default(0)
-  likes        Int        @default(0)
-  comments     Int        @default(0)
-  shares       Int        @default(0)
-  watchTimeSec Float      @default(0)
-  revenue      Decimal    @default(0) @db.Decimal(12, 4)
-  rpm          Decimal    @default(0) @db.Decimal(8, 4)
-
-  @@index([publishJobId, capturedAt])
-  @@index([clipId])
-  @@index([campaignId])
-  @@index([platform, capturedAt])
-}
-
-/// Denormalized learning-engine row: one per published clip, refreshed on metric sync
-model ClipFeature {
-  id                 String   @id @default(cuid())
-  clipId             String   @unique
-  clip               Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
-  creatorId          String
-  creator            Creator  @relation(fields: [creatorId], references: [id])
-  campaignId         String
-  campaign           Campaign @relation(fields: [campaignId], references: [id])
-  platform           Platform
-  hookText           String
-  topic              String?
-  durationSec        Float
-  captionStyle       String
-  publishedAt        DateTime
-  publishedHour      Int
-  publishedDayOfWeek Int
-  views              Int      @default(0)
-  likes              Int      @default(0)
-  comments           Int      @default(0)
-  shares             Int      @default(0)
-  watchTimeSec       Float    @default(0)
-  revenue            Decimal  @default(0) @db.Decimal(12, 4)
-  engagementRate     Float    @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  @@index([platform])
-  @@index([creatorId])
-  @@index([campaignId])
 }

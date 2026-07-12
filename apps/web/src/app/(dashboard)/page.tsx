@@ -2,16 +2,14 @@
 import Link from "next/link";
 import { useOverview } from "@/lib/api";
 import { Card, PageHeader, Spinner, StatCard, StatusBadge } from "@/components/ui";
-import { compactNumber, money } from "@/lib/format";
 
 const PIPELINE_ORDER = [
   "CANDIDATE",
   "RENDERING",
   "ENHANCING",
-  "READY_FOR_REVIEW",
   "APPROVED",
-  "PUBLISHING",
-  "PUBLISHED",
+  "REJECTED",
+  "FAILED",
 ];
 
 export default function OverviewPage() {
@@ -19,16 +17,21 @@ export default function OverviewPage() {
   if (isLoading || !data) return <Spinner />;
 
   const clipCount = (s: string) => data.clipCounts.find((c) => c.status === s)?.count ?? 0;
+  const totalClips = data.clipCounts.reduce((n, c) => n + c.count, 0);
+  const totalVideos = data.videoCounts.reduce((n, c) => n + c.count, 0);
+  const processing = data.videoCounts
+    .filter((c) => !["PROCESSED", "FAILED"].includes(c.status))
+    .reduce((n, c) => n + c.count, 0);
 
   return (
     <div>
-      <PageHeader title="Overview" subtitle="Pipeline health and today's production at a glance" />
+      <PageHeader title="Overview" subtitle="Pipeline health at a glance" />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Published today" value={data.publishedToday} accent="var(--success)" />
-        <StatCard label="Awaiting review" value={data.reviewQueueDepth} accent="var(--warning)" hint="the only manual step" />
-        <StatCard label="Total views" value={compactNumber(data.totals.views)} />
-        <StatCard label="Revenue" value={money(data.totals.revenue)} accent="var(--success)" />
+        <StatCard label="Videos" value={totalVideos} hint="uploaded sources" />
+        <StatCard label="Processing" value={processing} accent="var(--warning)" hint="still in the pipeline" />
+        <StatCard label="Clips" value={totalClips} accent="var(--primary)" />
+        <StatCard label="Ready to export" value={clipCount("APPROVED")} accent="var(--success)" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -40,17 +43,22 @@ export default function OverviewPage() {
               const max = Math.max(1, ...PIPELINE_ORDER.map(clipCount));
               return (
                 <div key={status} className="flex items-center gap-3">
-                  <div className="w-36 shrink-0"><StatusBadge status={status} /></div>
+                  <div className="w-36 shrink-0">
+                    <StatusBadge status={status} />
+                  </div>
                   <div className="flex-1 h-2 rounded-full surface-2 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${(count / max) * 100}%`, background: "var(--primary)" }} />
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${(count / max) * 100}%`, background: "var(--primary)" }}
+                    />
                   </div>
                   <div className="w-10 text-right text-sm tabular-nums">{count}</div>
                 </div>
               );
             })}
           </div>
-          <Link href="/review" className="inline-block mt-4 text-sm" style={{ color: "var(--primary)" }}>
-            Go to review queue →
+          <Link href="/library" className="inline-block mt-4 text-sm" style={{ color: "var(--primary)" }}>
+            Go to library →
           </Link>
         </Card>
 
@@ -70,34 +78,6 @@ export default function OverviewPage() {
           </div>
         </Card>
       </div>
-
-      <Card className="mt-6">
-        <h2 className="font-semibold mb-4">Top performing clips</h2>
-        {data.topClips.length === 0 ? (
-          <p className="text-sm" style={{ color: "var(--muted)" }}>No published clips yet.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left" style={{ color: "var(--muted)" }}>
-                <th className="pb-2 font-medium">Title</th>
-                <th className="pb-2 font-medium">Platform</th>
-                <th className="pb-2 font-medium text-right">Views</th>
-                <th className="pb-2 font-medium text-right">Revenue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.topClips.map((c) => (
-                <tr key={c.clipId} className="border-t" style={{ borderColor: "var(--border)" }}>
-                  <td className="py-2 pr-2 max-w-xs truncate">{c.title ?? c.clipId}</td>
-                  <td className="py-2"><StatusBadge status={c.platform} /></td>
-                  <td className="py-2 text-right tabular-nums">{compactNumber(c.views)}</td>
-                  <td className="py-2 text-right tabular-nums">{money(c.revenue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
     </div>
   );
 }

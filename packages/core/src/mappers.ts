@@ -16,7 +16,7 @@ const isoOrNull = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 export type ClipListRow = Prisma.ClipGetPayload<{
   include: {
     enhancement: true;
-    campaign: { include: { creator: true } };
+    campaign: true;
     publishJobs: { include: { socialAccount: true } };
   };
 }>;
@@ -26,18 +26,16 @@ type AccountRow = Prisma.SocialAccountGetPayload<{
 }>;
 
 type VideoListRow = Prisma.SourceVideoGetPayload<{
-  include: { campaign: { include: { creator: true } }; _count: { select: { clips: true } } };
+  include: { campaign: true; _count: { select: { clips: true } } };
 }>;
 
 export function toCampaignDto(c: CampaignWithRelations): CampaignDto {
   return {
     id: c.id,
     name: c.name,
-    creator: { id: c.creator.id, name: c.creator.name, handle: c.creator.handle },
     sourceVideoUrl: c.sourceVideoUrl ?? null,
     sourcePlatform: c.sourcePlatform,
     allowedPlatforms: c.allowedPlatforms,
-    revenueRatePerMille: Number(c.revenueRatePerMille),
     rules: (c.rules as Record<string, unknown> | null) ?? null,
     expiresAt: isoOrNull(c.expiresAt),
     status: c.status,
@@ -52,7 +50,6 @@ export function toSourceVideoDto(v: VideoListRow): SourceVideoDto {
     id: v.id,
     campaignId: v.campaignId,
     campaignName: v.campaign.name,
-    creatorName: v.campaign.creator.name,
     originalUrl: v.originalUrl,
     status: v.status,
     title: v.title,
@@ -83,7 +80,6 @@ export async function toClipDto(clip: ClipListRow, storage: ObjectStorage): Prom
     id: clip.id,
     campaignId: clip.campaignId,
     campaignName: clip.campaign.name,
-    creatorName: clip.campaign.creator.name,
     allowedPlatforms: clip.campaign.allowedPlatforms,
     sourceVideoId: clip.sourceVideoId,
     startSec: clip.startSec,
@@ -150,7 +146,6 @@ export function toAccountDto(a: AccountRow): SocialAccountDto {
     handle: a.handle,
     displayName: a.displayName,
     status: a.status,
-    dailyQuota: a.dailyQuota,
     publishJobCount: a._count.publishJobs,
     hasCredentials: a.credentials !== null,
     createdAt: iso(a.createdAt),

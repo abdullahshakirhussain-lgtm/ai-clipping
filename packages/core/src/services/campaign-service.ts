@@ -22,22 +22,11 @@ export class CampaignService {
   }
 
   async create(input: CreateCampaignInput): Promise<CampaignDto> {
-    let creatorId = input.creatorId;
-    if (!creatorId) {
-      const inline = input.creator!;
-      const existing = await this.repos.creators.byHandle(inline.handle);
-      creatorId = existing ? existing.id : (await this.repos.creators.create(inline)).id;
-    } else if (!(await this.repos.creators.byId(creatorId))) {
-      throw new ValidationError(`creatorId ${creatorId} does not exist`);
-    }
-
     const campaign = await this.repos.campaigns.create({
-      creatorId,
       name: input.name,
       sourceVideoUrl: input.sourceVideoUrl,
       sourcePlatform: input.sourcePlatform,
       allowedPlatforms: input.allowedPlatforms,
-      revenueRatePerMille: input.revenueRatePerMille,
       rules: (input.rules ?? undefined) as never,
       expiresAt: input.expiresAt ? new Date(input.expiresAt) : undefined,
       status: input.ingestNow ? "ACTIVE" : "DRAFT",
@@ -57,7 +46,6 @@ export class CampaignService {
       name: input.name,
       status: input.status,
       allowedPlatforms: input.allowedPlatforms,
-      revenueRatePerMille: input.revenueRatePerMille,
       rules: (input.rules ?? undefined) as never,
       expiresAt:
         input.expiresAt === undefined ? undefined : input.expiresAt ? new Date(input.expiresAt) : null,

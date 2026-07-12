@@ -13,7 +13,6 @@ export interface SourceVideoDetail extends SourceVideoDto {
 
 /** Default project every direct upload lands in ("upload and go"). */
 const DEFAULT_PROJECT_NAME = "My Uploads";
-const DEFAULT_CREATOR_HANDLE = "me";
 
 export class VideoService {
   constructor(
@@ -90,16 +89,10 @@ export class VideoService {
   }
 
   private async getOrCreateDefaultCampaignId(): Promise<string> {
-    const creator =
-      (await this.repos.creators.byHandle(DEFAULT_CREATOR_HANDLE)) ??
-      (await this.repos.creators.create({ name: "Me", handle: DEFAULT_CREATOR_HANDLE }));
     const campaigns = await this.repos.campaigns.list();
-    const existing = campaigns.find(
-      (c) => c.creatorId === creator.id && c.name === DEFAULT_PROJECT_NAME,
-    );
+    const existing = campaigns.find((c) => c.name === DEFAULT_PROJECT_NAME);
     if (existing) return existing.id;
     const created = await this.repos.campaigns.create({
-      creatorId: creator.id,
       name: DEFAULT_PROJECT_NAME,
       sourceVideoUrl: null,
       allowedPlatforms: ["TIKTOK", "INSTAGRAM", "YOUTUBE"],

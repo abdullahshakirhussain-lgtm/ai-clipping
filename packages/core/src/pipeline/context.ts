@@ -24,8 +24,6 @@ export interface PipelineContext {
   config: {
     /** Clip detection + scoring knobs (env-driven; see env.ts DETECT_*). */
     detection: DetectionConfig;
-    /** How often analytics.sync re-polls a published post, ms. */
-    metricsSyncIntervalMs: number;
   };
 }
 

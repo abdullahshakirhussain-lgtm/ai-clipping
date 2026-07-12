@@ -6,7 +6,6 @@ export const QUEUE_NAMES = [
   "clip.render",
   "clip.enhance",
   "publish.execute",
-  "analytics.sync",
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -19,7 +18,6 @@ export interface JobPayloads {
   "clip.render": { clipId: string };
   "clip.enhance": { clipId: string };
   "publish.execute": { publishJobId: string };
-  "analytics.sync": Record<string, never>;
 }
 
 export interface EnqueueOptions {

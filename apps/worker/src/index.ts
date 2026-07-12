@@ -3,14 +3,14 @@ import { startBullMqWorkers } from "@clipfactory/queue";
 
 /**
  * Dedicated worker process for production (QUEUE_DRIVER=bullmq). Runs the
- * pipeline stage processors and a periodic analytics-sync scheduler.
+ * pipeline stage processors.
  *
  * In dev (QUEUE_DRIVER=inprocess) the API process runs the pipeline itself, so
  * this process just idles with a warning — no Redis required to try the app.
  */
 async function main() {
   const container = createContainer({ withHandlers: true });
-  const { env, logger, handlers, dispatcher } = container;
+  const { env, logger, handlers } = container;
 
   if (env.QUEUE_DRIVER !== "bullmq") {
     logger.warn(
@@ -27,17 +27,8 @@ async function main() {
   });
   logger.info("worker started — processing pipeline queues");
 
-  // Periodic metrics sync for published posts
-  const syncEvery = 6 * 60 * 60 * 1000;
-  const timer = setInterval(() => {
-    dispatcher.enqueue("analytics.sync", {}, { jobId: "analytics-sync" }).catch((err) => {
-      logger.error({ err: String(err) }, "failed to enqueue analytics sync");
-    });
-  }, syncEvery);
-
   const shutdown = async () => {
     logger.info("shutting down worker");
-    clearInterval(timer);
     await workers.close();
     await container.shutdown();
     process.exit(0);

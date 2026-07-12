@@ -7,18 +7,18 @@ export default function VideosPage() {
   const { data, isLoading } = useVideos();
   return (
     <div>
-      <PageHeader title="Video Queue" subtitle="Source videos moving through download → transcript → detection" />
+      <PageHeader title="Video Queue" subtitle="Source videos moving through transcription → detection → render" />
       {isLoading ? (
         <Spinner />
       ) : !data || data.length === 0 ? (
-        <EmptyState title="No source videos yet" hint="Ingest a campaign to see intake progress here." />
+        <EmptyState title="No source videos yet" hint="Upload a video to see intake progress here." />
       ) : (
         <Card className="p-0 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left" style={{ color: "var(--muted)" }}>
                 <th className="p-4 font-medium">Title</th>
-                <th className="p-4 font-medium">Campaign</th>
+                <th className="p-4 font-medium">Project</th>
                 <th className="p-4 font-medium">Duration</th>
                 <th className="p-4 font-medium">Clips</th>
                 <th className="p-4 font-medium">Status</th>
@@ -29,7 +29,7 @@ export default function VideosPage() {
               {data.map((v) => (
                 <tr key={v.id} className="border-t" style={{ borderColor: "var(--border)" }}>
                   <td className="p-4 max-w-xs truncate">{v.title ?? v.originalUrl}</td>
-                  <td className="p-4">{v.campaignName}<div className="text-xs" style={{ color: "var(--muted)" }}>{v.creatorName}</div></td>
+                  <td className="p-4">{v.campaignName}</td>
                   <td className="p-4">{v.durationSec ? duration(v.durationSec) : "—"}</td>
                   <td className="p-4">{v.clipCount}</td>
                   <td className="p-4"><StatusBadge status={v.status} />{v.error && <div className="text-xs mt-1" style={{ color: "var(--danger)" }}>{v.error}</div>}</td>

@@ -1,7 +1,6 @@
 import type { CampaignStatus, PrismaClient, Prisma } from "@prisma/client";
 
 const listInclude = {
-  creator: true,
   _count: { select: { sourceVideos: true, clips: true } },
 } satisfies Prisma.CampaignInclude;
 

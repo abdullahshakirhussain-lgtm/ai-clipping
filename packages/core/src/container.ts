@@ -160,7 +160,6 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
         chunkMinutes: env.DETECT_CHUNK_MIN,
         audioPeaks: env.DETECT_AUDIO_PEAKS,
       },
-      metricsSyncIntervalMs: 6 * 60 * 60 * 1000,
     },
   } as PipelineContext;
 
