@@ -95,32 +95,52 @@ export interface RenderClipInput {
    * escaping in the subtitles filter.
    */
   captionsFileName?: string;
+  /**
+   * Optional jump-cut plan: CLIP-RELATIVE keep spans (0 = clip start). Frames /
+   * audio outside these spans are dropped and the stream re-timed, removing dead
+   * air. When omitted (or a single full-window span) the clip renders unchanged.
+   */
+  selectSpans?: Array<{ s: number; e: number }>;
   workDir: string;
 }
 
-/** Cut a window, fill to 9:16 (1080x1920), optionally burn captions. */
+/** Cut a window, remove dead air, fill to 9:16 (1080x1920), optionally burn captions. */
 export async function renderClip(input: RenderClipInput): Promise<void> {
   const duration = input.endSec - input.startSec;
-  // Scale to cover 1080x1920 then centre-crop to exact even dimensions — works
-  // for any source aspect ratio (avoids the non-integer crop the old expression
-  // produced for 16:9 sources).
-  const filters = ["scale=1080:1920:force_original_aspect_ratio=increase", "crop=1080:1920"];
-  if (input.captionsFileName) filters.push(`subtitles=${input.captionsFileName}`);
-  await run(
-    bin("ffmpeg"),
-    [
-      "-y",
-      "-ss", input.startSec.toFixed(3),
-      "-i", input.inputPath,
-      "-t", duration.toFixed(3),
-      "-vf", filters.join(","),
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-      "-c:a", "aac", "-b:a", "128k",
-      "-movflags", "+faststart",
-      input.outPath,
-    ],
-    { cwd: input.workDir, timeoutMs: 4 * 60 * 1000 },
+
+  // A jump-cut plan is "real" only if it actually drops something; a single span
+  // covering (almost) the whole window is a no-op we skip to avoid a needless filter.
+  const spans = input.selectSpans ?? [];
+  const dropsSomething =
+    spans.length > 1 || (spans.length === 1 && spans[0]!.e - spans[0]!.s < duration - 0.15);
+
+  const vFilters: string[] = [];
+  const aFilters: string[] = [];
+  if (dropsSomething) {
+    const between = spans.map((sp) => `between(t,${sp.s.toFixed(3)},${sp.e.toFixed(3)})`).join("+");
+    vFilters.push(`select='${between}'`, "setpts=N/FRAME_RATE/TB");
+    aFilters.push(`aselect='${between}'`, "asetpts=N/SR/TB");
+  }
+  // Scale to cover 1080x1920 then centre-crop — works for any source aspect ratio.
+  vFilters.push("scale=1080:1920:force_original_aspect_ratio=increase", "crop=1080:1920");
+  if (input.captionsFileName) vFilters.push(`subtitles=${input.captionsFileName}`);
+
+  const args = [
+    "-y",
+    "-ss", input.startSec.toFixed(3),
+    "-i", input.inputPath,
+    "-t", duration.toFixed(3),
+    "-vf", vFilters.join(","),
+  ];
+  if (aFilters.length) args.push("-af", aFilters.join(","));
+  args.push(
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    "-c:a", "aac", "-b:a", "128k",
+    "-movflags", "+faststart",
+    input.outPath,
   );
+
+  await run(bin("ffmpeg"), args, { cwd: input.workDir, timeoutMs: 4 * 60 * 1000 });
 }
 
 /**

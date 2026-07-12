@@ -4,10 +4,11 @@ import type { TranscriptSegment } from "@clipfactory/ai";
 import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db";
 import {
   analyzeLoudness,
-  buildAss,
+  type CaptionWord,
   extractAudio,
   extractThumbnail,
   findLoudnessPeaks,
+  planClipEdit,
   renderClip,
 } from "@clipfactory/media";
 import type { PublishPlatform } from "@clipfactory/publishers";
@@ -171,7 +172,9 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
         startSec: candidate.startSec,
         endSec: candidate.endSec,
         status: ClipStatus.RENDERING,
-        detectionReason: candidate.reason,
+        // Store the punchy hook line: it seeds the on-screen hook overlay, the
+        // enhance step, and the grid's fallback title.
+        detectionReason: candidate.hook || candidate.reason,
         detectionSource: candidate.source,
         captionStyle: "bold-center",
         hookScore: score.hookScore,
@@ -221,34 +224,53 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
       await ctx.storage.getToFile(sourceKey(clip.sourceVideoId), localSource);
     }
     const segments = (clip.sourceVideo.transcript?.segments as unknown as TranscriptSegment[]) ?? [];
+    // Collect word timestamps inside the window for jump-cuts + karaoke captions.
+    const words: CaptionWord[] = [];
+    for (const s of segments) {
+      if (s.end <= clip.startSec || s.start >= clip.endSec || !s.words) continue;
+      for (const w of s.words) words.push({ start: w.start, end: w.end, word: w.word });
+    }
+
+    // Plan the edit: trim leading filler, cut internal dead air, karaoke captions,
+    // and a first-frame hook banner (the stored hook line).
+    const plan = planClipEdit({
+      words,
+      clipStart: clip.startSec,
+      clipEnd: clip.endSec,
+      styleName: clip.captionStyle,
+      hookText: clip.detectionReason ?? undefined,
+    });
     let captionsFileName: string | undefined;
-    if (segments.length > 0) {
-      const ass = buildAss(segments, clip.startSec, clip.endSec, clip.captionStyle);
-      await fs.writeFile(join(workDir, assName), ass, "utf8");
+    if (plan.ass.trim()) {
+      await fs.writeFile(join(workDir, assName), plan.ass, "utf8");
       captionsFileName = assName;
     }
 
-    const renderArgs = {
+    const baseArgs = {
       inputPath: localSource,
       outPath,
       startSec: clip.startSec,
       endSec: clip.endSec,
       workDir,
     };
+    // Progressive fallback so a caption/filter hiccup never loses the clip:
+    // full (cuts + captions) → cuts only → plain window.
     try {
-      await renderClip({ ...renderArgs, captionsFileName });
+      await renderClip({ ...baseArgs, selectSpans: plan.selectSpans, captionsFileName });
     } catch (err) {
-      // Never lose a clip to a caption/font issue: retry once without burned
-      // captions so at least a watchable video is produced.
-      if (captionsFileName) {
-        ctx.logger.error(
-          { clipId, err: String(err) },
-          "render with captions failed; retrying without captions",
-        );
-        await renderClip(renderArgs);
-      } else {
-        throw err;
+      ctx.logger.error({ clipId, err: String(err) }, "full render failed; retrying cuts-only");
+      try {
+        await renderClip({ ...baseArgs, selectSpans: plan.selectSpans });
+      } catch (err2) {
+        ctx.logger.error({ clipId, err: String(err2) }, "cuts render failed; rendering plain window");
+        await renderClip(baseArgs);
       }
+    }
+    if (plan.removedSec > 0.2) {
+      ctx.logger.info(
+        { clipId, removedSec: Number(plan.removedSec.toFixed(1)), keptSec: Number(plan.clipDurationSec.toFixed(1)) },
+        "jump-cut dead air removed",
+      );
     }
     await extractThumbnail(outPath, thumbPath, 0.5);
 
