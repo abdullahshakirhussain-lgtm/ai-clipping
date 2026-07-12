@@ -52,19 +52,30 @@ export class VideoService {
     campaignId?: string;
   }): Promise<{ sourceVideoId: string }> {
     const campaignId = input.campaignId ?? (await this.getOrCreateDefaultCampaignId());
-    // Create the row first so the storage key can use its id.
+    // Create the row immediately so the video shows up in the queue at once.
     const video = await this.repos.sourceVideos.create({
       campaignId,
       originalUrl: null,
       originalFilename: input.filename,
       title: input.filename,
-      status: "DOWNLOADING",
+      status: "PENDING",
     });
+    // Probing + copying a large file to storage can take tens of seconds — far
+    // longer than a proxy will hold the request open (Railway closes long
+    // uploads → HTTP 499). So respond NOW and finish the heavy work in the
+    // background; the video's status advances as it processes.
+    void this.finishIngest(video.id, input.localPath);
+    return { sourceVideoId: video.id };
+  }
+
+  /** Background: probe the uploaded file, push it to storage, start the pipeline. */
+  private async finishIngest(videoId: string, localPath: string): Promise<void> {
     try {
-      const meta = await probe(input.localPath);
-      const key = `sources/${video.id}/source.mp4`;
-      await this.storage.putFile(key, input.localPath, "video/mp4");
-      await this.repos.sourceVideos.update(video.id, {
+      await this.repos.sourceVideos.update(videoId, { status: "DOWNLOADING" });
+      const meta = await probe(localPath);
+      const key = `sources/${videoId}/source.mp4`;
+      await this.storage.putFile(key, localPath, "video/mp4");
+      await this.repos.sourceVideos.update(videoId, {
         status: "DOWNLOADED",
         storageKey: key,
         durationSec: meta.durationSec,
@@ -73,18 +84,14 @@ export class VideoService {
         metadata: meta.raw as never,
         error: null,
       });
-      await this.dispatcher.enqueue(
-        "video.transcribe",
-        { sourceVideoId: video.id },
-        { jobId: video.id },
-      );
-      return { sourceVideoId: video.id };
+      await this.dispatcher.enqueue("video.transcribe", { sourceVideoId: videoId }, { jobId: videoId });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await this.repos.sourceVideos.update(video.id, { status: "FAILED", error: message });
-      throw err;
+      await this.repos.sourceVideos
+        .update(videoId, { status: "FAILED", error: message })
+        .catch(() => {});
     } finally {
-      await fs.rm(input.localPath, { force: true }).catch(() => {});
+      await fs.rm(localPath, { force: true }).catch(() => {});
     }
   }
 
