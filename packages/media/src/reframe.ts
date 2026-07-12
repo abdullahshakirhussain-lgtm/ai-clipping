@@ -1,9 +1,12 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import * as ort from "onnxruntime-node";
-import sharp from "sharp";
 import { extractFrames } from "./ffmpeg.js";
+
+// onnxruntime-node and sharp are loaded LAZILY (dynamic import) so their native
+// bindings only initialize when reframing is actually used. If a binary is
+// missing/broken in the container, planReframe catches it and falls back to the
+// center crop — it never crashes the API at startup.
 
 /**
  * Local subject-aware reframing (v1: smart horizontal reposition).
@@ -24,17 +27,27 @@ const IN_H = 240;
 const SCORE_THRESHOLD = 0.7;
 const SAMPLES = 6;
 
-let sessionPromise: Promise<ort.InferenceSession> | null = null;
-function getSession(): Promise<ort.InferenceSession> {
+type OrtModule = typeof import("onnxruntime-node");
+type Session = Awaited<ReturnType<OrtModule["InferenceSession"]["create"]>>;
+
+let sessionPromise: Promise<Session> | null = null;
+function getSession(): Promise<Session> {
   if (!sessionPromise) {
-    // logSeverityLevel 4 silences this old model's noisy initializer warnings.
-    sessionPromise = ort.InferenceSession.create(MODEL_PATH, { logSeverityLevel: 4 });
+    sessionPromise = (async () => {
+      const ort = await import("onnxruntime-node");
+      // logSeverityLevel 4 silences this old model's noisy initializer warnings.
+      return ort.InferenceSession.create(MODEL_PATH, { logSeverityLevel: 4 });
+    })();
   }
   return sessionPromise;
 }
 
 /** Detect the dominant (largest, most-confident) face's normalized center x, or null. */
 async function detectDominantFaceX(jpegPath: string): Promise<number | null> {
+  const [{ default: sharp }, ort] = await Promise.all([
+    import("sharp"),
+    import("onnxruntime-node"),
+  ]);
   const { data } = await sharp(jpegPath)
     .resize(IN_W, IN_H, { fit: "fill" })
     .removeAlpha()
