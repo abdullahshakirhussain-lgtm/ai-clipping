@@ -75,6 +75,8 @@ export const ClipDtoSchema = z.object({
   detectionSource: z.string().nullable(),
   kept: z.boolean(),
   category: z.string().nullable(),
+  /** True when auto-SFX cues were applied to this clip's render. */
+  hasSfx: z.boolean(),
   outcome: ClipOutcomeSchema.nullable(),
   publishJobs: z.array(ClipPublishSummarySchema),
   createdAt: z.string(),

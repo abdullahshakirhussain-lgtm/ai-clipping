@@ -14,7 +14,10 @@ export interface CaptionSegment {
 export interface CaptionStyleSpec {
   fontName: string;
   fontSize: number;
-  primaryColour: string; // ASS &HAABBGGRR
+  /** Colour of un-spoken words (ASS &HAABBGGRR). */
+  primaryColour: string;
+  /** Colour a word turns as it's spoken (the karaoke highlight). */
+  activeColour: string;
   outlineColour: string;
   outline: number;
   bold: boolean;
@@ -24,30 +27,36 @@ export interface CaptionStyleSpec {
 }
 
 export const CAPTION_STYLES: Record<string, CaptionStyleSpec> = {
+  // White words that light up amber as spoken.
   "bold-center": {
     fontName: "Arial",
     fontSize: 84,
     primaryColour: "&H00FFFFFF",
+    activeColour: "&H0000E5FF",
     outlineColour: "&H00000000",
     outline: 5,
     bold: true,
     alignment: 5,
     marginV: 0,
   },
+  // Smaller, subtle — white words that pop green.
   "clean-bottom": {
     fontName: "Arial",
-    fontSize: 64,
+    fontSize: 62,
     primaryColour: "&H00FFFFFF",
+    activeColour: "&H0037D24C",
     outlineColour: "&H00000000",
     outline: 3,
     bold: false,
     alignment: 2,
     marginV: 260,
   },
+  // Amber words that flip white as spoken (inverse of bold-center).
   "yellow-pop": {
     fontName: "Arial",
     fontSize: 84,
     primaryColour: "&H0000E5FF",
+    activeColour: "&H00FFFFFF",
     outlineColour: "&H00000000",
     outline: 5,
     bold: true,

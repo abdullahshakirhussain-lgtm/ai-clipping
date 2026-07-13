@@ -104,6 +104,9 @@ export async function toClipDto(clip: ClipListRow, storage: ObjectStorage): Prom
     detectionSource: clip.detectionSource,
     kept: clip.kept,
     category: clip.category ?? null,
+    hasSfx: Array.isArray((clip.edl as { sfx?: unknown[] } | null)?.sfx)
+      ? (clip.edl as { sfx?: unknown[] }).sfx!.length > 0
+      : false,
     outcome: clip.outcome ?? null,
     publishJobs: clip.publishJobs.map((j) => ({
       jobId: j.id,

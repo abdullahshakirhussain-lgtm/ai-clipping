@@ -24,9 +24,6 @@ const LEADING_FILLERS = new Set([
   "um", "uh", "er", "ah", "hmm", "so", "and", "but", "like", "okay", "ok", "well", "yeah", "right",
 ]);
 
-const ASS_HIGHLIGHT = "&H0000E5FF"; // amber (BBGGRR) — the "sung" word
-const ASS_BASE = "&H00FFFFFF"; // white — upcoming words
-
 export type CaptionPosition = "top" | "middle" | "bottom";
 
 /** Selectable caption looks (maps to CAPTION_STYLES) shown in the UI. */
@@ -221,7 +218,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,${style.fontName},${style.fontSize},${ASS_HIGHLIGHT},${ASS_BASE},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${style.outline},2,${place.alignment},60,60,${place.marginV},1
+Style: Karaoke,${style.fontName},${style.fontSize},${style.activeColour},${style.primaryColour},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${style.outline},2,${place.alignment},60,60,${place.marginV},1
 Style: Hook,${style.fontName},72,&H00FFFFFF,&H00FFFFFF,&H00000000,&HB0000000,-1,0,3,4,0,8,80,80,120,1
 
 [Events]

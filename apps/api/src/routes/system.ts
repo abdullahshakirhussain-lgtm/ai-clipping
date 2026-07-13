@@ -21,4 +21,17 @@ export const systemRoutes: RouteModule = (app, { container }): void => {
     },
     (req) => req.authUser!,
   );
+
+  // Hard reset: wipe all domain data. Requires an explicit confirm token.
+  app.post(
+    "/system/wipe",
+    {
+      schema: {
+        tags: ["system"],
+        body: z.object({ confirm: z.literal("WIPE") }),
+        response: { 200: z.object({ wiped: z.literal(true) }) },
+      },
+    },
+    () => container.services.system.wipeAll(),
+  );
 };

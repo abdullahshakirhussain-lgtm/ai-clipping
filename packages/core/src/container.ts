@@ -34,6 +34,7 @@ import { AnalyticsService } from "./services/analytics-service.js";
 import { CalibrationService } from "./services/calibration-service.js";
 import { CampaignService } from "./services/campaign-service.js";
 import { DistributionService } from "./services/distribution-service.js";
+import { SystemService } from "./services/system-service.js";
 import { ClipService } from "./services/clip-service.js";
 import { PublishService } from "./services/publish-service.js";
 import { ReviewService } from "./services/review-service.js";
@@ -57,6 +58,7 @@ export interface Container {
     analytics: AnalyticsService;
     calibration: CalibrationService;
     distribution: DistributionService;
+    system: SystemService;
   };
   shutdown(): Promise<void>;
 }
@@ -205,6 +207,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     analytics: new AnalyticsService(repos, dispatcher),
     calibration: new CalibrationService(repos),
     distribution: new DistributionService(repos, storage),
+    system: new SystemService(),
   };
 
   return {
