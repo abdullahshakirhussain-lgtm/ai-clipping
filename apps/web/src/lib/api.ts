@@ -5,7 +5,9 @@ import type {
   CampaignDto,
   ClipDetailDto,
   ClipDto,
+  DistributionOverview,
   OverviewDto,
+  PostTask,
   PublishJobDto,
   SocialAccountDto,
   SourceVideoDto,
@@ -136,16 +138,31 @@ export function clipExportUrl(ids?: string[]): string {
   return `${V1}/clips/export${q}`;
 }
 
+/** Scheduler bundle (schedule.csv + media) for the distribution queue. */
+export function distributionExportUrl(accountId?: string): string {
+  return `${V1}/distribution/export${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ""}`;
+}
+
 export const useClip = (id: string | null) => useApi<ClipDetailDto>(id ? `/clips/${id}` : null);
 
 export const useCalibration = () => useApi<CalibrationDto>("/calibration", { refreshInterval: 15000 });
+
+export const useDistributionOverview = () =>
+  useApi<DistributionOverview>("/distribution/overview", { refreshInterval: 8000 });
+
+export const useDistributionQueue = (accountId: string | null) =>
+  useApi<PostTask[]>(accountId ? `/distribution/queue?accountId=${accountId}` : null, {
+    refreshInterval: 8000,
+  });
 
 export type {
   CalibrationDto,
   CampaignDto,
   ClipDto,
   ClipDetailDto,
+  DistributionOverview,
   OverviewDto,
+  PostTask,
   PublishJobDto,
   SocialAccountDto,
   SourceVideoDto,

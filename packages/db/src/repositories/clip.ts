@@ -64,6 +64,17 @@ export class ClipRepository {
     return this.prisma.clip.update({ where: { id }, data: { outcome } });
   }
 
+  /** Kept + approved clips that have a category, with existing target-account ids. */
+  distributable() {
+    return this.prisma.clip.findMany({
+      where: { kept: true, status: "APPROVED", category: { not: null } },
+      include: {
+        enhancement: true,
+        publishJobs: { select: { socialAccountId: true } },
+      },
+    });
+  }
+
   /** All outcome-labeled clips with their stored score breakdown, for calibration. */
   labeledForCalibration(): Promise<Array<{ scoreBreakdown: Prisma.JsonValue; outcome: ClipOutcome | null }>> {
     return this.prisma.clip.findMany({

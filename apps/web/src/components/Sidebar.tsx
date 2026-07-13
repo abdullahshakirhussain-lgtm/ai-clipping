@@ -9,6 +9,8 @@ const NAV: Array<{ href: string; label: string; badge?: "review" }> = [
   { href: "/upload", label: "Upload" },
   { href: "/videos", label: "Video Queue" },
   { href: "/library", label: "Library" },
+  { href: "/distribution", label: "Distribution" },
+  { href: "/accounts", label: "Accounts" },
   { href: "/settings", label: "Settings" },
 ];
 

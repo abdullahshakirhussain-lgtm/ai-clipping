@@ -19,10 +19,12 @@
     "@clipfactory/queue": "workspace:*",
     "@clipfactory/storage": "workspace:*",
     "dotenv": "^16.4.7",
+    "luxon": "^3.5.0",
     "pino": "^9.6.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/luxon": "^3.4.2",
     "@types/node": "^22.13.0",
     "pino-pretty": "^13.0.0",
     "typescript": "^5.7.3",

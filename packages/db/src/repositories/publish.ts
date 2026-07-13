@@ -37,6 +37,48 @@ export class PublishRepository {
     return this.prisma.publishJob.update({ where: { id }, data, include: jobInclude });
   }
 
+  /** Scheduled/queued slot times already assigned to an account (for cadence collisions). */
+  scheduledTimesForAccount(socialAccountId: string): Promise<Date[]> {
+    return this.prisma.publishJob
+      .findMany({
+        where: {
+          socialAccountId,
+          status: { in: ["SCHEDULED", "QUEUED"] },
+          scheduledAt: { not: null },
+        },
+        select: { scheduledAt: true },
+      })
+      .then((rows) => rows.map((r) => r.scheduledAt).filter((d): d is Date => d !== null));
+  }
+
+  /** Jobs for one account in the given statuses, soonest scheduled first. */
+  forAccount(socialAccountId: string, statuses: PublishJobStatus[]) {
+    return this.prisma.publishJob.findMany({
+      where: { socialAccountId, status: { in: statuses } },
+      include: jobInclude,
+      orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }],
+      take: 300,
+    });
+  }
+
+  /** Count of PUBLISHED jobs per account since `date` (today's progress). */
+  publishedCountsByAccount(since: Date): Promise<Array<{ socialAccountId: string; count: number }>> {
+    return this.prisma.publishJob
+      .groupBy({
+        by: ["socialAccountId"],
+        where: { status: "PUBLISHED", publishedAt: { gte: since } },
+        _count: true,
+      })
+      .then((rows) => rows.map((r) => ({ socialAccountId: r.socialAccountId, count: r._count })));
+  }
+
+  /** Count of still-pending (SCHEDULED) jobs per account. */
+  pendingCountsByAccount(): Promise<Array<{ socialAccountId: string; count: number }>> {
+    return this.prisma.publishJob
+      .groupBy({ by: ["socialAccountId"], where: { status: "SCHEDULED" }, _count: true })
+      .then((rows) => rows.map((r) => ({ socialAccountId: r.socialAccountId, count: r._count })));
+  }
+
   /** Guarded transition; returns false when the job was not in `from`. */
   async transition(id: string, from: PublishJobStatus[], to: PublishJobStatus) {
     const result = await this.prisma.publishJob.updateMany({

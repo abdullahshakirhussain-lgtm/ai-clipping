@@ -54,6 +54,7 @@ export class VideoService {
     captionPosition?: string;
     reframe?: boolean;
     autoEnhance?: boolean;
+    category?: string;
   }): Promise<{ sourceVideoId: string }> {
     const campaignId = input.campaignId ?? (await this.getOrCreateDefaultCampaignId());
     // Create the row immediately so the video shows up in the queue at once.
@@ -67,6 +68,7 @@ export class VideoService {
       captionPosition: input.captionPosition ?? "bottom",
       reframe: input.reframe ?? false,
       autoEnhance: input.autoEnhance ?? false,
+      category: input.category?.trim() || null,
     });
     // Probing + copying a large file to storage can take tens of seconds — far
     // longer than a proxy will hold the request open (Railway closes long

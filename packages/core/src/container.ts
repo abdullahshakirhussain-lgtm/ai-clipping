@@ -33,6 +33,7 @@ import { AccountService } from "./services/account-service.js";
 import { AnalyticsService } from "./services/analytics-service.js";
 import { CalibrationService } from "./services/calibration-service.js";
 import { CampaignService } from "./services/campaign-service.js";
+import { DistributionService } from "./services/distribution-service.js";
 import { ClipService } from "./services/clip-service.js";
 import { PublishService } from "./services/publish-service.js";
 import { ReviewService } from "./services/review-service.js";
@@ -55,6 +56,7 @@ export interface Container {
     accounts: AccountService;
     analytics: AnalyticsService;
     calibration: CalibrationService;
+    distribution: DistributionService;
   };
   shutdown(): Promise<void>;
 }
@@ -202,6 +204,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     accounts: new AccountService(repos),
     analytics: new AnalyticsService(repos, dispatcher),
     calibration: new CalibrationService(repos),
+    distribution: new DistributionService(repos, storage),
   };
 
   return {

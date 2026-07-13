@@ -1,11 +1,16 @@
 "use client";
-import { useRef, useState } from "react";
-import { apiUpload, revalidateAll, useVideos, type SourceVideoDto } from "@/lib/api";
+import { useMemo, useRef, useState } from "react";
+import { apiUpload, revalidateAll, useAccounts, useVideos, type SourceVideoDto } from "@/lib/api";
 import { Button, Card, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
 import { timeAgo } from "@/lib/format";
 
 export default function UploadPage() {
   const { data: videos } = useVideos();
+  const { data: accounts } = useAccounts();
+  const categories = useMemo(
+    () => [...new Set((accounts ?? []).map((a) => a.category))].sort(),
+    [accounts],
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -15,13 +20,15 @@ export default function UploadPage() {
   const [position, setPosition] = useState("bottom");
   const [reframe, setReframe] = useState(false);
   const [autoEnhance, setAutoEnhance] = useState(false);
+  const [category, setCategory] = useState("");
 
   async function upload(file: File) {
     setBusy(true);
     setError(null);
     setProgress(0);
     try {
-      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}`;
+      const cat = category ? `&category=${encodeURIComponent(category)}` : "";
+      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}${cat}`;
       await apiUpload<{ sourceVideoId: string }>(`/videos/upload${qs}`, file, setProgress);
       await revalidateAll();
     } catch (err) {
@@ -42,6 +49,20 @@ export default function UploadPage() {
 
       <Card className="mb-6">
         <div className="flex gap-4 mb-4 flex-wrap">
+          <label className="text-sm">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="px-3 py-2 rounded-lg surface-2 border text-sm"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <option value="">— none —</option>
+              {categories.map((c) => (
+                <option key={c} value={c} className="capitalize">{c}</option>
+              ))}
+            </select>
+          </label>
           <label className="text-sm">
             <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Caption style</span>
             <select

@@ -74,6 +74,7 @@ export const ClipDtoSchema = z.object({
   scoreBreakdown: z.record(z.unknown()).nullable(),
   detectionSource: z.string().nullable(),
   kept: z.boolean(),
+  category: z.string().nullable(),
   outcome: ClipOutcomeSchema.nullable(),
   publishJobs: z.array(ClipPublishSummarySchema),
   createdAt: z.string(),

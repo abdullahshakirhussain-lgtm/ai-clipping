@@ -204,6 +204,8 @@ model SourceVideo {
   reframe         Boolean       @default(false)
   /// Opt-in auto sound-effects (whoosh/boom/faaaaa on absurd moments), kept sparse.
   autoEnhance     Boolean       @default(false)
+  /// Content category chosen at upload; clips inherit it and route to matching accounts.
+  category        String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
@@ -250,6 +252,8 @@ model Clip {
   autoEnhance     Boolean    @default(false)
   /// Edit-decision list applied at render (sfx cues; zoom/emoji later).
   edl             Json?
+  /// Content category (inherited from the source video); routes distribution.
+  category        String?
   /// Bulk-cull flag: false = discarded by the user in the grid.
   kept            Boolean    @default(true)
   /// Transparent scoring, computed at detection (see packages/core scoring.ts). 0-100.
@@ -273,6 +277,7 @@ model Clip {
   @@index([sourceVideoId])
   @@index([overallScore])
   @@index([outcome])
+  @@index([category])
 }
 
 model ClipEnhancement {
@@ -312,7 +317,14 @@ model SocialAccount {
   platform    Platform
   handle      String
   displayName String?
-  /// Encrypted OAuth credentials / tokens for the platform
+  /// Content niche this account posts; clips route to accounts of the same category.
+  category    String              @default("general")
+  /// Posting cadence used to auto-schedule this account's queue.
+  postsPerDay Int                 @default(10)
+  activeStartHour Int             @default(9)
+  activeEndHour   Int             @default(21)
+  timezone    String              @default("UTC")
+  /// Encrypted OAuth credentials / tokens for the platform (unused in manual flow)
   credentials Json?
   status      SocialAccountStatus @default(ACTIVE)
   createdAt   DateTime            @default(now())
@@ -322,6 +334,7 @@ model SocialAccount {
 
   @@unique([platform, handle])
   @@index([status])
+  @@index([category])
 }
 
 model PublishJob {
@@ -343,6 +356,8 @@ model PublishJob {
 
   publishAttempts PublishAttempt[]
 
+  /// One post-task per clip+account (dedupe distribution).
+  @@unique([clipId, socialAccountId])
   @@index([status])
   @@index([clipId])
   @@index([socialAccountId])

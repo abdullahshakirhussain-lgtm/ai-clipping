@@ -223,6 +223,7 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
         captionPosition: video.captionPosition,
         reframe: video.reframe,
         autoEnhance: video.autoEnhance,
+        category: video.category,
         hookScore: score.hookScore,
         viralScore: score.viralScore,
         overallScore: score.overallScore,

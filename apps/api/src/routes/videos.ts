@@ -61,6 +61,7 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
           captionPosition: z.enum(["top", "middle", "bottom"]).optional(),
           reframe: z.enum(["true", "false"]).optional(),
           autoEnhance: z.enum(["true", "false"]).optional(),
+          category: z.string().max(60).optional(),
         }),
         response: { 200: z.object({ sourceVideoId: z.string() }) },
       },
@@ -95,6 +96,7 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
         captionPosition: req.query.captionPosition,
         reframe: req.query.reframe === "true",
         autoEnhance: req.query.autoEnhance === "true",
+        category: req.query.category,
       });
     },
   );
