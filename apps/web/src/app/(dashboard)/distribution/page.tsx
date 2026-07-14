@@ -112,7 +112,7 @@ function AccountList({
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{a.handle}</div>
               <div className="text-xs" style={{ color: "var(--muted)" }}>
-                {a.platform} · {a.category}
+                {a.platform} · <span className="capitalize">{a.category}</span>
               </div>
             </div>
             <div className="text-right text-xs shrink-0">

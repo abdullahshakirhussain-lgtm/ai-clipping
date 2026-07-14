@@ -12,6 +12,20 @@ const PIPELINE_ORDER = [
   "FAILED",
 ];
 
+/** Plain-English names for the internal job queues. */
+const QUEUE_LABELS: Record<string, string> = {
+  "video.download": "Fetching source",
+  "video.transcribe": "Transcribing",
+  "clip.detect": "Detecting clips",
+  "clip.render": "Rendering",
+  "clip.enhance": "Enhancing",
+  "publish.execute": "Publishing",
+};
+
+function queueLabel(name: string): string {
+  return QUEUE_LABELS[name] ?? name.replace(/[._]/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
+
 export default function OverviewPage() {
   const { data, isLoading } = useOverview();
   if (isLoading || !data) return <Spinner />;
@@ -63,18 +77,27 @@ export default function OverviewPage() {
         </Card>
 
         <Card>
-          <h2 className="font-semibold mb-4">Queue health</h2>
+          <h2 className="font-semibold mb-4">Pipeline activity</h2>
           <div className="space-y-2 text-sm">
-            {data.queues.map((q) => (
-              <div key={q.queue} className="flex items-center justify-between">
-                <span style={{ color: "var(--muted)" }}>{q.queue}</span>
-                <span className="tabular-nums">
-                  {q.active > 0 && <span style={{ color: "var(--primary)" }}>{q.active}▶ </span>}
-                  {q.waiting}⋯
-                  {q.failed > 0 && <span style={{ color: "var(--danger)" }}> {q.failed}✕</span>}
-                </span>
-              </div>
-            ))}
+            {data.queues.map((q) => {
+              const idle = q.active === 0 && q.waiting === 0 && q.failed === 0;
+              return (
+                <div key={q.queue} className="flex items-center justify-between">
+                  <span style={{ color: "var(--muted)" }}>{queueLabel(q.queue)}</span>
+                  <span className="tabular-nums text-xs">
+                    {idle ? (
+                      <span style={{ color: "var(--muted)" }}>idle</span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        {q.active > 0 && <span style={{ color: "var(--primary)" }}>{q.active} running</span>}
+                        {q.waiting > 0 && <span style={{ color: "var(--muted)" }}>{q.waiting} queued</span>}
+                        {q.failed > 0 && <span style={{ color: "var(--danger)" }}>{q.failed} failed</span>}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </Card>
       </div>

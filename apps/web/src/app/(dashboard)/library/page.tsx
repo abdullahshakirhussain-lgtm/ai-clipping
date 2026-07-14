@@ -441,6 +441,7 @@ function ClipCard({
 }) {
   const notes = notesOf(clip).slice(0, 2);
   const scoreColor = clip.overallScore >= 75 ? "var(--success)" : clip.overallScore >= 55 ? "var(--warning)" : "var(--muted)";
+  const [more, setMore] = useState(false);
   return (
     <div
       className="card p-0 overflow-hidden flex flex-col transition-all"
@@ -487,30 +488,17 @@ function ClipCard({
           <ScoreChip label="Viral" value={clip.viralScore} />
           <span className="ml-auto" style={{ color: "var(--muted)" }}>{clip.durationSec}s</span>
         </div>
-        {notes.length > 0 && (
-          <div className="flex flex-wrap gap-1">
+        {(notes.length > 0 || clip.category) && (
+          <div className="flex flex-wrap gap-1 items-center">
             {notes.map((n, i) => (
               <span key={i} className="text-[10px] px-1.5 py-0.5 rounded surface-2" style={{ color: "var(--muted)" }}>{n}</span>
             ))}
+            {clip.category && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded capitalize" style={{ background: "var(--primary)", color: "#fff" }}>{clip.category}</span>
+            )}
           </div>
         )}
-        {categories.length > 0 ? (
-          <select
-            value={clip.category ?? ""}
-            onChange={(e) => { if (e.target.value) onSetCategory(e.target.value); }}
-            className="text-[11px] px-1.5 py-1 rounded surface-2 border capitalize w-full"
-            style={{ borderColor: "var(--border)", color: clip.category ? "var(--text)" : "var(--muted)" }}
-            title="Clip category — routes distribution to matching accounts"
-          >
-            <option value="">— set category —</option>
-            {clip.category && !categories.includes(clip.category) && (
-              <option value={clip.category}>{clip.category}</option>
-            )}
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        ) : clip.category ? (
-          <span className="text-[10px] px-1.5 py-0.5 rounded capitalize self-start" style={{ background: "var(--primary)", color: "#fff" }}>{clip.category}</span>
-        ) : null}
+        {/* Primary actions stay visible; category + performance live under ⋯. */}
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <div className="flex items-center gap-1.5">
             <button
@@ -532,8 +520,41 @@ function ClipCard({
               </button>
             )}
           </div>
-          <OutcomeRow clipId={clip.id} current={clip.outcome} />
+          <button
+            onClick={() => setMore((m) => !m)}
+            className="text-sm px-2 py-1.5 rounded-lg surface-2 border"
+            style={{ borderColor: more ? "var(--primary)" : "var(--border)", color: "var(--muted)" }}
+            title="Category & performance"
+            aria-expanded={more}
+          >
+            ⋯
+          </button>
         </div>
+        {more && (
+          <div className="pt-2.5 mt-1 border-t flex flex-col gap-2.5" style={{ borderColor: "var(--border)" }}>
+            {categories.length > 0 && (
+              <label className="block">
+                <span className="text-[10px] block mb-1" style={{ color: "var(--muted)" }}>Category</span>
+                <select
+                  value={clip.category ?? ""}
+                  onChange={(e) => { if (e.target.value) onSetCategory(e.target.value); }}
+                  className="text-[11px] px-1.5 py-1 rounded surface-2 border capitalize w-full"
+                  style={{ borderColor: "var(--border)", color: clip.category ? "var(--text)" : "var(--muted)" }}
+                >
+                  <option value="">— set category —</option>
+                  {clip.category && !categories.includes(clip.category) && (
+                    <option value={clip.category}>{clip.category}</option>
+                  )}
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            )}
+            <div>
+              <span className="text-[10px] block mb-1" style={{ color: "var(--muted)" }}>Performance once posted</span>
+              <OutcomeRow clipId={clip.id} current={clip.outcome} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
