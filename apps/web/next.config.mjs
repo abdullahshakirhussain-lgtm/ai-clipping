@@ -8,6 +8,11 @@ const API_UPSTREAM =
 const nextConfig = {
   transpilePackages: ["@clipfactory/core"],
   reactStrictMode: true,
+  // Lint runs as its own step (`pnpm lint`), not as part of `next build`. Without
+  // this, the build's ESLint pass trips over rules that aren't wired into the web
+  // app's config (e.g. react-hooks/exhaustive-deps referenced by a disable
+  // comment), failing the Railway build for a non-error.
+  eslint: { ignoreDuringBuilds: true },
   // The /api/* proxy (rewrites below) buffers request bodies in memory and caps
   // them at 10MB by default (Next 15: experimental.middlewareClientMaxBodySize),
   // truncating video uploads and resetting the socket. Raise the cap so real
