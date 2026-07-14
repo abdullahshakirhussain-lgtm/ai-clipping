@@ -28,7 +28,7 @@ export class SourceVideoRepository {
         campaign: true,
         _count: { select: { clips: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     });
   }
 

@@ -36,8 +36,14 @@ export class ClipRepository {
       sourceVideoId: filter?.sourceVideoId,
       kept: filter?.kept,
     };
-    const orderBy: Prisma.ClipOrderByWithRelationInput =
-      filter?.sort === "score" ? { overallScore: "desc" } : { createdAt: "desc" };
+    // A stable secondary key (id) is essential: without it, rows tied on the
+    // primary key (integer scores tie constantly) come back in arbitrary
+    // physical order that changes between fetches, so the grid reshuffles on
+    // every SWR refresh.
+    const orderBy: Prisma.ClipOrderByWithRelationInput[] =
+      filter?.sort === "score"
+        ? [{ overallScore: "desc" }, { id: "asc" }]
+        : [{ createdAt: "desc" }, { id: "asc" }];
     return this.prisma.$transaction([
       this.prisma.clip.findMany({
         where,
