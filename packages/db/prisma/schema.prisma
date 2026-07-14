@@ -319,6 +319,9 @@ model SocialAccount {
   displayName String?
   /// Content niche this account posts; clips route to accounts of the same category.
   category    String              @default("general")
+  /// Optional target channel/page id the poster extension switches to before
+  /// uploading (blank = post to whatever account is active in the browser).
+  channelId   String?
   /// Posting cadence used to auto-schedule this account's queue.
   postsPerDay Int                 @default(10)
   activeStartHour Int             @default(9)

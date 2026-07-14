@@ -88,6 +88,7 @@ function AccountForm({ account, onDone }: { account: SocialAccountDto | null; on
   const [handle, setHandle] = useState(account?.handle ?? "");
   const [category, setCategory] = useState(account?.category ?? "general");
   const categoryNames = categories?.map((c) => c.name) ?? [];
+  const [channelId, setChannelId] = useState(account?.channelId ?? "");
   const [postsPerDay, setPostsPerDay] = useState(String(account?.postsPerDay ?? 10));
   const [startHour, setStartHour] = useState(String(account?.activeStartHour ?? 9));
   const [endHour, setEndHour] = useState(String(account?.activeEndHour ?? 21));
@@ -103,6 +104,7 @@ function AccountForm({ account, onDone }: { account: SocialAccountDto | null; on
     setError(null);
     const body = {
       category: category.trim().toLowerCase(),
+      channelId: channelId.trim() || undefined,
       postsPerDay: Number(postsPerDay),
       activeStartHour: Number(startHour),
       activeEndHour: Number(endHour),
@@ -162,6 +164,12 @@ function AccountForm({ account, onDone }: { account: SocialAccountDto | null; on
         <div>
           <label className="text-xs" style={{ color: "var(--muted)" }}>Timezone</label>
           <input value={timezone} onChange={(e) => setTimezone(e.target.value)} className={field} placeholder="UTC" />
+        </div>
+        <div className="md:col-span-3">
+          <label className="text-xs" style={{ color: "var(--muted)" }}>
+            Channel / page ID <span style={{ opacity: 0.7 }}>(optional — lets the poster extension switch to this account before uploading)</span>
+          </label>
+          <input value={channelId} onChange={(e) => setChannelId(e.target.value)} className={field} placeholder="e.g. UCxxxxxxxx (leave blank to use the active browser account)" />
         </div>
         {error && <p className="text-sm md:col-span-3" style={{ color: "var(--danger)" }}>{error}</p>}
         <div className="md:col-span-3 flex gap-2">

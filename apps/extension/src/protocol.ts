@@ -20,6 +20,8 @@ export interface PostJob {
   title: string;
   description: string;
   hashtags: string[];
+  /** Optional target channel/page id to switch to before uploading. */
+  channelId?: string | null;
 }
 
 // ── page -> bridge (window.postMessage) ────────────────────────────────────

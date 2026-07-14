@@ -34,6 +34,8 @@ export const PostTaskSchema = z.object({
   accountId: z.string(),
   platform: PlatformSchema,
   handle: z.string(),
+  /** Target channel/page id the extension switches to (null = browser default). */
+  channelId: z.string().nullable(),
   category: z.string().nullable(),
   scheduledAt: z.string().nullable(),
   status: PublishJobStatusSchema,

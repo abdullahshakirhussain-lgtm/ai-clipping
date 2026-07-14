@@ -152,6 +152,7 @@ export function toAccountDto(a: AccountRow): SocialAccountDto {
     handle: a.handle,
     displayName: a.displayName,
     category: a.category,
+    channelId: a.channelId,
     postsPerDay: a.postsPerDay,
     activeStartHour: a.activeStartHour,
     activeEndHour: a.activeEndHour,

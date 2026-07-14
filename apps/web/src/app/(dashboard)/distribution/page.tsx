@@ -57,7 +57,7 @@ export default function DistributionPage() {
           style={{ width: 8, height: 8, background: extConnected ? "var(--success)" : "var(--muted)" }}
         />
         {extConnected
-          ? "Poster extension connected — one-click posting enabled on YouTube clips."
+          ? "Poster extension connected — one-click posting enabled on YouTube + TikTok clips."
           : "Poster extension not detected — install it to post in one click (manual copy/download still works)."}
       </div>
 
@@ -147,7 +147,9 @@ function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolea
   const [extStatus, setExtStatus] = useState<string | null>(null);
 
   const caption = [task.title, task.description, task.hashtags.join(" ")].filter(Boolean).join("\n\n");
-  const canOneClick = extConnected && task.platform === "YOUTUBE" && !!task.previewUrl;
+  const AUTOMATED: PostTask["platform"][] = ["YOUTUBE", "TIKTOK"];
+  const canOneClick = extConnected && AUTOMATED.includes(task.platform) && !!task.previewUrl;
+  const platformLabel = task.platform === "TIKTOK" ? "TikTok" : task.platform === "YOUTUBE" ? "YouTube" : "platform";
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -179,12 +181,13 @@ function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolea
     setExtStatus("Sending to extension…");
     sendJob({
       jobId: task.jobId,
-      platform: "YOUTUBE",
+      platform: task.platform as "YOUTUBE" | "TIKTOK",
       downloadUrl: task.previewUrl,
       filename: `clip-${task.jobId}.mp4`,
       title: task.title ?? "Untitled clip",
       description: task.description ?? "",
       hashtags: task.hashtags,
+      channelId: task.channelId,
     });
   }
 
@@ -207,7 +210,7 @@ function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolea
         )}
         <div className="flex gap-2 mt-3 flex-wrap">
           {canOneClick && (
-            <Button onClick={postViaExtension} disabled={busy}>Post to YouTube</Button>
+            <Button onClick={postViaExtension} disabled={busy}>Post to {platformLabel}</Button>
           )}
           <Button variant="secondary" onClick={() => { navigator.clipboard.writeText(caption); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
             {copied ? "Copied ✓" : "Copy caption"}

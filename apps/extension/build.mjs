@@ -18,6 +18,7 @@ const ctx = {
     join(root, "src/background.ts"),
     join(root, "src/bridge.ts"),
     join(root, "src/content-youtube.ts"),
+    join(root, "src/content-tiktok.ts"),
     join(root, "src/popup.ts"),
   ],
   outdir: dist,

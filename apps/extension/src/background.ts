@@ -17,7 +17,27 @@ interface StoredJob {
 
 const key = (tabId: number): string => `job_${tabId}`;
 
-async function startYouTube(job: PostJob, dashTabId: number): Promise<void> {
+/** Where to open the upload UI for each platform (channel-targeted for YouTube). */
+function uploadUrl(job: PostJob): string | null {
+  switch (job.platform) {
+    case "YOUTUBE":
+      return job.channelId
+        ? `https://studio.youtube.com/channel/${encodeURIComponent(job.channelId)}/videos/upload?d=ud`
+        : "https://www.youtube.com/upload";
+    case "TIKTOK":
+      return "https://www.tiktok.com/tiktokstudio/upload";
+    default:
+      return null; // FACEBOOK (X5) not wired yet
+  }
+}
+
+async function startPost(job: PostJob, dashTabId: number): Promise<void> {
+  const url = uploadUrl(job);
+  if (!url) {
+    relay(dashTabId, { type: "result", jobId: job.jobId, error: `${job.platform} posting isn't wired up yet` });
+    return;
+  }
+
   // Kick the download so the file is waiting in Downloads for the user to pick.
   try {
     await chrome.downloads.download({ url: job.downloadUrl, filename: job.filename });
@@ -26,13 +46,14 @@ async function startYouTube(job: PostJob, dashTabId: number): Promise<void> {
     return;
   }
 
-  const tab = await chrome.tabs.create({ url: "https://www.youtube.com/upload" });
+  const tab = await chrome.tabs.create({ url });
   if (tab.id == null) {
     relay(dashTabId, { type: "result", jobId: job.jobId, error: "could not open upload tab" });
     return;
   }
   await chrome.storage.session.set({ [key(tab.id)]: { job, dashTabId } satisfies StoredJob });
-  relay(dashTabId, { type: "status", jobId: job.jobId, message: "Opened YouTube — pick the downloaded clip to start." });
+  const where = job.platform === "TIKTOK" ? "TikTok" : "YouTube";
+  relay(dashTabId, { type: "status", jobId: job.jobId, message: `Opened ${where} — pick the downloaded clip to start.` });
 }
 
 function relay(dashTabId: number, msg: RuntimeMessage): void {
@@ -51,11 +72,7 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
   if (msg.type === "postJob") {
     const dashTabId = sender.tab?.id;
     if (dashTabId == null) return;
-    if (msg.job.platform !== "YOUTUBE") {
-      relay(dashTabId, { type: "result", jobId: msg.job.jobId, error: `${msg.job.platform} posting isn't wired up yet` });
-      return;
-    }
-    void startYouTube(msg.job, dashTabId);
+    void startPost(msg.job, dashTabId);
     return;
   }
 

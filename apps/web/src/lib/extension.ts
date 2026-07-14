@@ -18,6 +18,7 @@ export interface PostJob {
   title: string;
   description: string;
   hashtags: string[];
+  channelId?: string | null;
 }
 
 export interface ExtIncoming {

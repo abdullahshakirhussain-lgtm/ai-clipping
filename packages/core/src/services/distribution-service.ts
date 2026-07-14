@@ -170,6 +170,7 @@ export class DistributionService {
       accountId: job.socialAccountId,
       platform: job.socialAccount.platform,
       handle: job.socialAccount.handle,
+      channelId: job.socialAccount.channelId ?? null,
       category: job.clip.category ?? null,
       scheduledAt: job.scheduledAt ? job.scheduledAt.toISOString() : null,
       status: job.status,

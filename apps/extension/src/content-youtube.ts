@@ -121,7 +121,17 @@ async function autoPublish(jobId: string): Promise<void> {
   status(jobId, "Publishing…");
 }
 
+/** Best-effort read of the signed-in channel name, so the user can confirm the
+ *  upload is going to the right account. */
+function activeChannelName(): string | null {
+  const el = q("#account-name, ytcp-account-section #account-name, #entity-name");
+  const name = el?.textContent?.trim();
+  return name && name.length > 0 ? name : null;
+}
+
 async function run(job: PostJob): Promise<void> {
+  const chan = activeChannelName();
+  if (chan) status(job.jobId, `Uploading as: ${chan}`);
   status(job.jobId, "Waiting for the upload dialog…");
   const title = await waitFor(titleBox, 5 * 60 * 1000); // user picks the file first
   if (!title) {

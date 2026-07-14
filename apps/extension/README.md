@@ -49,8 +49,22 @@ and rebuild.
 If a YouTube Studio selector has drifted, auto-finish stops and the status tells
 you — just complete the last steps by hand; the extension still captures the URL.
 
+## TikTok
+
+TikTok clips work the same way — click **Post to TikTok**, pick the downloaded
+clip on `tiktok.com/tiktokstudio/upload`, and the extension fills the caption and
+clicks Post. TikTok rarely exposes the posted URL immediately; if it can't be
+captured, the status says so and you paste it into the queue to mark done.
+
+## Targeting a specific account
+
+Set a **Channel / page ID** on an account (Accounts page). For YouTube the
+extension then opens that channel's Studio upload URL directly; leave it blank to
+post to whichever account is active in the current Chrome profile. The YouTube
+status line also shows "Uploading as: <channel>" so you can confirm before posting.
+
 ## Caveats
 
-- YouTube Studio's DOM changes over time; if auto-fill stops working, update the
-  selectors in `src/content-youtube.ts`.
-- TikTok and Facebook content scripts land in later phases (X4/X5).
+- Each platform's upload DOM changes over time; if auto-fill/post stops working,
+  update the selectors in `src/content-youtube.ts` / `src/content-tiktok.ts`.
+- Facebook content script lands in a later phase (X5).
