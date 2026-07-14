@@ -16,6 +16,7 @@ import { requireAuth } from "./plugins/auth-context.js";
 import { accountRoutes } from "./routes/accounts.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { calibrationRoutes } from "./routes/calibration.js";
+import { categoryRoutes } from "./routes/categories.js";
 import { campaignRoutes } from "./routes/campaigns.js";
 import { distributionRoutes } from "./routes/distribution.js";
 import { clipRoutes } from "./routes/clips.js";
@@ -132,6 +133,7 @@ export async function buildApp(container: Container) {
       clipRoutes(typed, deps);
       publishRoutes(typed, deps);
       accountRoutes(typed, deps);
+      categoryRoutes(typed, deps);
       analyticsRoutes(typed, deps);
       calibrationRoutes(typed, deps);
       distributionRoutes(typed, deps);

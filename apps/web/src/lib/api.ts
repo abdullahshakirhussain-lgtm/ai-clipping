@@ -3,6 +3,7 @@ import useSWR, { type SWRConfiguration, mutate as globalMutate } from "swr";
 import type {
   CalibrationDto,
   CampaignDto,
+  CategoryDto,
   ClipDetailDto,
   ClipDto,
   DistributionOverview,
@@ -113,6 +114,7 @@ export const useOverview = () => useApi<OverviewDto>("/analytics/overview", { re
 export const useCampaigns = () => useApi<CampaignDto[]>("/campaigns", { refreshInterval: 8000 });
 export const useVideos = () => useApi<SourceVideoDto[]>("/videos", { refreshInterval: 4000 });
 export const useAccounts = () => useApi<SocialAccountDto[]>("/accounts");
+export const useCategories = () => useApi<CategoryDto[]>("/categories");
 export const usePublishJobs = (status?: string) =>
   useApi<PublishJobDto[]>(`/publish-jobs${status ? `?status=${status}` : ""}`, { refreshInterval: 5000 });
 
@@ -158,6 +160,7 @@ export const useDistributionQueue = (accountId: string | null) =>
 export type {
   CalibrationDto,
   CampaignDto,
+  CategoryDto,
   ClipDto,
   ClipDetailDto,
   DistributionOverview,

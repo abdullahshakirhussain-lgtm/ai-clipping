@@ -1,16 +1,13 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
-import { apiUpload, revalidateAll, useAccounts, useVideos, type SourceVideoDto } from "@/lib/api";
+import { useRef, useState } from "react";
+import { apiUpload, revalidateAll, useCategories, useVideos, type SourceVideoDto } from "@/lib/api";
 import { Button, Card, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
 import { timeAgo } from "@/lib/format";
 
 export default function UploadPage() {
   const { data: videos } = useVideos();
-  const { data: accounts } = useAccounts();
-  const categories = useMemo(
-    () => [...new Set((accounts ?? []).map((a) => a.category))].sort(),
-    [accounts],
-  );
+  const { data: cats } = useCategories();
+  const categories = (cats ?? []).map((c) => c.name);
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);

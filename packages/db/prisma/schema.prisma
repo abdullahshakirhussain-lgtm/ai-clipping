@@ -337,6 +337,16 @@ model SocialAccount {
   @@index([category])
 }
 
+/// Canonical list of content categories. The `name` is the exact string stored
+/// on SocialAccount/SourceVideo/Clip.category (routing matches by string), so a
+/// central rename must cascade those columns. This table is only the registry
+/// of valid options the UI offers.
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
 model PublishJob {
   id              String           @id @default(cuid())
   clipId          String
