@@ -41,9 +41,13 @@ and rebuild.
 1. Distribute kept clips, pick a YouTube account, open its queue.
 2. Click **Post to YouTube** on a clip. The extension downloads the clip and
    opens YouTube's upload page.
-3. Pick the downloaded clip in the file dialog. Title + description auto-fill.
-4. Click **Next → Publish**. The extension captures the published URL and marks
-   the job posted back in the dashboard.
+3. Pick the downloaded clip in the file dialog. That's the only manual step.
+4. The extension fills the title + description, sets "not made for kids",
+   advances the wizard, sets visibility to **Public**, clicks **Publish**,
+   captures the published URL, and marks the job posted in the dashboard.
+
+If a YouTube Studio selector has drifted, auto-finish stops and the status tells
+you — just complete the last steps by hand; the extension still captures the URL.
 
 ## Caveats
 

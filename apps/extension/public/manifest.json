@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ClipFactory Poster",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Posts distribution-queue clips to YouTube (TikTok/Facebook next) straight from the ClipFactory dashboard.",
   "permissions": ["tabs", "storage", "downloads", "scripting"],
   "host_permissions": [
