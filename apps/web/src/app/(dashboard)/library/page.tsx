@@ -1,11 +1,12 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   apiSend,
   clipExportUrl,
   revalidateAll,
   useCalibration,
   useClipGrid,
+  useVideos,
   type ClipDto,
 } from "@/lib/api";
 import { Button, Card, EmptyState, PageHeader, Spinner } from "@/components/ui";
@@ -25,14 +26,73 @@ function triggerDownload(url: string) {
   a.remove();
 }
 
+function fmtDuration(sec: number | null): string {
+  if (!sec || sec <= 0) return "—";
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function fmtWhen(iso: string): string {
+  const d = new Date(iso);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+  return d.toLocaleDateString();
+}
+
+const SCORE_FILTERS = [
+  { label: "All scores", value: 0 },
+  { label: "70+", value: 70 },
+  { label: "80+", value: 80 },
+  { label: "90+", value: 90 },
+];
+
 export default function LibraryPage() {
+  const { data: videos } = useVideos();
+  const [videoId, setVideoId] = useState<string | "all">("all");
   const [view, setView] = useState<"kept" | "discarded">("kept");
-  const { data, isLoading } = useClipGrid({ kept: view === "kept" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
-  const clips = useMemo(() => data?.items ?? [], [data]);
+  // Client-side filters (no API round-trip — the grid is already loaded).
+  const [minScore, setMinScore] = useState(0);
+  const [sfxOnly, setSfxOnly] = useState(false);
+  const [category, setCategory] = useState<string>("all");
+
+  const { data, isLoading } = useClipGrid({
+    kept: view === "kept",
+    sourceVideoId: videoId === "all" ? undefined : videoId,
+  });
+
+  const allClips = useMemo(() => data?.items ?? [], [data]);
+  const categories = useMemo(
+    () => [...new Set(allClips.map((c) => c.category).filter(Boolean) as string[])].sort(),
+    [allClips],
+  );
+
+  const clips = useMemo(
+    () =>
+      allClips.filter(
+        (c) =>
+          c.overallScore >= minScore &&
+          (!sfxOnly || c.hasSfx) &&
+          (category === "all" || c.category === category),
+      ),
+    [allClips, minScore, sfxOnly, category],
+  );
+
+  // Reset selection whenever the scope changes; drop a category filter that no
+  // longer exists in the newly-selected video.
+  useEffect(() => setSelected(new Set()), [videoId, view]);
+  useEffect(() => {
+    if (category !== "all" && !categories.includes(category)) setCategory("all");
+  }, [categories, category]);
+
   const selectedIds = [...selected];
+  const visibleIds = clips.map((c) => c.id);
 
   function toggle(id: string) {
     setSelected((cur) => {
@@ -40,6 +100,13 @@ export default function LibraryPage() {
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
+    });
+  }
+
+  function selectAllVisible() {
+    setSelected((cur) => {
+      const allSelected = visibleIds.length > 0 && visibleIds.every((id) => cur.has(id));
+      return allSelected ? new Set() : new Set(visibleIds);
     });
   }
 
@@ -55,11 +122,20 @@ export default function LibraryPage() {
     }
   }
 
+  // "Export all" respects the current scope: a specific video exports the clips
+  // in view; "All videos" exports every kept clip via the no-arg export URL.
+  function exportAll() {
+    if (videoId === "all") triggerDownload(clipExportUrl());
+    else triggerDownload(clipExportUrl(visibleIds));
+  }
+
+  const activeVideo = videos?.find((v) => v.id === videoId);
+
   return (
     <div>
       <PageHeader
         title="Library"
-        subtitle="Every detected clip, ranked by score. Cull the duds, export the keepers."
+        subtitle="Clips grouped by the video they came from. Pick a video, cull the duds, export the keepers."
         action={
           <div className="flex gap-2">
             {selectedIds.length > 0 && (
@@ -67,70 +143,197 @@ export default function LibraryPage() {
                 Export selected ({selectedIds.length})
               </Button>
             )}
-            <Button onClick={() => triggerDownload(clipExportUrl())}>Export all kept</Button>
+            <Button onClick={exportAll}>
+              {videoId === "all" ? "Export all kept" : "Export this video"}
+            </Button>
           </div>
         }
       />
 
       <CalibrationBar />
 
-      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--surface-2)" }}>
-          {(["kept", "discarded"] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => {
-                setView(v);
-                setSelected(new Set());
-              }}
-              className="px-3 py-1.5 rounded-md text-sm capitalize"
-              style={{
-                background: view === v ? "var(--surface)" : "transparent",
-                color: view === v ? "var(--text)" : "var(--muted)",
-              }}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-        {selectedIds.length > 0 && (
-          <div className="flex gap-2">
-            {view === "kept" ? (
-              <Button variant="danger" onClick={() => bulk("discard")} disabled={busy}>
-                Discard ({selectedIds.length})
-              </Button>
-            ) : (
-              <Button variant="secondary" onClick={() => bulk("keep")} disabled={busy}>
-                Restore ({selectedIds.length})
-              </Button>
+      <div className="flex gap-6 items-start">
+        {/* ── Master rail: source videos ─────────────────────────────── */}
+        <aside className="w-72 shrink-0">
+          <div className="flex flex-col gap-1">
+            <VideoRailItem
+              active={videoId === "all"}
+              onClick={() => setVideoId("all")}
+              title="All videos"
+              subtitle={`${videos?.length ?? 0} source video${(videos?.length ?? 0) === 1 ? "" : "s"}`}
+            />
+            {(videos ?? []).map((v) => (
+              <VideoRailItem
+                key={v.id}
+                active={videoId === v.id}
+                onClick={() => setVideoId(v.id)}
+                title={v.title ?? "Untitled video"}
+                subtitle={`${v.clipCount} clip${v.clipCount === 1 ? "" : "s"} · ${fmtDuration(v.durationSec)} · ${fmtWhen(v.createdAt)}`}
+                status={v.status}
+              />
+            ))}
+            {videos && videos.length === 0 && (
+              <p className="text-xs px-2 py-3" style={{ color: "var(--muted)" }}>
+                No videos yet. Upload one to get started.
+              </p>
             )}
-            <Button variant="ghost" onClick={() => setSelected(new Set())}>
-              Clear
-            </Button>
           </div>
+        </aside>
+
+        {/* ── Detail pane: clips for the selected video ──────────────── */}
+        <div className="flex-1 min-w-0">
+          {/* Toolbar */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--surface-2)" }}>
+              {(["kept", "discarded"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className="px-3 py-1.5 rounded-md text-sm capitalize"
+                  style={{
+                    background: view === v ? "var(--surface)" : "transparent",
+                    color: view === v ? "var(--text)" : "var(--muted)",
+                  }}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+
+            <select
+              value={minScore}
+              onChange={(e) => setMinScore(Number(e.target.value))}
+              className="px-2.5 py-1.5 rounded-lg surface-2 border text-sm"
+              style={{ borderColor: "var(--border)" }}
+            >
+              {SCORE_FILTERS.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </select>
+
+            {categories.length > 0 && (
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg surface-2 border text-sm capitalize"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <option value="all">All categories</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
+
+            <button
+              onClick={() => setSfxOnly((s) => !s)}
+              className="px-2.5 py-1.5 rounded-lg border text-sm"
+              style={{
+                borderColor: "var(--border)",
+                background: sfxOnly ? "var(--primary)" : "var(--surface-2)",
+                color: sfxOnly ? "#fff" : "var(--muted)",
+              }}
+              title="Show only clips with sound effects"
+            >
+              🔊 SFX
+            </button>
+
+            {clips.length > 0 && (
+              <button
+                onClick={selectAllVisible}
+                className="px-2.5 py-1.5 rounded-lg border text-sm surface-2"
+                style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              >
+                {visibleIds.every((id) => selected.has(id)) ? "Deselect all" : "Select all"}
+              </button>
+            )}
+
+            <span className="text-sm ml-auto" style={{ color: "var(--muted)" }}>
+              {activeVideo ? (activeVideo.title ?? "Untitled") + " · " : ""}
+              {clips.length} clip{clips.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          {/* Bulk actions bar */}
+          {selectedIds.length > 0 && (
+            <div className="flex gap-2 mb-4">
+              {view === "kept" ? (
+                <Button variant="danger" onClick={() => bulk("discard")} disabled={busy}>
+                  Discard ({selectedIds.length})
+                </Button>
+              ) : (
+                <Button variant="secondary" onClick={() => bulk("keep")} disabled={busy}>
+                  Restore ({selectedIds.length})
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+            </div>
+          )}
+
+          {isLoading ? (
+            <Spinner />
+          ) : clips.length === 0 ? (
+            <EmptyState
+              title={view === "kept" ? "No clips here" : "Nothing discarded"}
+              hint={
+                view === "kept"
+                  ? allClips.length > 0
+                    ? "No clips match the current filters — loosen the score or category filter."
+                    : "Upload a video — detected clips land here, best first."
+                  : undefined
+              }
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {clips.map((clip) => (
+                <ClipCard
+                  key={clip.id}
+                  clip={clip}
+                  selected={selected.has(clip.id)}
+                  onToggle={() => toggle(clip.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoRailItem({
+  active,
+  onClick,
+  title,
+  subtitle,
+  status,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  subtitle: string;
+  status?: string;
+}) {
+  const pending = status && !["READY", "DONE", "COMPLETED"].includes(status);
+  return (
+    <button
+      onClick={onClick}
+      className="text-left px-3 py-2.5 rounded-lg transition-colors"
+      style={{
+        background: active ? "var(--surface)" : "transparent",
+        outline: active ? "1px solid var(--primary)" : "1px solid transparent",
+      }}
+    >
+      <div className="text-sm font-medium line-clamp-1">{title}</div>
+      <div className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: "var(--muted)" }}>
+        <span className="line-clamp-1">{subtitle}</span>
+        {pending && (
+          <span className="shrink-0 px-1 rounded text-[10px]" style={{ background: "var(--warning)", color: "#000" }}>
+            {status?.toLowerCase()}
+          </span>
         )}
       </div>
-
-      {isLoading ? (
-        <Spinner />
-      ) : clips.length === 0 ? (
-        <EmptyState
-          title={view === "kept" ? "No clips yet" : "Nothing discarded"}
-          hint={view === "kept" ? "Upload a video — detected clips land here, best first." : undefined}
-        />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {clips.map((clip) => (
-            <ClipCard
-              key={clip.id}
-              clip={clip}
-              selected={selected.has(clip.id)}
-              onToggle={() => toggle(clip.id)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+    </button>
   );
 }
 
@@ -203,7 +406,7 @@ function ClipCard({
           <ScoreChip label="Viral" value={clip.viralScore} />
           <span className="ml-auto" style={{ color: "var(--muted)" }}>{clip.durationSec}s</span>
         </div>
-        {notes.length > 0 && (
+        {(notes.length > 0 || clip.category) && (
           <div className="flex flex-wrap gap-1">
             {notes.map((n, i) => (
               <span key={i} className="text-[10px] px-1.5 py-0.5 rounded surface-2" style={{ color: "var(--muted)" }}>{n}</span>
