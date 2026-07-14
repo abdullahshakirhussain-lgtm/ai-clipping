@@ -5,6 +5,7 @@ import {
   clipExportUrl,
   revalidateAll,
   useCalibration,
+  useCategories,
   useClipGrid,
   useVideos,
   type ClipDto,
@@ -52,6 +53,8 @@ const SCORE_FILTERS = [
 
 export default function LibraryPage() {
   const { data: videos } = useVideos();
+  const { data: cats } = useCategories();
+  const categoryNames = (cats ?? []).map((c) => c.name);
   const [videoId, setVideoId] = useState<string | "all">("all");
   const [view, setView] = useState<"kept" | "discarded">("kept");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -116,6 +119,18 @@ export default function LibraryPage() {
     try {
       await apiSend("/clips/bulk", "POST", { ids: selectedIds, action });
       setSelected(new Set());
+      await revalidateAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function recategorize(ids: string[], newCategory: string, clearSelection = false) {
+    if (ids.length === 0 || !newCategory) return;
+    setBusy(true);
+    try {
+      await apiSend("/clips/category", "POST", { ids, category: newCategory });
+      if (clearSelection) setSelected(new Set());
       await revalidateAll();
     } finally {
       setBusy(false);
@@ -248,6 +263,20 @@ export default function LibraryPage() {
               </button>
             )}
 
+            {videoId !== "all" && categoryNames.length > 0 && allClips.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => { if (e.target.value) void recategorize(allClips.map((c) => c.id), e.target.value); }}
+                className="px-2.5 py-1.5 rounded-lg border text-sm surface-2 capitalize"
+                style={{ borderColor: "var(--border)" }}
+                title="Set the category for every clip in this video"
+                disabled={busy}
+              >
+                <option value="">Set video category…</option>
+                {categoryNames.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+
             <span className="text-sm ml-auto" style={{ color: "var(--muted)" }}>
               {activeVideo ? (activeVideo.title ?? "Untitled") + " · " : ""}
               {clips.length} clip{clips.length === 1 ? "" : "s"}
@@ -256,7 +285,7 @@ export default function LibraryPage() {
 
           {/* Bulk actions bar */}
           {selectedIds.length > 0 && (
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-4 items-center flex-wrap">
               {view === "kept" ? (
                 <Button variant="danger" onClick={() => bulk("discard")} disabled={busy}>
                   Discard ({selectedIds.length})
@@ -265,6 +294,19 @@ export default function LibraryPage() {
                 <Button variant="secondary" onClick={() => bulk("keep")} disabled={busy}>
                   Restore ({selectedIds.length})
                 </Button>
+              )}
+              {categoryNames.length > 0 && (
+                <select
+                  value=""
+                  onChange={(e) => { if (e.target.value) void recategorize(selectedIds, e.target.value, true); }}
+                  className="px-2.5 py-1.5 rounded-lg border text-sm surface-2 capitalize"
+                  style={{ borderColor: "var(--border)" }}
+                  title="Set the category for the selected clips"
+                  disabled={busy}
+                >
+                  <option value="">Set category ({selectedIds.length})…</option>
+                  {categoryNames.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
               )}
               <Button variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
             </div>
@@ -291,6 +333,8 @@ export default function LibraryPage() {
                   clip={clip}
                   selected={selected.has(clip.id)}
                   onToggle={() => toggle(clip.id)}
+                  categories={categoryNames}
+                  onSetCategory={(cat) => recategorize([clip.id], cat)}
                 />
               ))}
             </div>
@@ -353,10 +397,14 @@ function ClipCard({
   clip,
   selected,
   onToggle,
+  categories,
+  onSetCategory,
 }: {
   clip: ClipDto;
   selected: boolean;
   onToggle: () => void;
+  categories: string[];
+  onSetCategory: (category: string) => void;
 }) {
   const notes = notesOf(clip).slice(0, 2);
   const scoreColor = clip.overallScore >= 75 ? "var(--success)" : clip.overallScore >= 55 ? "var(--warning)" : "var(--muted)";
@@ -406,16 +454,30 @@ function ClipCard({
           <ScoreChip label="Viral" value={clip.viralScore} />
           <span className="ml-auto" style={{ color: "var(--muted)" }}>{clip.durationSec}s</span>
         </div>
-        {(notes.length > 0 || clip.category) && (
+        {notes.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {notes.map((n, i) => (
               <span key={i} className="text-[10px] px-1.5 py-0.5 rounded surface-2" style={{ color: "var(--muted)" }}>{n}</span>
             ))}
-            {clip.category && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded capitalize" style={{ background: "var(--primary)", color: "#fff" }}>{clip.category}</span>
-            )}
           </div>
         )}
+        {categories.length > 0 ? (
+          <select
+            value={clip.category ?? ""}
+            onChange={(e) => { if (e.target.value) onSetCategory(e.target.value); }}
+            className="text-[11px] px-1.5 py-1 rounded surface-2 border capitalize w-full"
+            style={{ borderColor: "var(--border)", color: clip.category ? "var(--text)" : "var(--muted)" }}
+            title="Clip category — routes distribution to matching accounts"
+          >
+            <option value="">— set category —</option>
+            {clip.category && !categories.includes(clip.category) && (
+              <option value={clip.category}>{clip.category}</option>
+            )}
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        ) : clip.category ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded capitalize self-start" style={{ background: "var(--primary)", color: "#fff" }}>{clip.category}</span>
+        ) : null}
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <button
             onClick={() => triggerDownload(clipExportUrl([clip.id]))}

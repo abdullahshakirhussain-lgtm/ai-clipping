@@ -55,6 +55,7 @@ export function toSourceVideoDto(v: VideoListRow): SourceVideoDto {
     title: v.title,
     durationSec: v.durationSec,
     clipCount: v._count.clips,
+    category: v.category,
     error: v.error,
     createdAt: iso(v.createdAt),
   };

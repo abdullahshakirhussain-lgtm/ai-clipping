@@ -59,6 +59,11 @@ export class ClipRepository {
     return this.prisma.clip.updateMany({ where: { id: { in: ids } }, data: { kept } });
   }
 
+  /** Reassign the routing category on a batch of clips (grid recategorize). */
+  setCategory(ids: string[], category: string) {
+    return this.prisma.clip.updateMany({ where: { id: { in: ids } }, data: { category } });
+  }
+
   /** Label a clip's real-world outcome (feeds score calibration). */
   setOutcome(id: string, outcome: ClipOutcome | null) {
     return this.prisma.clip.update({ where: { id }, data: { outcome } });

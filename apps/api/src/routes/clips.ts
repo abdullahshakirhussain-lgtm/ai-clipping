@@ -11,6 +11,7 @@ import {
   PublishJobDtoSchema,
   PublishRequestSchema,
   ReviewInputSchema,
+  SetClipCategoryInputSchema,
   SetOutcomeInputSchema,
 } from "@clipfactory/core";
 import archiver from "archiver";
@@ -97,6 +98,19 @@ export const clipRoutes: RouteModule = (app, { container }): void => {
       },
     },
     (req) => clips.bulkCull(req.body.ids, req.body.action === "keep"),
+  );
+
+  // Reassign the routing category on one or many clips (post-render).
+  app.post(
+    "/clips/category",
+    {
+      schema: {
+        tags: ["clips"],
+        body: SetClipCategoryInputSchema,
+        response: { 200: z.object({ updated: z.number() }) },
+      },
+    },
+    (req) => clips.setCategory(req.body.ids, req.body.category),
   );
 
   // Bulk export: stream a zip of the selected clips' rendered mp4s plus a

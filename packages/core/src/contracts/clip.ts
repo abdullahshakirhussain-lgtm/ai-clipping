@@ -27,6 +27,7 @@ export const SourceVideoDtoSchema = z.object({
   title: z.string().nullable(),
   durationSec: z.number().nullable(),
   clipCount: z.number().int(),
+  category: z.string().nullable(),
   error: z.string().nullable(),
   createdAt: z.string(),
 });
@@ -132,3 +133,10 @@ export type ClipBulkInput = z.infer<typeof ClipBulkInputSchema>;
 
 export const SetOutcomeInputSchema = z.object({ outcome: ClipOutcomeSchema.nullable() });
 export type SetOutcomeInput = z.infer<typeof SetOutcomeInputSchema>;
+
+/** Bulk reassign the routing category on clips (normalised to match routing). */
+export const SetClipCategoryInputSchema = z.object({
+  ids: z.array(z.string()).min(1),
+  category: z.string().min(1).max(60).transform((s) => s.trim().toLowerCase()),
+});
+export type SetClipCategoryInput = z.infer<typeof SetClipCategoryInputSchema>;

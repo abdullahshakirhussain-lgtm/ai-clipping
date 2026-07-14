@@ -35,6 +35,12 @@ export class ClipService {
     return { updated: res.count };
   }
 
+  /** Reassign a batch of clips' routing category (post-render recategorize). */
+  async setCategory(ids: string[], category: string): Promise<{ updated: number }> {
+    const res = await this.repos.clips.setCategory(ids, category);
+    return { updated: res.count };
+  }
+
   /** Label a clip's real-world outcome (feeds score calibration). */
   async setOutcome(
     id: string,
