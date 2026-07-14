@@ -87,6 +87,7 @@ enum Platform {
   TIKTOK
   INSTAGRAM
   YOUTUBE
+  FACEBOOK
 }
 
 enum SourcePlatform {

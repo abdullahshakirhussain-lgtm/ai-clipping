@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "ClipFactory Poster",
-  "version": "0.3.0",
-  "description": "Posts distribution-queue clips to YouTube and TikTok (Facebook next) straight from the ClipFactory dashboard.",
+  "version": "0.4.0",
+  "description": "Posts distribution-queue clips to YouTube, TikTok, and Facebook straight from the ClipFactory dashboard.",
   "permissions": ["tabs", "storage", "downloads", "scripting"],
   "host_permissions": [
     "https://studio.youtube.com/*",
     "https://www.youtube.com/*",
     "https://www.tiktok.com/*",
+    "https://business.facebook.com/*",
     "https://*.r2.cloudflarestorage.com/*"
   ],
   "background": { "service_worker": "background.js" },
@@ -29,6 +30,11 @@
     {
       "matches": ["https://www.tiktok.com/tiktokstudio/upload*", "https://www.tiktok.com/upload*"],
       "js": ["content-tiktok.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://business.facebook.com/*"],
+      "js": ["content-facebook.js"],
       "run_at": "document_idle"
     }
   ]

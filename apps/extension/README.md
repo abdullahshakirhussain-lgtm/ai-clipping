@@ -63,8 +63,17 @@ extension then opens that channel's Studio upload URL directly; leave it blank t
 post to whichever account is active in the current Chrome profile. The YouTube
 status line also shows "Uploading as: <channel>" so you can confirm before posting.
 
+## Facebook
+
+Facebook clips open **Meta Business Suite** (`business.facebook.com`). Confirm the
+correct **Page** is selected, pick the downloaded clip, and the extension fills
+the post text and clicks Publish. Business Suite's DOM is the most obfuscated of
+the three, so this is the shakiest target — if it can't drive the composer, post
+by hand and paste the URL.
+
 ## Caveats
 
 - Each platform's upload DOM changes over time; if auto-fill/post stops working,
-  update the selectors in `src/content-youtube.ts` / `src/content-tiktok.ts`.
-- Facebook content script lands in a later phase (X5).
+  update the selectors in `src/content-youtube.ts` / `content-tiktok.ts` /
+  `content-facebook.ts`.
+- Only the file pick is ever manual (browsers forbid scripting a file input).

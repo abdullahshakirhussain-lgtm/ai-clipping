@@ -1,4 +1,4 @@
-export type PublishPlatform = "TIKTOK" | "INSTAGRAM" | "YOUTUBE";
+export type PublishPlatform = "TIKTOK" | "INSTAGRAM" | "YOUTUBE" | "FACEBOOK";
 
 export interface PublishAccount {
   id: string;

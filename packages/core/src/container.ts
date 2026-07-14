@@ -137,7 +137,10 @@ function buildPublisherFactory(env: Env): (platform: PublishPlatform) => Publish
           ? new TikTokPublisher()
           : platform === "INSTAGRAM"
             ? new InstagramPublisher()
-            : new YouTubePublisher();
+            : platform === "YOUTUBE"
+              ? new YouTubePublisher()
+              : // FACEBOOK has no live auto-poster (extension handles posting).
+                new MockPublisher(platform);
     }
     cache.set(platform, adapter);
     return adapter;

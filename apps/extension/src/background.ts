@@ -26,8 +26,10 @@ function uploadUrl(job: PostJob): string | null {
         : "https://www.youtube.com/upload";
     case "TIKTOK":
       return "https://www.tiktok.com/tiktokstudio/upload";
+    case "FACEBOOK":
+      return "https://business.facebook.com/latest/composer";
     default:
-      return null; // FACEBOOK (X5) not wired yet
+      return null;
   }
 }
 
@@ -52,7 +54,7 @@ async function startPost(job: PostJob, dashTabId: number): Promise<void> {
     return;
   }
   await chrome.storage.session.set({ [key(tab.id)]: { job, dashTabId } satisfies StoredJob });
-  const where = job.platform === "TIKTOK" ? "TikTok" : "YouTube";
+  const where = job.platform === "TIKTOK" ? "TikTok" : job.platform === "FACEBOOK" ? "Facebook" : "YouTube";
   relay(dashTabId, { type: "status", jobId: job.jobId, message: `Opened ${where} — pick the downloaded clip to start.` });
 }
 

@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { apiSend, revalidateAll, useAccounts, useCategories, type CategoryDto, type SocialAccountDto } from "@/lib/api";
 import { Button, Card, EmptyState, PageHeader, Spinner, StatusBadge } from "@/components/ui";
 
-const PLATFORMS = ["TIKTOK", "INSTAGRAM", "YOUTUBE"] as const;
+const PLATFORMS = ["YOUTUBE", "TIKTOK", "FACEBOOK", "INSTAGRAM"] as const;
 
 export default function AccountsPage() {
   const { data, isLoading } = useAccounts();

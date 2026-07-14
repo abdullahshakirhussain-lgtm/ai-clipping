@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PlatformSchema = z.enum(["TIKTOK", "INSTAGRAM", "YOUTUBE"]);
+export const PlatformSchema = z.enum(["TIKTOK", "INSTAGRAM", "YOUTUBE", "FACEBOOK"]);
 export type PlatformValue = z.infer<typeof PlatformSchema>;
 
 export const SourcePlatformSchema = z.enum(["YOUTUBE", "TWITCH", "KICK", "RUMBLE", "VIMEO", "OTHER"]);
