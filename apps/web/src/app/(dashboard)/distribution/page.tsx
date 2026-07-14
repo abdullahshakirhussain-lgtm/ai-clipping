@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   apiSend,
   distributionExportUrl,
@@ -9,10 +9,12 @@ import {
   type DistributionOverview,
   type PostTask,
 } from "@/lib/api";
+import { sendJob, subscribe, useExtensionConnected } from "@/lib/extension";
 import { Button, Card, EmptyState, PageHeader, Spinner, StatCard } from "@/components/ui";
 
 export default function DistributionPage() {
   const { data: overview } = useDistributionOverview();
+  const extConnected = useExtensionConnected();
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -47,6 +49,16 @@ export default function DistributionPage() {
       />
       {msg && <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>{msg}</p>}
 
+      <div className="flex items-center gap-2 mb-4 text-sm" style={{ color: "var(--muted)" }}>
+        <span
+          className="inline-block rounded-full"
+          style={{ width: 8, height: 8, background: extConnected ? "var(--success)" : "var(--muted)" }}
+        />
+        {extConnected
+          ? "Poster extension connected — one-click posting enabled on YouTube clips."
+          : "Poster extension not detected — install it to post in one click (manual copy/download still works)."}
+      </div>
+
       {!overview ? (
         <Spinner />
       ) : (
@@ -61,7 +73,7 @@ export default function DistributionPage() {
             <AccountList overview={overview} selected={selected} onSelect={setSelected} />
             <div>
               {selected ? (
-                <AccountQueue accountId={selected} />
+                <AccountQueue accountId={selected} extConnected={extConnected} />
               ) : (
                 <EmptyState title="Pick an account" hint="Select an account on the left to work its posting queue." />
               )}
@@ -114,28 +126,64 @@ function AccountList({
   );
 }
 
-function AccountQueue({ accountId }: { accountId: string }) {
+function AccountQueue({ accountId, extConnected }: { accountId: string; extConnected: boolean }) {
   const { data: tasks, isLoading } = useDistributionQueue(accountId);
   if (isLoading) return <Spinner />;
   if (!tasks || tasks.length === 0)
     return <EmptyState title="Queue empty" hint="No scheduled posts for this account. Distribute kept clips to fill it." />;
   return (
     <div className="space-y-3">
-      {tasks.map((t) => <PostCard key={t.jobId} task={t} />)}
+      {tasks.map((t) => <PostCard key={t.jobId} task={t} extConnected={extConnected} />)}
     </div>
   );
 }
 
-function PostCard({ task }: { task: PostTask }) {
+function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolean }) {
   const [busy, setBusy] = useState(false);
   const [url, setUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [extStatus, setExtStatus] = useState<string | null>(null);
 
   const caption = [task.title, task.description, task.hashtags.join(" ")].filter(Boolean).join("\n\n");
+  const canOneClick = extConnected && task.platform === "YOUTUBE" && !!task.previewUrl;
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true);
     try { await fn(); await revalidateAll(); } finally { setBusy(false); }
+  }
+
+  // Listen for this job's progress/result from the extension. On a captured URL
+  // we auto-mark the job posted; the manual paste box stays as a fallback.
+  useEffect(() => {
+    const unsub = subscribe((m) => {
+      if (m.jobId !== task.jobId) return;
+      if (m.kind === "status" && m.message) setExtStatus(m.message);
+      else if (m.kind === "result") {
+        if (m.url) {
+          setUrl(m.url);
+          setExtStatus("Posted ✓ — marking done");
+          void act(() => apiSend(`/jobs/${task.jobId}/posted`, "POST", { url: m.url }));
+        } else {
+          setExtStatus(`Error: ${m.error ?? "unknown"}`);
+        }
+      }
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.jobId]);
+
+  function postViaExtension() {
+    if (!task.previewUrl) return;
+    setExtStatus("Sending to extension…");
+    sendJob({
+      jobId: task.jobId,
+      platform: "YOUTUBE",
+      downloadUrl: task.previewUrl,
+      filename: `clip-${task.jobId}.mp4`,
+      title: task.title ?? "Untitled clip",
+      description: task.description ?? "",
+      hashtags: task.hashtags,
+    });
   }
 
   return (
@@ -156,6 +204,9 @@ function PostCard({ task }: { task: PostTask }) {
           <div className="text-[11px] mt-1 truncate" style={{ color: "var(--muted)" }}>{task.hashtags.join(" ")}</div>
         )}
         <div className="flex gap-2 mt-3 flex-wrap">
+          {canOneClick && (
+            <Button onClick={postViaExtension} disabled={busy}>Post to YouTube</Button>
+          )}
           <Button variant="secondary" onClick={() => { navigator.clipboard.writeText(caption); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
             {copied ? "Copied ✓" : "Copy caption"}
           </Button>
@@ -166,6 +217,9 @@ function PostCard({ task }: { task: PostTask }) {
           )}
           <Button variant="ghost" onClick={() => act(() => apiSend(`/jobs/${task.jobId}/skip`, "POST"))} disabled={busy}>Skip</Button>
         </div>
+        {extStatus && (
+          <div className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>{extStatus}</div>
+        )}
         <div className="flex gap-2 mt-2">
           <input
             value={url}

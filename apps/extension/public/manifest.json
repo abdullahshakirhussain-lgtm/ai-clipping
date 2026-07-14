@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "ClipFactory Poster",
+  "version": "0.1.0",
+  "description": "Posts distribution-queue clips to YouTube (TikTok/Facebook next) straight from the ClipFactory dashboard.",
+  "permissions": ["tabs", "storage", "downloads", "scripting"],
+  "host_permissions": [
+    "https://studio.youtube.com/*",
+    "https://www.youtube.com/*",
+    "https://*.r2.cloudflarestorage.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "ClipFactory Poster" },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:3000/*",
+        "https://web-production-377f5.up.railway.app/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://studio.youtube.com/*", "https://www.youtube.com/upload*"],
+      "js": ["content-youtube.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
