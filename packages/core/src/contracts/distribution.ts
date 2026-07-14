@@ -12,8 +12,20 @@ export const DistributeResultSchema = z.object({
       created: z.number().int(),
     }),
   ),
+  /** Why eligible clips produced no jobs, so the UI can explain the outcome. */
+  skipped: z.object({
+    noCategory: z.number().int(),
+    noMatchingAccount: z.number().int(),
+    alreadyDistributed: z.number().int(),
+  }),
 });
 export type DistributeResult = z.infer<typeof DistributeResultSchema>;
+
+/** Optional scope: distribute only these clips (Library action) vs all eligible. */
+export const DistributeInputSchema = z.object({
+  clipIds: z.array(z.string()).optional(),
+});
+export type DistributeInput = z.infer<typeof DistributeInputSchema>;
 
 /** One item on the VA work-queue: a clip to post to an account at a time. */
 export const PostTaskSchema = z.object({

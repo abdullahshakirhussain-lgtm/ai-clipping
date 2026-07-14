@@ -2,6 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  DistributeInputSchema,
   DistributeResultSchema,
   DistributionOverviewSchema,
   IdParamSchema,
@@ -23,8 +24,14 @@ export const distributionRoutes: RouteModule = (app, { container }): void => {
 
   app.post(
     "/distribute",
-    { schema: { tags: ["distribution"], response: { 200: DistributeResultSchema } } },
-    () => dist.distribute(),
+    {
+      schema: {
+        tags: ["distribution"],
+        body: DistributeInputSchema,
+        response: { 200: DistributeResultSchema },
+      },
+    },
+    (req) => dist.distribute(req.body.clipIds),
   );
 
   app.get(

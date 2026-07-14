@@ -6,6 +6,7 @@ import type {
   CategoryDto,
   ClipDetailDto,
   ClipDto,
+  DistributeResult,
   DistributionOverview,
   OverviewDto,
   PostTask,
@@ -145,6 +146,19 @@ export function distributionExportUrl(accountId?: string): string {
   return `${V1}/distribution/export${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ""}`;
 }
 
+/** Human-readable summary of a distribute run: what queued and what was skipped. */
+export function summarizeDistribute(r: DistributeResult): string {
+  const head = r.jobsCreated > 0
+    ? `Queued ${r.jobsCreated} post${r.jobsCreated === 1 ? "" : "s"}`
+    : "No new posts queued";
+  const reasons: string[] = [];
+  if (r.skipped.noCategory) reasons.push(`${r.skipped.noCategory} no category`);
+  if (r.skipped.noMatchingAccount) reasons.push(`${r.skipped.noMatchingAccount} no matching account`);
+  if (r.skipped.alreadyDistributed) reasons.push(`${r.skipped.alreadyDistributed} already queued`);
+  const skippedTotal = reasons.length ? ` · skipped ${r.skipped.noCategory + r.skipped.noMatchingAccount + r.skipped.alreadyDistributed}: ${reasons.join(", ")}` : "";
+  return `${head} from ${r.clipsConsidered} clip${r.clipsConsidered === 1 ? "" : "s"}${skippedTotal}.`;
+}
+
 export const useClip = (id: string | null) => useApi<ClipDetailDto>(id ? `/clips/${id}` : null);
 
 export const useCalibration = () => useApi<CalibrationDto>("/calibration", { refreshInterval: 15000 });
@@ -163,6 +177,7 @@ export type {
   CategoryDto,
   ClipDto,
   ClipDetailDto,
+  DistributeResult,
   DistributionOverview,
   OverviewDto,
   PostTask,

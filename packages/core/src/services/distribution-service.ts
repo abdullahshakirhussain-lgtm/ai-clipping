@@ -28,9 +28,9 @@ export class DistributionService {
   ) {}
 
   /** Create scheduled post-tasks for every distributable clip × its category accounts. */
-  async distribute(): Promise<DistributeResult> {
+  async distribute(clipIds?: string[]): Promise<DistributeResult> {
     const [clips, accounts] = await Promise.all([
-      this.repos.clips.distributable(),
+      this.repos.clips.distributable(clipIds),
       this.repos.socialAccounts.list(),
     ]);
     const active = accounts.filter((a) => a.status === "ACTIVE");
@@ -40,13 +40,27 @@ export class DistributionService {
       byCategory.get(a.category)!.push(a);
     }
 
-    // Which new (clip → account) pairs need creating, grouped per account.
+    // Which new (clip → account) pairs need creating, grouped per account, plus
+    // why any clip produced no jobs so the UI can explain the outcome.
+    const skipped = { noCategory: 0, noMatchingAccount: 0, alreadyDistributed: 0 };
     const perAccount = new Map<string, string[]>();
     for (const clip of clips) {
-      const accts = byCategory.get(clip.category ?? "") ?? [];
+      if (!clip.category) {
+        skipped.noCategory++;
+        continue;
+      }
+      const accts = byCategory.get(clip.category) ?? [];
+      if (accts.length === 0) {
+        skipped.noMatchingAccount++;
+        continue;
+      }
       const existing = new Set(clip.publishJobs.map((j) => j.socialAccountId));
-      for (const a of accts) {
-        if (existing.has(a.id)) continue;
+      const newAccts = accts.filter((a) => !existing.has(a.id));
+      if (newAccts.length === 0) {
+        skipped.alreadyDistributed++;
+        continue;
+      }
+      for (const a of newAccts) {
         if (!perAccount.has(a.id)) perAccount.set(a.id, []);
         perAccount.get(a.id)!.push(clip.id);
       }
@@ -81,7 +95,7 @@ export class DistributionService {
         created: clipIds.length,
       });
     }
-    return { clipsConsidered: clips.length, jobsCreated, byAccount };
+    return { clipsConsidered: clips.length, jobsCreated, byAccount, skipped };
   }
 
   /** The VA board for one account: pending posts, soonest first. */

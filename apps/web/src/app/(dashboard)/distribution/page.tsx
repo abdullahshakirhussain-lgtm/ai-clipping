@@ -4,8 +4,10 @@ import {
   apiSend,
   distributionExportUrl,
   revalidateAll,
+  summarizeDistribute,
   useDistributionOverview,
   useDistributionQueue,
+  type DistributeResult,
   type DistributionOverview,
   type PostTask,
 } from "@/lib/api";
@@ -23,8 +25,8 @@ export default function DistributionPage() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await apiSend<{ jobsCreated: number; clipsConsidered: number }>("/distribute", "POST");
-      setMsg(`Routed ${r.clipsConsidered} clips → ${r.jobsCreated} new scheduled posts.`);
+      const r = await apiSend<DistributeResult>("/distribute", "POST", {});
+      setMsg(summarizeDistribute(r));
       await revalidateAll();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Distribute failed");

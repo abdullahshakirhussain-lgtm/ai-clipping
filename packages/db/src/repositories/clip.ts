@@ -70,11 +70,19 @@ export class ClipRepository {
   }
 
   /** Kept + approved clips that have a category, with existing target-account ids. */
-  distributable() {
+  /**
+   * Kept + approved clips eligible for distribution, with their existing target
+   * accounts. Category may be null here so the caller can report "no category"
+   * as a skip reason. Optionally scoped to specific clip ids (Library action).
+   */
+  distributable(clipIds?: string[]) {
     return this.prisma.clip.findMany({
-      where: { kept: true, status: "APPROVED", category: { not: null } },
+      where: {
+        kept: true,
+        status: "APPROVED",
+        ...(clipIds && clipIds.length ? { id: { in: clipIds } } : {}),
+      },
       include: {
-        enhancement: true,
         publishJobs: { select: { socialAccountId: true } },
       },
     });

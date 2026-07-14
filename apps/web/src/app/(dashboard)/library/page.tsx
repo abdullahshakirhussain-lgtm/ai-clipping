@@ -4,11 +4,13 @@ import {
   apiSend,
   clipExportUrl,
   revalidateAll,
+  summarizeDistribute,
   useCalibration,
   useCategories,
   useClipGrid,
   useVideos,
   type ClipDto,
+  type DistributeResult,
 } from "@/lib/api";
 import { Button, Card, EmptyState, PageHeader, Spinner } from "@/components/ui";
 
@@ -59,6 +61,7 @@ export default function LibraryPage() {
   const [view, setView] = useState<"kept" | "discarded">("kept");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [distMsg, setDistMsg] = useState<string | null>(null);
 
   // Client-side filters (no API round-trip — the grid is already loaded).
   const [minScore, setMinScore] = useState(0);
@@ -132,6 +135,22 @@ export default function LibraryPage() {
       await apiSend("/clips/category", "POST", { ids, category: newCategory });
       if (clearSelection) setSelected(new Set());
       await revalidateAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function distribute(ids: string[], clearSelection = false) {
+    if (ids.length === 0) return;
+    setBusy(true);
+    setDistMsg(null);
+    try {
+      const r = await apiSend<DistributeResult>("/distribute", "POST", { clipIds: ids });
+      setDistMsg(summarizeDistribute(r));
+      if (clearSelection) setSelected(new Set());
+      await revalidateAll();
+    } catch (e) {
+      setDistMsg(e instanceof Error ? e.message : "Distribute failed");
     } finally {
       setBusy(false);
     }
@@ -308,7 +327,18 @@ export default function LibraryPage() {
                   {categoryNames.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
+              {view === "kept" && (
+                <Button variant="secondary" onClick={() => distribute(selectedIds, true)} disabled={busy}>
+                  Distribute ({selectedIds.length})
+                </Button>
+              )}
               <Button variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+            </div>
+          )}
+
+          {distMsg && (
+            <div className="mb-4 text-sm px-3 py-2 rounded-lg surface-2 border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+              {distMsg}
             </div>
           )}
 
@@ -335,6 +365,7 @@ export default function LibraryPage() {
                   onToggle={() => toggle(clip.id)}
                   categories={categoryNames}
                   onSetCategory={(cat) => recategorize([clip.id], cat)}
+                  onDistribute={view === "kept" ? () => distribute([clip.id]) : undefined}
                 />
               ))}
             </div>
@@ -399,12 +430,14 @@ function ClipCard({
   onToggle,
   categories,
   onSetCategory,
+  onDistribute,
 }: {
   clip: ClipDto;
   selected: boolean;
   onToggle: () => void;
   categories: string[];
   onSetCategory: (category: string) => void;
+  onDistribute?: () => void;
 }) {
   const notes = notesOf(clip).slice(0, 2);
   const scoreColor = clip.overallScore >= 75 ? "var(--success)" : clip.overallScore >= 55 ? "var(--warning)" : "var(--muted)";
@@ -479,14 +512,26 @@ function ClipCard({
           <span className="text-[10px] px-1.5 py-0.5 rounded capitalize self-start" style={{ background: "var(--primary)", color: "#fff" }}>{clip.category}</span>
         ) : null}
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-          <button
-            onClick={() => triggerDownload(clipExportUrl([clip.id]))}
-            className="text-xs px-2.5 py-1.5 rounded-lg surface-2 border font-medium"
-            style={{ borderColor: "var(--border)" }}
-            title="Export this clip (mp4 + caption)"
-          >
-            ⬇ Export
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => triggerDownload(clipExportUrl([clip.id]))}
+              className="text-xs px-2.5 py-1.5 rounded-lg surface-2 border font-medium"
+              style={{ borderColor: "var(--border)" }}
+              title="Export this clip (mp4 + caption)"
+            >
+              ⬇ Export
+            </button>
+            {onDistribute && (
+              <button
+                onClick={onDistribute}
+                className="text-xs px-2.5 py-1.5 rounded-lg surface-2 border font-medium"
+                style={{ borderColor: "var(--border)" }}
+                title="Distribute this clip to its category's accounts"
+              >
+                → Queue
+              </button>
+            )}
+          </div>
           <OutcomeRow clipId={clip.id} current={clip.outcome} />
         </div>
       </div>
