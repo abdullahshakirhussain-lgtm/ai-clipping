@@ -205,6 +205,9 @@ model SourceVideo {
   reframe         Boolean       @default(false)
   /// Opt-in auto sound-effects (whoosh/boom/faaaaa on absurd moments), kept sparse.
   autoEnhance     Boolean       @default(false)
+  /// Repost mode: skip clip detection and treat the whole video as one output
+  /// (captions/framing/SFX still apply). For adding subtitles to existing shorts.
+  subtitlesOnly   Boolean       @default(false)
   /// Content category chosen at upload; clips inherit it and route to matching accounts.
   category        String?
   createdAt   DateTime          @default(now())

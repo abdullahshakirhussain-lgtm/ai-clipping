@@ -17,6 +17,7 @@ export default function UploadPage() {
   const [position, setPosition] = useState("bottom");
   const [reframe, setReframe] = useState(false);
   const [autoEnhance, setAutoEnhance] = useState(false);
+  const [subtitlesOnly, setSubtitlesOnly] = useState(false);
   const [category, setCategory] = useState("");
 
   async function upload(file: File) {
@@ -25,7 +26,7 @@ export default function UploadPage() {
     setProgress(0);
     try {
       const cat = category ? `&category=${encodeURIComponent(category)}` : "";
-      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}${cat}`;
+      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}&subtitlesOnly=${subtitlesOnly}${cat}`;
       await apiUpload<{ sourceVideoId: string }>(`/videos/upload${qs}`, file, setProgress);
       await revalidateAll();
     } catch (err) {
@@ -45,6 +46,23 @@ export default function UploadPage() {
       />
 
       <Card className="mb-6">
+        <label
+          className="flex items-start gap-2.5 mb-4 p-3 rounded-lg surface-2 border cursor-pointer"
+          style={{ borderColor: subtitlesOnly ? "var(--primary)" : "var(--border)" }}
+        >
+          <input
+            type="checkbox"
+            checked={subtitlesOnly}
+            onChange={(e) => setSubtitlesOnly(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="text-sm font-medium">Subtitles only — don&apos;t clip</span>
+            <span className="block text-xs" style={{ color: "var(--muted)" }}>
+              Skip clip detection and render the whole video as one output (captions, framing &amp; SFX still apply). For reposting an already-short video.
+            </span>
+          </span>
+        </label>
         <div className="flex gap-4 mb-4 flex-wrap">
           <label className="text-sm">
             <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>

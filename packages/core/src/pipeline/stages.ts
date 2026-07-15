@@ -125,6 +125,39 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
   try {
     const det = ctx.config.detection;
     const segments = video.transcript.segments as unknown as TranscriptSegment[];
+
+    // Repost mode: no clipping — the whole video becomes one output that still
+    // gets captions/framing/SFX per the upload toggles. Useful for adding
+    // subtitles to an already-short video.
+    if (video.subtitlesOnly) {
+      const fullDuration = video.durationSec ?? segments[segments.length - 1]?.end ?? 0;
+      const created = await ctx.repos.clips.createMany([
+        {
+          sourceVideoId,
+          campaignId: video.campaignId,
+          startSec: 0,
+          endSec: fullDuration,
+          status: ClipStatus.RENDERING,
+          detectionReason: "Full video — subtitles only",
+          detectionSource: "subtitles-only",
+          captionStyle: video.captionStyle,
+          captionPosition: video.captionPosition,
+          reframe: video.reframe,
+          autoEnhance: video.autoEnhance,
+          category: video.category,
+          hookScore: 100,
+          viralScore: 100,
+          overallScore: 100,
+          scoreBreakdown: { notes: ["subtitles-only"] } as never,
+        },
+      ]);
+      await ctx.repos.sourceVideos.update(sourceVideoId, { status: SourceVideoStatus.PROCESSED });
+      for (const clip of created) {
+        await ctx.dispatcher.enqueue("clip.render", { clipId: clip.id }, { jobId: clip.id });
+      }
+      ctx.logger.info({ sourceVideoId }, "subtitles-only: rendered whole video as one clip");
+      return;
+    }
     const durationSec = video.durationSec ?? segments[segments.length - 1]?.end ?? 0;
     const bounds = { minDurationSec: det.minDurationSec, maxDurationSec: det.maxDurationSec };
 

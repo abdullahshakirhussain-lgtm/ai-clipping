@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   apiSend,
   distributionExportUrl,
@@ -87,6 +87,15 @@ export default function DistributionPage() {
   );
 }
 
+const PLATFORM_LABEL: Record<string, string> = {
+  YOUTUBE: "YouTube",
+  TIKTOK: "TikTok",
+  FACEBOOK: "Facebook",
+  INSTAGRAM: "Instagram",
+};
+const PLATFORM_ORDER = ["YOUTUBE", "TIKTOK", "FACEBOOK", "INSTAGRAM"];
+
+/** Accounts grouped under collapsible platform pills, so 15+ accounts stay tidy. */
 function AccountList({
   overview,
   selected,
@@ -96,33 +105,87 @@ function AccountList({
   selected: string | null;
   onSelect: (id: string) => void;
 }) {
+  const groups = useMemo(() => {
+    const m = new Map<string, DistributionOverview["accounts"]>();
+    for (const a of overview.accounts) {
+      if (!m.has(a.platform)) m.set(a.platform, []);
+      m.get(a.platform)!.push(a);
+    }
+    const known = PLATFORM_ORDER.filter((p) => m.has(p));
+    const rest = [...m.keys()].filter((p) => !PLATFORM_ORDER.includes(p));
+    return [...known, ...rest].map((p) => [p, m.get(p)!] as const);
+  }, [overview]);
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Keep the selected account's platform open so its queue context stays visible.
+  useEffect(() => {
+    const sel = overview.accounts.find((a) => a.id === selected);
+    if (sel) setExpanded((prev) => (prev.has(sel.platform) ? prev : new Set(prev).add(sel.platform)));
+  }, [selected, overview.accounts]);
+
+  function toggle(p: string) {
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(p)) n.delete(p);
+      else n.add(p);
+      return n;
+    });
+  }
+
   return (
     <Card className="p-0 overflow-hidden self-start">
       <div className="max-h-[70vh] overflow-y-auto">
-        {overview.accounts.map((a) => (
-          <button
-            key={a.id}
-            onClick={() => onSelect(a.id)}
-            className="w-full text-left p-3 border-t first:border-t-0 flex items-center justify-between gap-2"
-            style={{
-              borderColor: "var(--border)",
-              background: selected === a.id ? "var(--surface-2)" : "transparent",
-            }}
-          >
-            <div className="min-w-0">
-              <div className="text-sm font-medium truncate">{a.handle}</div>
-              <div className="text-xs" style={{ color: "var(--muted)" }}>
-                {a.platform} · <span className="capitalize">{a.category}</span>
-              </div>
+        {groups.map(([platform, accts]) => {
+          const posted = accts.reduce((n, a) => n + a.postedToday, 0);
+          const goal = accts.reduce((n, a) => n + a.postsPerDay, 0);
+          const queued = accts.reduce((n, a) => n + a.scheduledPending, 0);
+          const open = expanded.has(platform);
+          return (
+            <div key={platform} className="border-t first:border-t-0" style={{ borderColor: "var(--border)" }}>
+              <button
+                onClick={() => toggle(platform)}
+                className="w-full text-left px-3 py-2.5 flex items-center justify-between gap-2"
+                style={{ background: "var(--surface-2)" }}
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <span className="text-xs w-3 inline-block" style={{ color: "var(--muted)" }}>{open ? "▾" : "▸"}</span>
+                  {PLATFORM_LABEL[platform] ?? platform}
+                  <span className="text-xs font-normal" style={{ color: "var(--muted)" }}>({accts.length})</span>
+                </span>
+                <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  <span style={{ color: "var(--success)" }}>{posted}</span>/{goal} today
+                  {queued > 0 && <> · <span style={{ color: "var(--warning)" }}>{queued} queued</span></>}
+                </span>
+              </button>
+              {open &&
+                accts.map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => onSelect(a.id)}
+                    className="w-full text-left pl-8 pr-3 py-2.5 border-t flex items-center justify-between gap-2"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: selected === a.id ? "var(--surface)" : "transparent",
+                      outline: selected === a.id ? "1px solid var(--primary)" : "none",
+                      outlineOffset: "-1px",
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{a.handle}</div>
+                      <div className="text-xs capitalize" style={{ color: "var(--muted)" }}>{a.category}</div>
+                    </div>
+                    <div className="text-right text-xs shrink-0">
+                      <div><span style={{ color: "var(--success)" }}>{a.postedToday}</span>/{a.postsPerDay}</div>
+                      {a.scheduledPending > 0 && (
+                        <div style={{ color: "var(--warning)" }}>{a.scheduledPending} queued</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
             </div>
-            <div className="text-right text-xs shrink-0">
-              <div><span style={{ color: "var(--success)" }}>{a.postedToday}</span>/{a.postsPerDay} today</div>
-              {a.scheduledPending > 0 && (
-                <div style={{ color: "var(--warning)" }}>{a.scheduledPending} queued</div>
-              )}
-            </div>
-          </button>
-        ))}
+          );
+        })}
       </div>
     </Card>
   );
@@ -131,11 +194,54 @@ function AccountList({
 function AccountQueue({ accountId, extConnected }: { accountId: string; extConnected: boolean }) {
   const { data: tasks, isLoading } = useDistributionQueue(accountId);
   if (isLoading) return <Spinner />;
-  if (!tasks || tasks.length === 0)
+  const pending = (tasks ?? []).filter((t) => t.status === "SCHEDULED");
+  const done = (tasks ?? [])
+    .filter((t) => t.status === "PUBLISHED")
+    .sort((a, b) => (b.scheduledAt ?? "").localeCompare(a.scheduledAt ?? ""))
+    .slice(0, 30);
+
+  if (pending.length === 0 && done.length === 0)
     return <EmptyState title="Queue empty" hint="No scheduled posts for this account. Distribute kept clips to fill it." />;
+
   return (
-    <div className="space-y-3">
-      {tasks.map((t) => <PostCard key={t.jobId} task={t} extConnected={extConnected} />)}
+    <div className="space-y-5">
+      {pending.length > 0 ? (
+        <div className="space-y-3">
+          {pending.map((t) => <PostCard key={t.jobId} task={t} extConnected={extConnected} />)}
+        </div>
+      ) : (
+        <div className="text-sm px-3 py-2.5 rounded-lg surface-2 border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+          All caught up — nothing pending for this account.
+        </div>
+      )}
+
+      {done.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold mb-2" style={{ color: "var(--muted)" }}>
+            Posted ({done.length})
+          </div>
+          <div className="flex flex-col gap-1">
+            {done.map((t) => <DoneRow key={t.jobId} task={t} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A posted clip, checked off and de-emphasized so only pending work stands out. */
+function DoneRow({ task }: { task: PostTask }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg surface-2" style={{ opacity: 0.7 }}>
+      <span style={{ color: "var(--success)" }}>✓</span>
+      <span className="text-sm truncate flex-1" style={{ color: "var(--muted)" }}>
+        {task.title ?? "Untitled clip"}
+      </span>
+      {task.externalUrl && (
+        <a href={task.externalUrl} target="_blank" rel="noreferrer" className="text-xs shrink-0" style={{ color: "var(--primary)" }}>
+          view ↗
+        </a>
+      )}
     </div>
   );
 }

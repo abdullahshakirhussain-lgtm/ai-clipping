@@ -100,7 +100,12 @@ export class DistributionService {
 
   /** The VA board for one account: pending posts, soonest first. */
   async queue(accountId: string): Promise<PostTask[]> {
-    const jobs = await this.repos.publish.forAccount(accountId, [PublishJobStatus.SCHEDULED]);
+    // Include already-posted jobs so the UI can show them checked-off (a
+    // per-account checklist) instead of dropping them the moment they're posted.
+    const jobs = await this.repos.publish.forAccount(accountId, [
+      PublishJobStatus.SCHEDULED,
+      PublishJobStatus.PUBLISHED,
+    ]);
     return Promise.all(jobs.map((j) => this.toPostTask(j)));
   }
 
