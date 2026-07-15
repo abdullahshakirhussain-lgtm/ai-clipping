@@ -11,10 +11,24 @@ export default tseslint.config(
       "**/coverage/**",
       "**/.data/**",
       "**/generated/**",
+      "**/next-env.d.ts",
     ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    // Node-run config + build scripts (.mjs): make Node globals known.
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        URL: "readonly",
+        Buffer: "readonly",
+        __dirname: "readonly",
+      },
+    },
+  },
   {
     rules: {
       "@typescript-eslint/no-unused-vars": [

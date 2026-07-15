@@ -1,4 +1,4 @@
-import type { Repositories } from "@clipfactory/db";
+import { getPrisma, type Repositories } from "@clipfactory/db";
 import type { CreateAccountInput, SocialAccountDto, UpdateAccountInput } from "../contracts/index.js";
 import { decryptSecret, encryptSecret } from "../crypto.js";
 import { NotFoundError } from "../errors.js";
@@ -62,5 +62,20 @@ export class AccountService {
     const row = await this.repos.socialAccounts.byId(id);
     if (!row) throw new NotFoundError("SocialAccount", id);
     return { password: row.passwordEnc ? decryptSecret(row.passwordEnc) : null };
+  }
+
+  /**
+   * Delete an account and its distribution jobs. PublishJob has no FK cascade to
+   * SocialAccount, so its jobs are removed first (their PublishAttempts cascade).
+   */
+  async remove(id: string): Promise<{ removed: true }> {
+    const existing = await this.repos.socialAccounts.byId(id);
+    if (!existing) throw new NotFoundError("SocialAccount", id);
+    const prisma = getPrisma();
+    await prisma.$transaction([
+      prisma.publishJob.deleteMany({ where: { socialAccountId: id } }),
+      prisma.socialAccount.delete({ where: { id } }),
+    ]);
+    return { removed: true };
   }
 }

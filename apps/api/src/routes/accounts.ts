@@ -48,4 +48,16 @@ export const accountRoutes: RouteModule = (app, { container }): void => {
     },
     (req) => svc.reveal(req.params.id),
   );
+
+  app.delete(
+    "/accounts/:id",
+    {
+      schema: {
+        tags: ["accounts"],
+        params: IdParamSchema,
+        response: { 200: z.object({ removed: z.literal(true) }) },
+      },
+    },
+    (req) => svc.remove(req.params.id),
+  );
 };

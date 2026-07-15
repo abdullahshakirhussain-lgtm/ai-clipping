@@ -76,7 +76,7 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
 
       const uploadDir = join(tmpdir(), "clipfactory-uploads");
       await mkdir(uploadDir, { recursive: true });
-      const safe = String(data.filename ?? "upload.mp4").replace(/[^\w.\-]+/g, "_");
+      const safe = String(data.filename ?? "upload.mp4").replace(/[^\w.-]+/g, "_");
       const tmpPath = join(uploadDir, `${Date.now()}-${safe}`);
 
       try {

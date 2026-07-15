@@ -58,7 +58,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
 
     // Prefer utterances (already split per speaker turn).
     const utterances = data.results?.utterances ?? [];
-    let segments: TranscriptSegment[] = utterances.map((u) => ({
+    const segments: TranscriptSegment[] = utterances.map((u) => ({
       start: u.start,
       end: u.end,
       text: u.transcript,

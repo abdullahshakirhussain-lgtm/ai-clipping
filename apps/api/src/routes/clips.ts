@@ -149,7 +149,7 @@ export const clipRoutes: RouteModule = (app, { container }): void => {
       const used = new Set<string>();
       for (const clip of renderable) {
         const e = clip.enhancement;
-        let base = (e?.title ?? clip.id).toLowerCase().replace(/[^\w]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || clip.id;
+        const base = (e?.title ?? clip.id).toLowerCase().replace(/[^\w]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || clip.id;
         let name = base;
         let n = 1;
         while (used.has(name)) name = `${base}-${n++}`;

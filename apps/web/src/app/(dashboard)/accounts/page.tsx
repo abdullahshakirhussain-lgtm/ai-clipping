@@ -172,9 +172,31 @@ function AccountForm({ account, onDone }: { account: SocialAccountDto | null; on
           <input value={channelId} onChange={(e) => setChannelId(e.target.value)} className={field} placeholder="e.g. UCxxxxxxxx (leave blank to use the active browser account)" />
         </div>
         {error && <p className="text-sm md:col-span-3" style={{ color: "var(--danger)" }}>{error}</p>}
-        <div className="md:col-span-3 flex gap-2">
+        <div className="md:col-span-3 flex gap-2 items-center">
           <Button type="submit" disabled={busy}>{busy ? "Saving…" : isEdit ? "Save changes" : "Add account"}</Button>
           <Button variant="ghost" onClick={onDone}>Cancel</Button>
+          {isEdit && (
+            <Button
+              variant="danger"
+              className="ml-auto"
+              disabled={busy}
+              onClick={async () => {
+                if (!confirm(`Delete ${account!.handle}? This also removes its queued/posted jobs. This cannot be undone.`)) return;
+                setBusy(true);
+                setError(null);
+                try {
+                  await apiSend(`/accounts/${account!.id}`, "DELETE");
+                  await revalidateAll();
+                  onDone();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Failed to delete");
+                  setBusy(false);
+                }
+              }}
+            >
+              Delete
+            </Button>
+          )}
         </div>
       </form>
     </Card>

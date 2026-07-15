@@ -75,7 +75,7 @@ export function planClipEdit(input: {
   const hookSeconds = input.hookSeconds ?? 2.5;
 
   // Words inside the window, clamped and sorted.
-  let words = input.words
+  const words = input.words
     .filter((w) => w.end > input.clipStart && w.start < input.clipEnd && w.word.trim())
     .map((w) => ({
       start: Math.max(w.start, input.clipStart),
