@@ -208,6 +208,8 @@ model SourceVideo {
   /// Repost mode: skip clip detection and treat the whole video as one output
   /// (captions/framing/SFX still apply). For adding subtitles to existing shorts.
   subtitlesOnly   Boolean       @default(false)
+  /// Render as-is: skip jump-cuts/reframe/SFX, only burn captions. Inherited by clips.
+  untouched       Boolean       @default(false)
   /// Content category chosen at upload; clips inherit it and route to matching accounts.
   category        String?
   createdAt   DateTime          @default(now())
@@ -254,6 +256,8 @@ model Clip {
   reframe         Boolean    @default(false)
   /// Opt-in auto sound-effects.
   autoEnhance     Boolean    @default(false)
+  /// Render as-is: skip jump-cuts/reframe/SFX, only burn captions (repost mode).
+  untouched       Boolean    @default(false)
   /// Edit-decision list applied at render (sfx cues; zoom/emoji later).
   edl             Json?
   /// Content category (inherited from the source video); routes distribution.
@@ -321,6 +325,10 @@ model SocialAccount {
   platform    Platform
   handle      String
   displayName String?
+  /// Login username/email for this account (credential vault; not used to auto-post).
+  username    String?
+  /// AES-256-GCM encrypted login password (never returned in list DTOs).
+  passwordEnc String?
   /// Content niche this account posts; clips route to accounts of the same category.
   category    String              @default("general")
   /// Optional target channel/page id the poster extension switches to before

@@ -144,6 +144,7 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
           captionPosition: video.captionPosition,
           reframe: video.reframe,
           autoEnhance: video.autoEnhance,
+          untouched: video.untouched,
           category: video.category,
           hookScore: 100,
           viralScore: 100,
@@ -256,6 +257,7 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
         captionPosition: video.captionPosition,
         reframe: video.reframe,
         autoEnhance: video.autoEnhance,
+        untouched: video.untouched,
         category: video.category,
         hookScore: score.hookScore,
         viralScore: score.viralScore,
@@ -327,10 +329,14 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
       captionsFileName = assName;
     }
 
+    // Untouched (repost) mode: render the window as-is with captions only — no
+    // dead-air jump-cuts, no reframe, no SFX.
+    const selectSpans = clip.untouched ? undefined : plan.selectSpans;
+
     // Opt-in subject-aware reframing: find the dominant face and crop toward it.
     // Best-effort — any failure/no-face leaves focusX undefined → center crop.
     let focusX: number | undefined;
-    if (clip.reframe) {
+    if (clip.reframe && !clip.untouched) {
       const rf = await planReframe({
         inputPath: localSource,
         startSec: clip.startSec,
@@ -354,11 +360,11 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
     // Progressive fallback so a caption/filter hiccup never loses the clip:
     // full (cuts + captions) → cuts only → plain window.
     try {
-      await renderClip({ ...baseArgs, selectSpans: plan.selectSpans, captionsFileName });
+      await renderClip({ ...baseArgs, selectSpans, captionsFileName });
     } catch (err) {
       ctx.logger.error({ clipId, err: String(err) }, "full render failed; retrying cuts-only");
       try {
-        await renderClip({ ...baseArgs, selectSpans: plan.selectSpans });
+        await renderClip({ ...baseArgs, selectSpans });
       } catch (err2) {
         ctx.logger.error({ clipId, err: String(err2) }, "cuts render failed; rendering plain window");
         await renderClip(baseArgs);
@@ -374,7 +380,7 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
     // Opt-in auto sound-effects, applied SPARSELY. Best-effort — any failure
     // leaves the un-enhanced clip untouched.
     let finalClip = outPath;
-    if (clip.autoEnhance) {
+    if (clip.autoEnhance && !clip.untouched) {
       try {
         const enhanced = await applyAutoSfx(ctx, clip, plan, outPath, workDir);
         if (enhanced) finalClip = enhanced;

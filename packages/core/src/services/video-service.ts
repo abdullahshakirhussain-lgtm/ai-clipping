@@ -55,6 +55,7 @@ export class VideoService {
     reframe?: boolean;
     autoEnhance?: boolean;
     subtitlesOnly?: boolean;
+    untouched?: boolean;
     category?: string;
   }): Promise<{ sourceVideoId: string }> {
     const campaignId = input.campaignId ?? (await this.getOrCreateDefaultCampaignId());
@@ -70,6 +71,7 @@ export class VideoService {
       reframe: input.reframe ?? false,
       autoEnhance: input.autoEnhance ?? false,
       subtitlesOnly: input.subtitlesOnly ?? false,
+      untouched: input.untouched ?? false,
       category: input.category?.trim() || null,
     });
     // Probing + copying a large file to storage can take tens of seconds — far

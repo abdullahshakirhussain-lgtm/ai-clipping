@@ -151,6 +151,8 @@ export function toAccountDto(a: AccountRow): SocialAccountDto {
     platform: a.platform,
     handle: a.handle,
     displayName: a.displayName,
+    username: a.username,
+    hasPassword: a.passwordEnc !== null,
     category: a.category,
     channelId: a.channelId,
     postsPerDay: a.postsPerDay,

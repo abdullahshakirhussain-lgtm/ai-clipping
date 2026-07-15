@@ -1,5 +1,6 @@
 import type { Repositories } from "@clipfactory/db";
 import type { CreateAccountInput, SocialAccountDto, UpdateAccountInput } from "../contracts/index.js";
+import { decryptSecret, encryptSecret } from "../crypto.js";
 import { NotFoundError } from "../errors.js";
 import { toAccountDto } from "../mappers.js";
 
@@ -16,6 +17,8 @@ export class AccountService {
       platform: input.platform,
       handle: input.handle,
       displayName: input.displayName,
+      username: input.username?.trim() || null,
+      passwordEnc: input.password ? encryptSecret(input.password) : null,
       category: input.category,
       channelId: input.channelId,
       postsPerDay: input.postsPerDay,
@@ -33,9 +36,14 @@ export class AccountService {
   async update(id: string, input: UpdateAccountInput): Promise<SocialAccountDto> {
     const existing = await this.repos.socialAccounts.byId(id);
     if (!existing) throw new NotFoundError("SocialAccount", id);
+    // password: omit => keep; "" => clear; value => (re)encrypt.
+    const passwordEnc =
+      input.password === undefined ? undefined : input.password === "" ? null : encryptSecret(input.password);
     await this.repos.socialAccounts.update(id, {
       displayName: input.displayName,
       status: input.status,
+      username: input.username?.trim() || null,
+      passwordEnc,
       category: input.category,
       channelId: input.channelId,
       postsPerDay: input.postsPerDay,
@@ -47,5 +55,12 @@ export class AccountService {
     const rows = await this.repos.socialAccounts.list();
     const row = rows.find((r) => r.id === id)!;
     return toAccountDto(row);
+  }
+
+  /** Decrypt and return the stored password. Only hit from the explicit reveal action. */
+  async reveal(id: string): Promise<{ password: string | null }> {
+    const row = await this.repos.socialAccounts.byId(id);
+    if (!row) throw new NotFoundError("SocialAccount", id);
+    return { password: row.passwordEnc ? decryptSecret(row.passwordEnc) : null };
   }
 }

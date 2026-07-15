@@ -60,6 +60,8 @@ const EnvSchema = z.object({
   PUBLISH_DRIVER: z.enum(["mock", "live"]).default("mock"),
 
   BETTER_AUTH_SECRET: z.string().default("dev-only-secret-change-me"),
+  /** Key for encrypting vault secrets (account passwords). Falls back to BETTER_AUTH_SECRET. */
+  CREDENTIALS_SECRET: z.string().optional().default(""),
   API_URL: z.string().default("http://localhost:3001"),
   WEB_URL: z.string().default("http://localhost:3000"),
   API_PORT: z.coerce.number().default(3001),

@@ -34,4 +34,18 @@ export const accountRoutes: RouteModule = (app, { container }): void => {
     },
     (req) => svc.update(req.params.id, req.body),
   );
+
+  // Explicit, on-demand decrypt of a stored password (the vault "reveal" action).
+  // Never part of the list DTO so passwords aren't shipped by default.
+  app.get(
+    "/accounts/:id/reveal",
+    {
+      schema: {
+        tags: ["accounts"],
+        params: IdParamSchema,
+        response: { 200: z.object({ password: z.string().nullable() }) },
+      },
+    },
+    (req) => svc.reveal(req.params.id),
+  );
 };

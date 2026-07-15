@@ -11,6 +11,7 @@ const NAV: Array<{ href: string; label: string; badge?: "review" }> = [
   { href: "/library", label: "Library" },
   { href: "/distribution", label: "Distribution" },
   { href: "/accounts", label: "Accounts" },
+  { href: "/vault", label: "Vault" },
   { href: "/settings", label: "Settings" },
 ];
 

@@ -18,6 +18,7 @@ export default function UploadPage() {
   const [reframe, setReframe] = useState(false);
   const [autoEnhance, setAutoEnhance] = useState(false);
   const [subtitlesOnly, setSubtitlesOnly] = useState(false);
+  const [untouched, setUntouched] = useState(false);
   const [category, setCategory] = useState("");
 
   async function upload(file: File) {
@@ -26,7 +27,7 @@ export default function UploadPage() {
     setProgress(0);
     try {
       const cat = category ? `&category=${encodeURIComponent(category)}` : "";
-      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}&subtitlesOnly=${subtitlesOnly}${cat}`;
+      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}&subtitlesOnly=${subtitlesOnly}&untouched=${untouched}${cat}`;
       await apiUpload<{ sourceVideoId: string }>(`/videos/upload${qs}`, file, setProgress);
       await revalidateAll();
     } catch (err) {
@@ -60,6 +61,23 @@ export default function UploadPage() {
             <span className="text-sm font-medium">Subtitles only — don&apos;t clip</span>
             <span className="block text-xs" style={{ color: "var(--muted)" }}>
               Skip clip detection and render the whole video as one output (captions, framing &amp; SFX still apply). For reposting an already-short video.
+            </span>
+          </span>
+        </label>
+        <label
+          className="flex items-start gap-2.5 mb-4 p-3 rounded-lg surface-2 border cursor-pointer"
+          style={{ borderColor: untouched ? "var(--primary)" : "var(--border)" }}
+        >
+          <input
+            type="checkbox"
+            checked={untouched}
+            onChange={(e) => setUntouched(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="text-sm font-medium">Untouched — captions only</span>
+            <span className="block text-xs" style={{ color: "var(--muted)" }}>
+              Render the video as-is: no jump-cuts, no reframing, no SFX — just burn the subtitles. Best paired with &ldquo;subtitles only&rdquo; for a faithful repost.
             </span>
           </span>
         </label>
