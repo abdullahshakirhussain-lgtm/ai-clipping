@@ -493,11 +493,32 @@ async function applyAutoSfx(
  * Delivery steering for the voice — the main lever (with the script prompt) that
  * keeps the read from sounding like a narrator bot. OpenAI honours this;
  * ElevenLabs ignores it and takes its tone from the voice itself.
+ *
+ * What sells "human" is imperfection: an audible breath before speaking, uneven
+ * pacing, and a beat before the payoff. Perfectly smooth and evenly-paced is the
+ * thing people clock as AI. This is the knob to turn if the read feels off —
+ * OpenAI reads it as free-form direction, so it's safe to rewrite.
  */
 const VOICE_INSTRUCTIONS: Record<CommentaryRole, string> = {
-  intro: "Dry, a little amused — like you're leaning in to tell a friend something. Conversational, not announcer.",
-  react: "Unimpressed and quick, slightly incredulous. A real-time reaction, not narration.",
-  outro: "Flat and final. Deadpan. Land it and stop.",
+  intro: [
+    "Voice: casual and dry, like you're leaning in to tell a friend something.",
+    "Delivery: take a small audible breath before the first word. Never announcer-bright.",
+    "Pacing: uneven — throw away the setup, slow down and land the last few words.",
+    "Pauses: a short beat after the first clause. Don't rush into the end.",
+    "Emotion: mildly amused, a little conspiratorial.",
+  ].join("\n"),
+  react: [
+    "Voice: dry, unimpressed, reacting in real time.",
+    "Delivery: a quick breath in, then slightly clipped — like it just slipped out.",
+    "Pacing: fast off the top, then a beat before the last word.",
+    "Emotion: incredulous and deadpan. Not shouty, not amused.",
+  ].join("\n"),
+  outro: [
+    "Voice: flat, final, deadpan.",
+    "Delivery: a small exhale first. Say it once, land it, stop.",
+    "Pacing: slow and deliberate, with a beat before the final word.",
+    "Emotion: a verdict — bored certainty, not triumph.",
+  ].join("\n"),
 };
 
 /**

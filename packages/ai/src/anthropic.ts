@@ -320,10 +320,11 @@ Structure: ${structure}
 - react: atSec = the exact moment you're reacting to.
 - outro: atSec ${input.durationSec.toFixed(0)}. Your verdict.
 
-This is spoken aloud, so it must not sound like an AI narrator:
+This is spoken aloud by a voice that follows your punctuation, so it must not sound like an AI narrator:
 - Contractions. Vary sentence length. Fragments are fine.
 - Max ~12 words a line. Shorter hits harder.
 - One idea per line. No lists, no "first/second/finally" cadence.
+- Punctuate for BREATH, not for grammar. A comma or "..." is where the voice pauses — put them where a person would actually hesitate, and leave a beat before the punch.
 - Banned openers/phrases: "In this video", "Let's dive in", "Here's the thing", "buckle up", "little did they know", "you won't believe".
 - No throat-clearing, no summarising, no explaining the joke.
 - A person with a take — not a documentary voiceover.
