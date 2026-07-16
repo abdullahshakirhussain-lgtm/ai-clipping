@@ -59,6 +59,53 @@ describe("planClipEdit", () => {
     expect(plan.ass.toUpperCase()).toContain("WATCH THIS");
   });
 
+  // Repost/untouched mode. Regression guard: the normal path re-times words into
+  // POST-CUT time, so reusing that plan for an uncut render drifts the subtitles
+  // out of sync. noCuts must keep captions on the linear source timeline.
+  describe("noCuts (repost mode)", () => {
+    /** Dialogue start times, in seconds, from an ASS script. */
+    function dialogueStarts(ass: string): number[] {
+      return [...ass.matchAll(/Dialogue: \d+,\d:(\d\d):(\d\d\.\d\d),/g)].map(
+        (m) => Number(m[1]) * 60 + Number(m[2]),
+      );
+    }
+
+    const gapped = words([
+      { w: "hello", at: 0 },
+      { w: "world", at: 0.5 },
+      { w: "again", at: 4.0 },
+      { w: "now", at: 4.5 },
+    ]);
+
+    it("keeps the whole window and removes nothing", () => {
+      const plan = planClipEdit({ words: gapped, clipStart: 0, clipEnd: 5, noCuts: true });
+      expect(plan.selectSpans).toEqual([{ s: 0, e: 5 }]);
+      expect(plan.removedSec).toBe(0);
+      expect(plan.clipDurationSec).toBe(5);
+    });
+
+    it("times captions on the uncut timeline, unlike the cutting path", () => {
+      const opts = { words: gapped, clipStart: 0, clipEnd: 5, maxGapSec: 0.4, wordsPerLine: 2 };
+      const cut = planClipEdit(opts);
+      const uncut = planClipEdit({ ...opts, noCuts: true });
+      // "again" really happens at 4s. Cutting the 3s gap pulls it early…
+      expect(Math.max(...dialogueStarts(cut.ass))).toBeLessThan(2);
+      // …but an untouched render must caption it at its true ~4s position.
+      expect(Math.max(...dialogueStarts(uncut.ass))).toBeGreaterThan(3.5);
+    });
+
+    it("does not trim leading filler", () => {
+      const w = words([
+        { w: "um", at: 0 },
+        { w: "so", at: 0.5 },
+        { w: "listen", at: 1.0 },
+      ]);
+      const plan = planClipEdit({ words: w, clipStart: 0, clipEnd: 3, noCuts: true });
+      expect(plan.selectSpans).toEqual([{ s: 0, e: 3 }]);
+      expect(plan.ass.toUpperCase()).toContain("UM");
+    });
+  });
+
   it("degrades gracefully with no words (non-speech clip)", () => {
     const plan = planClipEdit({ words: [], clipStart: 10, clipEnd: 40 });
     expect(plan.selectSpans).toEqual([{ s: 0, e: 30 }]); // single full span → no cuts

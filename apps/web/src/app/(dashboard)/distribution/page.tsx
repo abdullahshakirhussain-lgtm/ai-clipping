@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiSend,
   distributionExportUrl,
@@ -118,11 +118,17 @@ function AccountList({
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Keep the selected account's platform open so its queue context stays visible.
+  // Open the selected account's platform when the selection changes. Deliberately
+  // keyed on `selected` alone: including the overview (which re-fetches on a
+  // timer) re-ran this every few seconds and re-opened a group the user had just
+  // collapsed. Looking the platform up from a possibly-stale list is fine — an
+  // account's platform never changes.
+  const accountsRef = useRef(overview.accounts);
+  accountsRef.current = overview.accounts;
   useEffect(() => {
-    const sel = overview.accounts.find((a) => a.id === selected);
+    const sel = accountsRef.current.find((a) => a.id === selected);
     if (sel) setExpanded((prev) => (prev.has(sel.platform) ? prev : new Set(prev).add(sel.platform)));
-  }, [selected, overview.accounts]);
+  }, [selected]);
 
   function toggle(p: string) {
     setExpanded((prev) => {

@@ -98,15 +98,22 @@ export class DistributionService {
     return { clipsConsidered: clips.length, jobsCreated, byAccount, skipped };
   }
 
-  /** The VA board for one account: pending posts, soonest first. */
+  /**
+   * The VA board for one account: pending posts (soonest first) plus recently
+   * posted ones so the UI can show them checked-off.
+   *
+   * Pending and posted are fetched with SEPARATE queries. Asking forAccount for
+   * both statuses at once looked simpler, but that query is capped and ordered
+   * by scheduledAt — so once an account built up more posted jobs than the cap,
+   * the old posted rows filled it and every pending job silently disappeared
+   * from the board.
+   */
   async queue(accountId: string): Promise<PostTask[]> {
-    // Include already-posted jobs so the UI can show them checked-off (a
-    // per-account checklist) instead of dropping them the moment they're posted.
-    const jobs = await this.repos.publish.forAccount(accountId, [
-      PublishJobStatus.SCHEDULED,
-      PublishJobStatus.PUBLISHED,
+    const [pending, posted] = await Promise.all([
+      this.repos.publish.forAccount(accountId, [PublishJobStatus.SCHEDULED]),
+      this.repos.publish.recentPostedForAccount(accountId, 30),
     ]);
-    return Promise.all(jobs.map((j) => this.toPostTask(j)));
+    return Promise.all([...pending, ...posted].map((j) => this.toPostTask(j)));
   }
 
   async overview(): Promise<DistributionOverview> {

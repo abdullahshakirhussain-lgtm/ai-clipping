@@ -61,6 +61,21 @@ export class PublishRepository {
     });
   }
 
+  /**
+   * Most-recently posted jobs for an account (the queue's checked-off list).
+   * Kept separate from `forAccount` on purpose: mixing PUBLISHED into that
+   * scheduledAt-ordered, row-capped query lets an old posted backlog crowd the
+   * pending jobs out of the result entirely.
+   */
+  recentPostedForAccount(socialAccountId: string, limit = 30) {
+    return this.prisma.publishJob.findMany({
+      where: { socialAccountId, status: "PUBLISHED" },
+      include: jobInclude,
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      take: limit,
+    });
+  }
+
   /** Count of PUBLISHED jobs per account since `date` (today's progress). */
   publishedCountsByAccount(since: Date): Promise<Array<{ socialAccountId: string; count: number }>> {
     return this.prisma.publishJob

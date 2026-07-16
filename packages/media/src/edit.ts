@@ -67,6 +67,8 @@ export function planClipEdit(input: {
   padSec?: number;
   wordsPerLine?: number;
   hookSeconds?: number;
+  /** Repost mode: keep the window as-is (no filler trim, no dead-air cuts). */
+  noCuts?: boolean;
 }): EditPlan {
   const clipDur = Math.max(0, input.clipEnd - input.clipStart);
   const maxGap = input.maxGapSec ?? 0.4;
@@ -83,6 +85,37 @@ export function planClipEdit(input: {
       word: w.word.trim(),
     }))
     .sort((a, b) => a.start - b.start);
+
+  const styleName = input.styleName && CAPTION_STYLES[input.styleName] ? input.styleName : "bold-center";
+  const position = input.position ?? "bottom";
+
+  // Repost mode: keep the window exactly as-is and time the captions on the
+  // LINEAR (uncut) timeline. The normal path below re-times words into post-cut
+  // time, so reusing that plan for an uncut render would drift the subtitles
+  // progressively out of sync with the video.
+  if (input.noCuts) {
+    const linear = (t: number) => Math.min(Math.max(t - input.clipStart, 0), clipDur);
+    const ass = words.length
+      ? buildKaraokeAss(
+          words.map((w) => ({ word: w.word, start: linear(w.start), end: linear(w.end) })),
+          clipDur,
+          styleName,
+          position,
+          wordsPerLine,
+          input.hookText,
+          hookSeconds,
+        )
+      : input.hookText
+        ? hookOnlyAss(input.hookText, clipDur, hookSeconds)
+        : "";
+    return {
+      selectSpans: [{ s: 0, e: clipDur }],
+      clipDurationSec: clipDur,
+      ass,
+      removedSec: 0,
+      mapSourceTime: (t) => (t >= input.clipStart && t <= input.clipEnd ? t - input.clipStart : null),
+    };
+  }
 
   // Trim up to 4 leading filler words so the clip opens on real content.
   let trimmed = 0;
@@ -140,8 +173,6 @@ export function planClipEdit(input: {
   // Re-time words into post-cut clip time.
   const cutWords = words.map((w) => ({ word: w.word, start: mapTime(w.start), end: mapTime(w.end) }));
 
-  const styleName = input.styleName && CAPTION_STYLES[input.styleName] ? input.styleName : "bold-center";
-  const position = input.position ?? "bottom";
   const ass = buildKaraokeAss(cutWords, keptDur, styleName, position, wordsPerLine, input.hookText, hookSeconds);
 
   return {

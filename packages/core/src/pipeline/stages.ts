@@ -131,6 +131,12 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
     // subtitles to an already-short video.
     if (video.subtitlesOnly) {
       const fullDuration = video.durationSec ?? segments[segments.length - 1]?.end ?? 0;
+      if (fullDuration <= 0) {
+        // Without a duration we'd create a zero-length clip that fails to render
+        // with an opaque ffmpeg error — fail loudly here instead.
+        await failVideo(ctx, sourceVideoId, new Error("cannot determine video duration for subtitles-only render"));
+        return;
+      }
       const created = await ctx.repos.clips.createMany([
         {
           sourceVideoId,
@@ -322,6 +328,9 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
       styleName: clip.captionStyle,
       position: clip.captionPosition as "top" | "middle" | "bottom",
       hookText: clip.detectionReason ?? undefined,
+      // Untouched renders skip the cuts, so the captions must be timed on the
+      // uncut timeline — otherwise they'd drift against the video.
+      noCuts: clip.untouched,
     });
     let captionsFileName: string | undefined;
     if (plan.ass.trim()) {
