@@ -1,12 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type {
   ClipSignals,
+  CommentaryLine,
+  CommentaryRole,
   DetectHighlightsInput,
   EnhanceClipInput,
   EnhancementResult,
   HighlightCandidate,
   HookType,
   LlmProvider,
+  PlanCommentaryInput,
   PlanEnhancementsInput,
   RefineHighlightsInput,
   SfxCue,
@@ -285,6 +288,83 @@ Rules: at most ${input.maxCues} cues total; most clips should get 0-1; never clu
         atSec: clamp(c.atSec!, 0, input.durationSec),
         sound: c.sound as SfxSound,
         reason: String(c.reason ?? ""),
+      }));
+  }
+
+  async planCommentary(input: PlanCommentaryInput): Promise<CommentaryLine[]> {
+    const allowed: CommentaryRole[] =
+      input.mode === "intro_outro"
+        ? ["intro", "outro"]
+        : input.mode === "interject"
+          ? ["react"]
+          : ["intro", "react", "outro"];
+    const structure =
+      input.mode === "intro_outro"
+        ? "Exactly one intro and one outro. No reacts."
+        : input.mode === "interject"
+          ? "One or two reacts. No intro, no outro."
+          : "One intro, one or two reacts, one outro.";
+
+    const result = await this.callTool<{
+      lines?: Array<{ atSec?: number; text?: string; role?: string }>;
+    }>(
+      `You are the commentator on a short-form clip. The video FREEZES, you speak, then it resumes — so every line has to earn the interruption.
+
+Transcript (times in seconds within this ${input.durationSec.toFixed(0)}s clip):
+${input.transcript}${input.category ? `\n\nChannel niche: ${input.category}` : ""}
+
+Your job is to have an OPINION about what's being said — agree, push back, call it out, or add the context the viewer doesn't have. Never narrate what they can already see and hear.
+
+Structure: ${structure}
+- intro: atSec 0. Why this clip is worth the next 30 seconds.
+- react: atSec = the exact moment you're reacting to.
+- outro: atSec ${input.durationSec.toFixed(0)}. Your verdict.
+
+This is spoken aloud, so it must not sound like an AI narrator:
+- Contractions. Vary sentence length. Fragments are fine.
+- Max ~12 words a line. Shorter hits harder.
+- One idea per line. No lists, no "first/second/finally" cadence.
+- Banned openers/phrases: "In this video", "Let's dive in", "Here's the thing", "buckle up", "little did they know", "you won't believe".
+- No throat-clearing, no summarising, no explaining the joke.
+- A person with a take — not a documentary voiceover.
+
+Call submit_lines.`,
+      {
+        name: "submit_lines",
+        description: "Submit the spoken commentary lines for this clip.",
+        input_schema: {
+          type: "object",
+          properties: {
+            lines: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  atSec: { type: "number", description: "seconds into the clip" },
+                  text: { type: "string", description: "the spoken line, ~12 words max" },
+                  role: { type: "string", enum: allowed },
+                },
+                required: ["atSec", "text", "role"],
+              },
+            },
+          },
+          required: ["lines"],
+        },
+      },
+      1024,
+    );
+
+    return (result.lines ?? [])
+      .filter(
+        (l) =>
+          Number.isFinite(l.atSec) &&
+          String(l.text ?? "").trim().length > 0 &&
+          allowed.includes(l.role as CommentaryRole),
+      )
+      .map((l) => ({
+        atSec: clamp(l.atSec!, 0, input.durationSec),
+        text: String(l.text).trim(),
+        role: l.role as CommentaryRole,
       }));
   }
 

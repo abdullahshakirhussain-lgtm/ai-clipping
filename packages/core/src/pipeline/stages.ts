@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import type { TranscriptSegment } from "@clipfactory/ai";
+import type { CommentaryLine, CommentaryMode, CommentaryRole, TranscriptSegment } from "@clipfactory/ai";
 import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db";
 import {
   analyzeLoudness,
@@ -9,9 +9,13 @@ import {
   extractAudio,
   extractSmartThumbnail,
   findLoudnessPeaks,
+  type FreezeInsert,
+  insertFreezes,
+  mixCommentary,
   mixSfx,
   planClipEdit,
   planReframe,
+  probe,
   renderClip,
   resolveSfxFile,
   type SfxMix,
@@ -151,6 +155,7 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
           reframe: video.reframe,
           autoEnhance: video.autoEnhance,
           untouched: video.untouched,
+          commentaryMode: video.commentaryMode,
           category: video.category,
           hookScore: 100,
           viralScore: 100,
@@ -264,6 +269,7 @@ export async function runDetect(ctx: PipelineContext, sourceVideoId: string): Pr
         reframe: video.reframe,
         autoEnhance: video.autoEnhance,
         untouched: video.untouched,
+        commentaryMode: video.commentaryMode,
         category: video.category,
         hookScore: score.hookScore,
         viralScore: score.viralScore,
@@ -398,6 +404,17 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
       }
     }
 
+    // Opt-in commentary voice-over (freeze-frame). After SFX so their cues stay
+    // on their moments. Best-effort — a failure leaves the clip without a track.
+    if (clip.commentaryMode !== "off") {
+      try {
+        const narrated = await applyCommentary(ctx, clip, plan, finalClip, workDir);
+        if (narrated) finalClip = narrated;
+      } catch (err) {
+        ctx.logger.warn({ clipId, err: String(err) }, "commentary failed; using clip without it");
+      }
+    }
+
     await extractSmartThumbnail(finalClip, thumbPath);
 
     await ctx.storage.putFile(clipKey(clipId), finalClip, "video/mp4");
@@ -469,6 +486,104 @@ async function applyAutoSfx(
   await mixSfx(clipPath, out, chosen, workDir);
   await ctx.repos.clips.update(clip.id, { edl: { sfx: cues } as never });
   ctx.logger.info({ clipId: clip.id, cues: chosen.length }, "auto-sfx applied");
+  return out;
+}
+
+/**
+ * Delivery steering for the voice — the main lever (with the script prompt) that
+ * keeps the read from sounding like a narrator bot. OpenAI honours this;
+ * ElevenLabs ignores it and takes its tone from the voice itself.
+ */
+const VOICE_INSTRUCTIONS: Record<CommentaryRole, string> = {
+  intro: "Dry, a little amused — like you're leaning in to tell a friend something. Conversational, not announcer.",
+  react: "Unimpressed and quick, slightly incredulous. A real-time reaction, not narration.",
+  outro: "Flat and final. Deadpan. Land it and stop.",
+};
+
+/**
+ * Freeze-frame commentary: writes a take, voices it, holds the picture for each
+ * line so nothing gets talked over, and mixes the audio in.
+ *
+ * Runs AFTER auto-SFX on purpose: the freezes shift the timeline, and SFX cues
+ * are placed against the pre-freeze one — baking them in first keeps them on
+ * their moments. Best-effort; commentary failing never costs us the clip.
+ */
+async function applyCommentary(
+  ctx: PipelineContext,
+  clip: {
+    id: string;
+    startSec: number;
+    endSec: number;
+    commentaryMode: string;
+    category: string | null;
+    detectionReason: string | null;
+    sourceVideo: { transcript: { segments: unknown } | null };
+  },
+  plan: EditPlan,
+  clipPath: string,
+  workDir: string,
+): Promise<string | null> {
+  if (clip.commentaryMode === "off") return null;
+
+  const segments = (clip.sourceVideo.transcript?.segments as unknown as TranscriptSegment[]) ?? [];
+  const transcript = segments
+    .filter((s) => s.end > clip.startSec && s.start < clip.endSec)
+    .map((s) => `[${(s.start - clip.startSec).toFixed(1)}-${(s.end - clip.startSec).toFixed(1)}] ${s.text}`)
+    .join("\n");
+  if (!transcript.trim()) return null;
+
+  const script = await ctx.llm.planCommentary({
+    transcript,
+    durationSec: clip.endSec - clip.startSec,
+    mode: clip.commentaryMode as Exclude<CommentaryMode, "off">,
+    category: clip.category ?? undefined,
+    hook: clip.detectionReason ?? undefined,
+  });
+  if (script.length === 0) return null;
+
+  // Voice each line and measure it — the freeze has to be exactly as long as the
+  // audio, so durations come from the synthesized file, not an estimate.
+  const inserts: FreezeInsert[] = [];
+  const files: string[] = [];
+  const kept: CommentaryLine[] = [];
+  for (const [i, line] of script.entries()) {
+    const atClip =
+      line.role === "intro"
+        ? 0
+        : line.role === "outro"
+          ? plan.clipDurationSec
+          : plan.mapSourceTime(clip.startSec + line.atSec);
+    if (atClip === null) continue; // reacted to a moment the jump-cuts removed
+
+    const { audio, ext } = await ctx.tts.synthesize({
+      text: line.text,
+      instructions: VOICE_INSTRUCTIONS[line.role],
+    });
+    const file = join(workDir, `${clip.id}-vo-${i}.${ext}`);
+    await fs.writeFile(file, audio);
+    const { durationSec } = await probe(file);
+    if (durationSec <= 0) continue;
+
+    inserts.push({ atSec: atClip, durationSec });
+    files.push(file);
+    kept.push(line);
+  }
+  if (inserts.length === 0) return null;
+
+  const frozen = join(workDir, `${clip.id}-freeze.mp4`);
+  const offsets = await insertFreezes(clipPath, frozen, inserts, workDir);
+  const out = join(workDir, `${clip.id}-vo.mp4`);
+  await mixCommentary(
+    frozen,
+    out,
+    offsets.map((atSec, i) => ({ atSec, file: files[i]! })),
+    workDir,
+  );
+
+  // Merge into the edl rather than overwrite — auto-SFX wrote its cues there.
+  const current = (await ctx.repos.clips.byId(clip.id))?.edl as Record<string, unknown> | null;
+  await ctx.repos.clips.update(clip.id, { edl: { ...(current ?? {}), commentary: kept } as never });
+  ctx.logger.info({ clipId: clip.id, lines: kept.length, mode: clip.commentaryMode }, "commentary track added");
   return out;
 }
 

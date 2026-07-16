@@ -1,15 +1,18 @@
 import type {
+  CommentaryLine,
   DetectHighlightsInput,
   EnhanceClipInput,
   EnhancementResult,
   HighlightCandidate,
   LlmProvider,
+  PlanCommentaryInput,
   PlanEnhancementsInput,
   RefineHighlightsInput,
   SfxCue,
   TranscriptionProvider,
   TranscriptionResult,
   TranscriptSegment,
+  TtsProvider,
 } from "./types.js";
 
 /** Deterministic hash so mock output is stable for the same input. */
@@ -112,6 +115,26 @@ export class MockLlmProvider implements LlmProvider {
     return [];
   }
 
+  /**
+   * Offline stub. Unlike planEnhancements this returns real lines, so the freeze
+   * + mix path actually gets exercised in dev without an API key.
+   */
+  async planCommentary(input: PlanCommentaryInput): Promise<CommentaryLine[]> {
+    const lines: CommentaryLine[] = [];
+    const wantsFraming = input.mode === "intro_outro" || input.mode === "full";
+    const wantsReacts = input.mode === "interject" || input.mode === "full";
+    if (wantsFraming) {
+      lines.push({ atSec: 0, text: "Okay, you need context for this one.", role: "intro" });
+    }
+    if (wantsReacts) {
+      lines.push({ atSec: input.durationSec / 2, text: "And that's where it falls apart.", role: "react" });
+    }
+    if (wantsFraming) {
+      lines.push({ atSec: input.durationSec, text: "Wild that anyone believed it.", role: "outro" });
+    }
+    return lines;
+  }
+
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {
     return {
       title: `${input.hook.replace(/[.!?]+$/, "").slice(0, 60)}`,
@@ -132,5 +155,41 @@ export class MockLlmProvider implements LlmProvider {
       `Nobody is ready for this: ${input.currentHook}`,
       `${input.currentHook} (watch till the end)`,
     ];
+  }
+}
+
+/** A valid silent PCM WAV of `seconds` — enough for ffprobe/ffmpeg to work with. */
+function silentWav(seconds: number): Buffer {
+  const sampleRate = 16000;
+  const channels = 1;
+  const bytesPerSample = 2; // 16-bit
+  const samples = Math.max(1, Math.round(seconds * sampleRate));
+  const dataSize = samples * channels * bytesPerSample;
+  const buf = Buffer.alloc(44 + dataSize); // body stays zeroed = silence
+  buf.write("RIFF", 0);
+  buf.writeUInt32LE(36 + dataSize, 4);
+  buf.write("WAVE", 8);
+  buf.write("fmt ", 12);
+  buf.writeUInt32LE(16, 16); // PCM fmt chunk size
+  buf.writeUInt16LE(1, 20); // format = PCM
+  buf.writeUInt16LE(channels, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate * channels * bytesPerSample, 28); // byte rate
+  buf.writeUInt16LE(channels * bytesPerSample, 32); // block align
+  buf.writeUInt16LE(bytesPerSample * 8, 34);
+  buf.write("data", 36);
+  buf.writeUInt32LE(dataSize, 40);
+  return buf;
+}
+
+/**
+ * Offline TTS: silence sized to how long the line would plausibly take to say
+ * (~15 chars/sec). The pipeline can then plan freezes, mix, and be verified
+ * end-to-end without an API key or spending anything.
+ */
+export class MockTtsProvider implements TtsProvider {
+  async synthesize(input: { text: string }): Promise<{ audio: Buffer; ext: "wav" }> {
+    const seconds = Math.min(12, Math.max(1, input.text.length / 15));
+    return { audio: silentWav(seconds), ext: "wav" };
   }
 }

@@ -2,11 +2,15 @@ import { join } from "node:path";
 import {
   AnthropicLlmProvider,
   DeepgramTranscriptionProvider,
+  ElevenLabsTtsProvider,
   GroqWhisperProvider,
   MockLlmProvider,
   MockTranscriptionProvider,
+  MockTtsProvider,
+  OpenAiTtsProvider,
   type LlmProvider,
   type TranscriptionProvider,
+  type TtsProvider,
 } from "@clipfactory/ai";
 import { createRepositories, getPrisma, type Repositories } from "@clipfactory/db";
 import { MockDownloader, YtDlpDownloader, type DownloadProvider } from "@clipfactory/media";
@@ -115,6 +119,31 @@ function buildAiProviders(env: Env, logger: Logger): {
   };
 }
 
+function buildTtsProvider(env: Env, logger: Logger): TtsProvider {
+  if (env.TTS_PROVIDER === "openai") {
+    if (!env.OPENAI_API_KEY) throw new Error("TTS_PROVIDER=openai requires OPENAI_API_KEY");
+    logger.info({ model: env.OPENAI_TTS_MODEL, voice: env.OPENAI_TTS_VOICE }, "using OpenAI TTS (steerable)");
+    return new OpenAiTtsProvider({
+      apiKey: env.OPENAI_API_KEY,
+      model: env.OPENAI_TTS_MODEL,
+      voice: env.OPENAI_TTS_VOICE,
+    });
+  }
+  if (env.TTS_PROVIDER === "elevenlabs") {
+    if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_VOICE_ID) {
+      throw new Error("TTS_PROVIDER=elevenlabs requires ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID");
+    }
+    logger.info({ voice: env.ELEVENLABS_VOICE_ID }, "using ElevenLabs TTS");
+    return new ElevenLabsTtsProvider({
+      apiKey: env.ELEVENLABS_API_KEY,
+      voiceId: env.ELEVENLABS_VOICE_ID,
+      model: env.ELEVENLABS_MODEL,
+    });
+  }
+  logger.info("using mock TTS (silent commentary)");
+  return new MockTtsProvider();
+}
+
 function buildDownloader(env: Env): DownloadProvider {
   return env.DOWNLOAD_DRIVER === "ytdlp"
     ? new YtDlpDownloader({
@@ -159,6 +188,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const repos = createRepositories(prisma);
   const storage = buildStorage(env, logger);
   const { transcription, llm } = buildAiProviders(env, logger);
+  const tts = buildTtsProvider(env, logger);
   const downloader = buildDownloader(env);
   const publisherFor = buildPublisherFactory(env);
 
@@ -172,6 +202,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     storage,
     transcription,
     llm,
+    tts,
     downloader,
     publisherFor,
     logger,

@@ -63,6 +63,7 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
           autoEnhance: z.enum(["true", "false"]).optional(),
           subtitlesOnly: z.enum(["true", "false"]).optional(),
           untouched: z.enum(["true", "false"]).optional(),
+          commentaryMode: z.enum(["off", "intro_outro", "interject", "full"]).optional(),
           category: z.string().max(60).optional(),
         }),
         response: { 200: z.object({ sourceVideoId: z.string() }) },
@@ -100,6 +101,7 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
         autoEnhance: req.query.autoEnhance === "true",
         subtitlesOnly: req.query.subtitlesOnly === "true",
         untouched: req.query.untouched === "true",
+        commentaryMode: req.query.commentaryMode,
         category: req.query.category,
       });
     },

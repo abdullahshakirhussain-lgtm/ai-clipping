@@ -210,6 +210,8 @@ model SourceVideo {
   subtitlesOnly   Boolean       @default(false)
   /// Render as-is: skip jump-cuts/reframe/SFX, only burn captions. Inherited by clips.
   untouched       Boolean       @default(false)
+  /// AI commentary voice-over: off | intro_outro | interject | full. Inherited by clips.
+  commentaryMode  String        @default("off")
   /// Content category chosen at upload; clips inherit it and route to matching accounts.
   category        String?
   createdAt   DateTime          @default(now())
@@ -258,6 +260,8 @@ model Clip {
   autoEnhance     Boolean    @default(false)
   /// Render as-is: skip jump-cuts/reframe/SFX, only burn captions (repost mode).
   untouched       Boolean    @default(false)
+  /// AI commentary voice-over mode (inherited from the source video).
+  commentaryMode  String     @default("off")
   /// Edit-decision list applied at render (sfx cues; zoom/emoji later).
   edl             Json?
   /// Content category (inherited from the source video); routes distribution.

@@ -19,6 +19,7 @@ export default function UploadPage() {
   const [autoEnhance, setAutoEnhance] = useState(false);
   const [subtitlesOnly, setSubtitlesOnly] = useState(false);
   const [untouched, setUntouched] = useState(false);
+  const [commentaryMode, setCommentaryMode] = useState("off");
   const [category, setCategory] = useState("");
 
   async function upload(file: File) {
@@ -27,7 +28,7 @@ export default function UploadPage() {
     setProgress(0);
     try {
       const cat = category ? `&category=${encodeURIComponent(category)}` : "";
-      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}&subtitlesOnly=${subtitlesOnly}&untouched=${untouched}${cat}`;
+      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}&subtitlesOnly=${subtitlesOnly}&untouched=${untouched}&commentaryMode=${commentaryMode}${cat}`;
       await apiUpload<{ sourceVideoId: string }>(`/videos/upload${qs}`, file, setProgress);
       await revalidateAll();
     } catch (err) {
@@ -94,6 +95,21 @@ export default function UploadPage() {
               {categories.map((c) => (
                 <option key={c} value={c} className="capitalize">{c}</option>
               ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Commentary</span>
+            <select
+              value={commentaryMode}
+              onChange={(e) => setCommentaryMode(e.target.value)}
+              className="px-3 py-2 rounded-lg surface-2 border text-sm"
+              style={{ borderColor: "var(--border)" }}
+              title="AI voice-over: the clip freezes, the line is said, then it resumes"
+            >
+              <option value="off">Off</option>
+              <option value="intro_outro">Intro + outro</option>
+              <option value="interject">Interjections</option>
+              <option value="full">Full (intro + reacts + outro)</option>
             </select>
           </label>
           <label className="text-sm">

@@ -127,6 +127,44 @@ export interface PlanEnhancementsInput {
   maxCues: number;
 }
 
+// ── Commentary track ────────────────────────────────────────────────────────
+
+/** How much commentary a video gets. Chosen per upload. */
+export type CommentaryMode = "off" | "intro_outro" | "interject" | "full";
+
+/** Where a commentary line sits. "react" interrupts mid-clip. */
+export type CommentaryRole = "intro" | "react" | "outro";
+
+/** One spoken line. For "react", `atSec` is a moment in clip-source time. */
+export interface CommentaryLine {
+  atSec: number;
+  text: string;
+  role: CommentaryRole;
+}
+
+export interface PlanCommentaryInput {
+  /** Clip transcript lines prefixed with [start-end] timestamps. */
+  transcript: string;
+  durationSec: number;
+  mode: Exclude<CommentaryMode, "off">;
+  category?: string;
+  hook?: string;
+}
+
+/**
+ * Text-to-speech for the commentary voice. `instructions` steers the delivery
+ * ("dry, unimpressed, slightly rushed") — the main lever against a read that
+ * sounds like a narrator bot. Honoured by OpenAI; ignored by ElevenLabs.
+ */
+export interface TtsProvider {
+  /** `ext` names the container so the caller can write a file ffmpeg will read. */
+  synthesize(input: {
+    text: string;
+    voice?: string;
+    instructions?: string;
+  }): Promise<{ audio: Buffer; ext: "mp3" | "wav" }>;
+}
+
 /** LLM reasoning tasks (Claude in production). */
 export interface LlmProvider {
   detectHighlights(input: DetectHighlightsInput): Promise<HighlightCandidate[]>;
@@ -140,6 +178,11 @@ export interface LlmProvider {
    * zero. "faaaaa" is reserved for genuinely absurd/dumb statements.
    */
   planEnhancements(input: PlanEnhancementsInput): Promise<SfxCue[]>;
+  /**
+   * Write the spoken commentary for a clip. The point is a real take with a
+   * point of view — not narration of what the viewer can already see.
+   */
+  planCommentary(input: PlanCommentaryInput): Promise<CommentaryLine[]>;
   enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult>;
   improveHooks(input: { currentHook: string; transcriptExcerpt: string }): Promise<string[]>;
 }

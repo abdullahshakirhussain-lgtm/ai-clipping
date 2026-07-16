@@ -1,4 +1,4 @@
-import type { LlmProvider, TranscriptionProvider } from "@clipfactory/ai";
+import type { LlmProvider, TranscriptionProvider, TtsProvider } from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
 import type { DownloadProvider } from "@clipfactory/media";
 import type { PublisherAdapter, PublishPlatform } from "@clipfactory/publishers";
@@ -16,6 +16,8 @@ export interface PipelineContext {
   dispatcher: Dispatcher;
   transcription: TranscriptionProvider;
   llm: LlmProvider;
+  /** Voice for the commentary track (mock/OpenAI/ElevenLabs). */
+  tts: TtsProvider;
   downloader: DownloadProvider;
   publisherFor: (platform: PublishPlatform) => PublisherAdapter;
   logger: Logger;

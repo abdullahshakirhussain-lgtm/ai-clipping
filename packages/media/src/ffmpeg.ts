@@ -329,6 +329,168 @@ export async function extractFrames(
 const SFX_DIR = fileURLToPath(new URL("../assets/sfx/", import.meta.url));
 
 /** Resolve a sound name to its bundled asset path, or null if the file is absent. */
+export interface FreezeInsert {
+  /** Seconds into the input clip where the picture should hold. */
+  atSec: number;
+  durationSec: number;
+}
+
+export interface FreezePlan {
+  /** Hold on the first frame for this long before the clip starts (cold open). */
+  startPad: number;
+  /** Cut points; `e: null` is the tail. `stop` holds the last frame after it. */
+  segments: Array<{ s: number; e: number | null; stop: number }>;
+  /** Each insert's start in the OUTPUT timeline, aligned to the input order. */
+  offsets: number[];
+}
+
+/**
+ * Works out how freezes reshape the timeline: which inserts are the cold open
+ * and closing hold, where to cut for the mid ones, and where every line ends up
+ * once the earlier freezes have pushed it later.
+ *
+ * Pure and exported so this (the part that's easy to get subtly wrong) can be
+ * tested without invoking ffmpeg.
+ */
+export function planFreezes(durationSec: number, inserts: FreezeInsert[]): FreezePlan {
+  const EPS = 0.05;
+  const sorted = [...inserts].sort((a, b) => a.atSec - b.atSec);
+  const intro = sorted.length > 0 && sorted[0]!.atSec <= EPS ? sorted[0]! : undefined;
+  const last = sorted[sorted.length - 1];
+  const outro = last && last !== intro && last.atSec >= durationSec - EPS ? last : undefined;
+  const mids = sorted.filter((i) => i !== intro && i !== outro);
+
+  const startPad = intro?.durationSec ?? 0;
+  const endPad = outro?.durationSec ?? 0;
+
+  // One segment per mid insert (ending on its freeze) plus the tail segment.
+  const segments: FreezePlan["segments"] = [];
+  let prev = 0;
+  for (const m of mids) {
+    segments.push({ s: prev, e: m.atSec, stop: m.durationSec });
+    prev = m.atSec;
+  }
+  segments.push({ s: prev, e: null, stop: endPad });
+
+  const startOf = new Map<FreezeInsert, number>();
+  if (intro) startOf.set(intro, 0);
+  let midAcc = 0;
+  for (const m of mids) {
+    startOf.set(m, startPad + m.atSec + midAcc);
+    midAcc += m.durationSec;
+  }
+  if (outro) startOf.set(outro, startPad + durationSec + midAcc);
+
+  return { startPad, segments, offsets: inserts.map((i) => startOf.get(i) ?? 0) };
+}
+
+/**
+ * Freeze-frame commentary beats: at each insert the picture holds on that frame
+ * (audio silent) for `durationSec`, then the clip resumes — so nothing in the
+ * original ever gets talked over. An insert at 0 holds the first frame (cold
+ * open); one at the end holds the last (closing take).
+ *
+ * concat can't stream-copy, so this re-encodes — which is why `burnAssFileName`
+ * is applied in the same pass: burning the commentary text costs nothing extra.
+ *
+ * Returns each insert's start time in the OUTPUT timeline, in the same order as
+ * `inserts`, so the caller knows where to place the voice.
+ */
+export async function insertFreezes(
+  inputPath: string,
+  outPath: string,
+  inserts: FreezeInsert[],
+  workDir: string,
+  burnAssFileName?: string,
+): Promise<number[]> {
+  if (inserts.length === 0) throw new Error("insertFreezes: no inserts");
+  const { durationSec } = await probe(inputPath);
+  const { startPad, segments, offsets } = planFreezes(durationSec, inserts);
+
+  const chains: string[] = [];
+  const concatIn: string[] = [];
+  segments.forEach((seg, i) => {
+    const range =
+      seg.e === null ? `start=${seg.s.toFixed(3)}` : `start=${seg.s.toFixed(3)}:end=${seg.e.toFixed(3)}`;
+    const v = [`trim=${range}`, "setpts=PTS-STARTPTS"];
+    const a = [`atrim=${range}`, "asetpts=PTS-STARTPTS"];
+    if (i === 0 && startPad > 0) {
+      // Cold open: hold the first frame, with matching silence before the audio.
+      const ms = Math.round(startPad * 1000);
+      v.push(`tpad=start_mode=clone:start_duration=${startPad.toFixed(3)}`);
+      a.push(`adelay=${ms}|${ms}`);
+    }
+    if (seg.stop > 0) {
+      v.push(`tpad=stop_mode=clone:stop_duration=${seg.stop.toFixed(3)}`);
+      a.push(`apad=pad_dur=${seg.stop.toFixed(3)}`);
+    }
+    chains.push(`[0:v]${v.join(",")}[v${i}]`);
+    chains.push(`[0:a]${a.join(",")}[a${i}]`);
+    concatIn.push(`[v${i}][a${i}]`);
+  });
+
+  let filter = `${chains.join(";")};${concatIn.join("")}concat=n=${segments.length}:v=1:a=1[vc][a]`;
+  if (burnAssFileName) filter += `;[vc]subtitles=${burnAssFileName}[vout]`;
+
+  await run(
+    bin("ffmpeg"),
+    [
+      "-y", "-i", inputPath,
+      "-filter_complex", filter,
+      "-map", burnAssFileName ? "[vout]" : "[vc]",
+      "-map", "[a]",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+      "-c:a", "aac", "-b:a", "128k",
+      "-movflags", "+faststart",
+      outPath,
+    ],
+    { cwd: workDir, timeoutMs: 5 * 60 * 1000 },
+  );
+
+  return offsets;
+}
+
+export interface CommentaryMix {
+  /** Start time in the already-frozen clip's timeline. */
+  atSec: number;
+  file: string;
+  gain?: number;
+}
+
+/**
+ * Lays the commentary voice into the freezes. `insertFreezes` already made the
+ * room (silence under each hold), so this just delays each line into place and
+ * mixes — the video is stream-copied because the freeze pass did the encoding.
+ */
+export async function mixCommentary(
+  inputClip: string,
+  outPath: string,
+  lines: CommentaryMix[],
+  workDir: string,
+): Promise<void> {
+  if (lines.length === 0) throw new Error("mixCommentary: no lines");
+  const chains: string[] = [];
+  const labels: string[] = [];
+  lines.forEach((l, i) => {
+    const ms = Math.max(0, Math.round(l.atSec * 1000));
+    const gain = l.gain ?? 1;
+    chains.push(`[${i + 1}:a]adelay=${ms}|${ms},volume=${gain.toFixed(2)}[c${i}]`);
+    labels.push(`[c${i}]`);
+  });
+  const filter = `${chains.join(";")};[0:a]${labels.join("")}amix=inputs=${lines.length + 1}:normalize=0:duration=first[a]`;
+
+  const args = ["-y", "-i", inputClip];
+  for (const l of lines) args.push("-i", l.file);
+  args.push(
+    "-filter_complex", filter,
+    "-map", "0:v", "-map", "[a]",
+    "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+    "-movflags", "+faststart",
+    outPath,
+  );
+  await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 3 * 60 * 1000 });
+}
+
 export async function resolveSfxFile(name: string): Promise<string | null> {
   const p = join(SFX_DIR, `${name}.mp3`);
   return (await stat(p).then(() => true).catch(() => false)) ? p : null;
