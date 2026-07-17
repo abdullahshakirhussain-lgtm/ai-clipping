@@ -12,6 +12,7 @@ import {
   PublishRequestSchema,
   ReviewInputSchema,
   SetClipCategoryInputSchema,
+  SetCommentaryInputSchema,
   SetOutcomeInputSchema,
 } from "@clipfactory/core";
 import archiver from "archiver";
@@ -85,6 +86,20 @@ export const clipRoutes: RouteModule = (app, { container }): void => {
       },
     },
     (req) => clips.setOutcome(req.params.id, req.body.outcome),
+  );
+
+  // Replace a clip's commentary with hand-written lines and re-render it.
+  app.post(
+    "/clips/:id/commentary",
+    {
+      schema: {
+        tags: ["clips"],
+        params: IdParamSchema,
+        body: SetCommentaryInputSchema,
+        response: { 200: z.object({ clipId: z.string(), rerendering: z.boolean() }) },
+      },
+    },
+    (req) => clips.setCommentary(req.params.id, req.body.lines),
   );
 
   // Bulk grid cull: keep/discard many clips at once.

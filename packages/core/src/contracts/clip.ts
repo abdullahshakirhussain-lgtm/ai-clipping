@@ -18,6 +18,20 @@ export const TranscriptSegmentSchema = z.object({
 });
 export type TranscriptSegmentDto = z.infer<typeof TranscriptSegmentSchema>;
 
+/** One spoken commentary line; mirrors CommentaryLine in @clipfactory/ai. */
+export const CommentaryLineSchema = z.object({
+  atSec: z.number(),
+  text: z.string().min(1).max(300),
+  role: z.enum(["intro", "react", "outro"]),
+});
+export type CommentaryLineDto = z.infer<typeof CommentaryLineSchema>;
+
+/** Edited commentary for a clip. Saving re-renders it with exactly these lines. */
+export const SetCommentaryInputSchema = z.object({
+  lines: z.array(CommentaryLineSchema).max(6),
+});
+export type SetCommentaryInput = z.infer<typeof SetCommentaryInputSchema>;
+
 export const SourceVideoDtoSchema = z.object({
   id: z.string(),
   campaignId: z.string(),
@@ -90,6 +104,8 @@ export const ClipDtoSchema = z.object({
   category: z.string().nullable(),
   /** True when auto-SFX cues were applied to this clip's render. */
   hasSfx: z.boolean(),
+  /** The spoken commentary lines (empty when the clip has no voice-over). */
+  commentary: z.array(CommentaryLineSchema),
   outcome: ClipOutcomeSchema.nullable(),
   publishJobs: z.array(ClipPublishSummarySchema),
   createdAt: z.string(),

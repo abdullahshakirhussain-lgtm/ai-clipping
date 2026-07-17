@@ -4,6 +4,7 @@ import type { ObjectStorage } from "@clipfactory/storage";
 import type {
   CampaignDto,
   ClipDto,
+  CommentaryLineDto,
   Hooks,
   PublishJobDto,
   SocialAccountDto,
@@ -115,6 +116,9 @@ export async function toClipDto(clip: ClipListRow, storage: ObjectStorage): Prom
     hasSfx: Array.isArray((clip.edl as { sfx?: unknown[] } | null)?.sfx)
       ? (clip.edl as { sfx?: unknown[] }).sfx!.length > 0
       : false,
+    commentary: Array.isArray((clip.edl as { commentary?: unknown[] } | null)?.commentary)
+      ? ((clip.edl as { commentary: CommentaryLineDto[] }).commentary ?? [])
+      : [],
     outcome: clip.outcome ?? null,
     publishJobs: clip.publishJobs.map((j) => ({
       jobId: j.id,

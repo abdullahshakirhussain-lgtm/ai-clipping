@@ -236,7 +236,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const services = {
     campaigns: new CampaignService(repos, dispatcher),
     videos: new VideoService(repos, storage, dispatcher),
-    clips: new ClipService(repos, storage),
+    clips: new ClipService(repos, storage, dispatcher),
     review: new ReviewService(repos, dispatcher),
     publish: new PublishService(repos, dispatcher),
     accounts: new AccountService(repos),

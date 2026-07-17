@@ -1,6 +1,13 @@
-import type { Repositories } from "@clipfactory/db";
+import { ClipStatus, type Repositories } from "@clipfactory/db";
+import type { Dispatcher } from "@clipfactory/queue";
 import type { ObjectStorage } from "@clipfactory/storage";
-import type { ClipDetailDto, ClipDto, ClipListQuery, TranscriptSegmentDto } from "../contracts/index.js";
+import type {
+  ClipDetailDto,
+  ClipDto,
+  ClipListQuery,
+  CommentaryLineDto,
+  TranscriptSegmentDto,
+} from "../contracts/index.js";
 import { NotFoundError } from "../errors.js";
 import { toClipDto } from "../mappers.js";
 
@@ -21,7 +28,28 @@ export class ClipService {
   constructor(
     private readonly repos: Repositories,
     private readonly storage: ObjectStorage,
+    private readonly dispatcher: Dispatcher,
   ) {}
+
+  /**
+   * Replace a clip's commentary with the user's own lines and re-render it.
+   *
+   * `commentaryEdited` marks the script as hand-owned so the render reuses these
+   * lines verbatim instead of asking the LLM again — otherwise every re-render
+   * would silently throw the edit away.
+   */
+  async setCommentary(id: string, lines: CommentaryLineDto[]): Promise<{ clipId: string; rerendering: boolean }> {
+    const clip = await this.repos.clips.byId(id);
+    if (!clip) throw new NotFoundError("Clip", id);
+    const edl = (clip.edl as Record<string, unknown> | null) ?? {};
+    await this.repos.clips.update(id, {
+      edl: { ...edl, commentary: lines, commentaryEdited: true } as never,
+      status: ClipStatus.RENDERING,
+      error: null,
+    });
+    await this.dispatcher.enqueue("clip.render", { clipId: id }, { jobId: `commentary-${id}-${Date.now()}` });
+    return { clipId: id, rerendering: true };
+  }
 
   async list(query: ClipListQuery): Promise<{ items: ClipDto[]; total: number }> {
     const [rows, total] = await this.repos.clips.list(query);

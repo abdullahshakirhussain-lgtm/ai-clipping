@@ -469,6 +469,15 @@ function ClipCard({
           <input type="checkbox" checked={selected} onChange={onToggle} className="accent-white" />
         </label>
         <div className="absolute top-2 right-2 flex items-center gap-1">
+          {clip.commentary.length > 0 && (
+            <span
+              className="px-1.5 h-6 flex items-center rounded-md text-xs"
+              style={{ background: "rgba(0,0,0,0.55)", color: "#fff" }}
+              title={`Commentary: ${clip.commentary.length} line${clip.commentary.length === 1 ? "" : "s"}`}
+            >
+              🎙
+            </span>
+          )}
           {clip.hasSfx && (
             <span className="px-1.5 h-6 flex items-center rounded-md text-xs" style={{ background: "rgba(0,0,0,0.55)", color: "#fff" }} title="Sound effects added">
               🔊
@@ -549,12 +558,93 @@ function ClipCard({
                 </select>
               </label>
             )}
+            {clip.commentary.length > 0 && <CommentaryEditor clip={clip} />}
             <div>
               <span className="text-[10px] block mb-1" style={{ color: "var(--muted)" }}>Performance once posted</span>
               <OutcomeRow clipId={clip.id} current={clip.outcome} />
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Edit the spoken commentary and re-render the clip with exactly these lines.
+ * Saving marks the script as hand-owned, so later re-renders reuse it verbatim
+ * instead of asking the LLM again.
+ */
+function CommentaryEditor({ clip }: { clip: ClipDto }) {
+  const [lines, setLines] = useState(clip.commentary);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const dirty = JSON.stringify(lines) !== JSON.stringify(clip.commentary);
+
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await apiSend(`/clips/${clip.id}/commentary`, "POST", {
+        lines: lines.filter((l) => l.text.trim().length > 0),
+      });
+      setMsg("Re-rendering…");
+      await revalidateAll();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <span className="text-[10px] block mb-1" style={{ color: "var(--muted)" }}>
+        🎙 Commentary — edit and re-render
+      </span>
+      <div className="flex flex-col gap-1">
+        {lines.map((l, i) => (
+          <div key={i} className="flex items-start gap-1">
+            <span
+              className="text-[9px] px-1 py-0.5 rounded surface-2 shrink-0 mt-0.5 capitalize"
+              style={{ color: "var(--muted)" }}
+              title={`${l.role} @ ${l.atSec.toFixed(1)}s`}
+            >
+              {l.role}
+            </span>
+            <textarea
+              value={l.text}
+              rows={2}
+              onChange={(e) =>
+                setLines((cur) => cur.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))
+              }
+              className="text-[11px] px-1.5 py-1 rounded surface-2 border w-full resize-none"
+              style={{ borderColor: "var(--border)" }}
+            />
+            <button
+              onClick={() => setLines((cur) => cur.filter((_, j) => j !== i))}
+              className="text-[10px] px-1 shrink-0 mt-0.5"
+              style={{ color: "var(--muted)" }}
+              title="Remove this line"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 mt-1.5">
+        <button
+          onClick={save}
+          disabled={busy || !dirty}
+          className="text-[10px] px-2 py-1 rounded border font-medium"
+          style={{
+            borderColor: dirty ? "var(--primary)" : "var(--border)",
+            color: dirty ? "var(--primary)" : "var(--muted)",
+          }}
+        >
+          {busy ? "Saving…" : "Save & re-render"}
+        </button>
+        {msg && <span className="text-[10px]" style={{ color: "var(--muted)" }}>{msg}</span>}
       </div>
     </div>
   );

@@ -555,6 +555,7 @@ async function applyCommentary(
     commentaryMode: string;
     category: string | null;
     detectionReason: string | null;
+    edl: unknown;
     sourceVideo: { transcript: { segments: unknown } | null };
   },
   plan: EditPlan,
@@ -570,13 +571,19 @@ async function applyCommentary(
     .join("\n");
   if (!transcript.trim()) return null;
 
-  const script = await ctx.llm.planCommentary({
-    transcript,
-    durationSec: clip.endSec - clip.startSec,
-    mode: clip.commentaryMode as Exclude<CommentaryMode, "off">,
-    category: clip.category ?? undefined,
-    hook: clip.detectionReason ?? undefined,
-  });
+  // A hand-edited script wins: re-generating here would silently discard the
+  // user's rewrite on every re-render, which is the whole point of editing.
+  const edl = (clip.edl as { commentary?: CommentaryLine[]; commentaryEdited?: boolean } | null) ?? {};
+  const script =
+    edl.commentaryEdited && edl.commentary?.length
+      ? edl.commentary
+      : await ctx.llm.planCommentary({
+          transcript,
+          durationSec: clip.endSec - clip.startSec,
+          mode: clip.commentaryMode as Exclude<CommentaryMode, "off">,
+          category: clip.category ?? undefined,
+          hook: clip.detectionReason ?? undefined,
+        });
   if (script.length === 0) return null;
 
   // Time everything against the REAL rendered file, not plan.clipDurationSec.
@@ -639,8 +646,13 @@ async function applyCommentary(
   await mixCommentary(frozen, out, mix, workDir);
 
   // Merge into the edl rather than overwrite — auto-SFX wrote its cues there.
+  // For a hand-edited script keep the user's lines exactly as written: recording
+  // only what was "spoken" would quietly delete any line the planner dropped, so
+  // their own text would vanish from the editor.
   const current = (await ctx.repos.clips.byId(clip.id))?.edl as Record<string, unknown> | null;
-  await ctx.repos.clips.update(clip.id, { edl: { ...(current ?? {}), commentary: spoken } as never });
+  await ctx.repos.clips.update(clip.id, {
+    edl: { ...(current ?? {}), ...(edl.commentaryEdited ? {} : { commentary: spoken }) } as never,
+  });
   ctx.logger.info(
     { clipId: clip.id, lines: spoken.length, dropped: kept.length - spoken.length, mode: clip.commentaryMode },
     "commentary track added",
