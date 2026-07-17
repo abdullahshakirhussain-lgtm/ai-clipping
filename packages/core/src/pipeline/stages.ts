@@ -562,19 +562,28 @@ async function applyCommentary(
   });
   if (script.length === 0) return null;
 
+  // Time everything against the REAL rendered file, not plan.clipDurationSec.
+  // The planner's length is an estimate of the jump-cut result; the encoder's
+  // actual output can differ, and an insert past the true end makes ffmpeg build
+  // an empty segment — which concat turns into a clip with no freeze and no
+  // audio, while still exiting 0.
+  const { durationSec: realDuration } = await probe(clipPath);
+  if (realDuration <= 0) return null;
+
   // Voice each line and measure it — the freeze has to be exactly as long as the
   // audio, so durations come from the synthesized file, not an estimate.
   const inserts: FreezeInsert[] = [];
   const files: string[] = [];
   const kept: CommentaryLine[] = [];
   for (const [i, line] of script.entries()) {
-    const atClip =
+    const mapped =
       line.role === "intro"
         ? 0
         : line.role === "outro"
-          ? plan.clipDurationSec
+          ? realDuration
           : plan.mapSourceTime(clip.startSec + line.atSec);
-    if (atClip === null) continue; // reacted to a moment the jump-cuts removed
+    if (mapped === null) continue; // reacted to a moment the jump-cuts removed
+    const atClip = Math.min(Math.max(mapped, 0), realDuration);
 
     const { audio, ext } = await ctx.tts.synthesize({
       text: line.text,
@@ -593,18 +602,26 @@ async function applyCommentary(
 
   const frozen = join(workDir, `${clip.id}-freeze.mp4`);
   const offsets = await insertFreezes(clipPath, frozen, inserts, workDir);
+
+  // A null offset means the planner refused that insert (it would have produced a
+  // degenerate segment); mixing its audio anyway would drop the line at 0s over
+  // the opening. Keep only the lines that actually got a freeze.
+  const mix = offsets
+    .map((atSec, i) => (atSec === null ? null : { atSec, file: files[i]! }))
+    .filter((m): m is { atSec: number; file: string } => m !== null);
+  if (mix.length === 0) return null;
+  const spoken = kept.filter((_, i) => offsets[i] !== null);
+
   const out = join(workDir, `${clip.id}-vo.mp4`);
-  await mixCommentary(
-    frozen,
-    out,
-    offsets.map((atSec, i) => ({ atSec, file: files[i]! })),
-    workDir,
-  );
+  await mixCommentary(frozen, out, mix, workDir);
 
   // Merge into the edl rather than overwrite — auto-SFX wrote its cues there.
   const current = (await ctx.repos.clips.byId(clip.id))?.edl as Record<string, unknown> | null;
-  await ctx.repos.clips.update(clip.id, { edl: { ...(current ?? {}), commentary: kept } as never });
-  ctx.logger.info({ clipId: clip.id, lines: kept.length, mode: clip.commentaryMode }, "commentary track added");
+  await ctx.repos.clips.update(clip.id, { edl: { ...(current ?? {}), commentary: spoken } as never });
+  ctx.logger.info(
+    { clipId: clip.id, lines: spoken.length, dropped: kept.length - spoken.length, mode: clip.commentaryMode },
+    "commentary track added",
+  );
   return out;
 }
 

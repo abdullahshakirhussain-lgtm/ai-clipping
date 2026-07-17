@@ -48,6 +48,38 @@ describe("planFreezes", () => {
     expect(plan.offsets[3]).toBe(3 + 30 + 2 + 5); // + both reacts
   });
 
+  // Regression: atSec comes from an LLM plus an ESTIMATED clip length, so it can
+  // land past the real file. Splitting there asks ffmpeg for an empty segment and
+  // concat then yields a clip with no freeze and no audio — while exiting 0.
+  it("never splits outside the clip, even when an insert lands past the end", () => {
+    const beyond: FreezeInsert = { atSec: CLIP + 8, durationSec: 3 };
+    const plan = planFreezes(CLIP, [beyond]);
+    // Clamped to the end and treated as a closing hold, not an out-of-range cut.
+    expect(plan.segments).toEqual([{ s: 0, e: null, stop: 3 }]);
+    expect(plan.offsets).toEqual([CLIP]);
+    for (const seg of plan.segments) expect(seg.e === null || seg.e > seg.s).toBe(true);
+  });
+
+  it("drops a mid insert that would leave a zero-length segment", () => {
+    const r1: FreezeInsert = { atSec: 10, durationSec: 2 };
+    const dupe: FreezeInsert = { atSec: 10.01, durationSec: 2 }; // effectively the same instant
+    const plan = planFreezes(CLIP, [r1, dupe]);
+    expect(plan.segments).toEqual([
+      { s: 0, e: 10, stop: 2 },
+      { s: 10, e: null, stop: 0 },
+    ]);
+    // The second is refused outright rather than silently mixed in at 0s.
+    expect(plan.offsets[0]).toBe(10);
+    expect(plan.offsets[1]).toBeNull();
+  });
+
+  it("refuses a mid insert sitting on the very edge", () => {
+    const atStart: FreezeInsert = { atSec: 0.01, durationSec: 2 };
+    const plan = planFreezes(CLIP, [{ atSec: 0, durationSec: 3 }, atStart]);
+    expect(plan.offsets[1]).toBeNull(); // would have cut a zero-length head
+    expect(plan.segments).toEqual([{ s: 0, e: null, stop: 0 }]);
+  });
+
   it("keeps offsets aligned to the caller's order, not sorted order", () => {
     const outro: FreezeInsert = { atSec: CLIP, durationSec: 4 };
     const intro: FreezeInsert = { atSec: 0, durationSec: 3 };

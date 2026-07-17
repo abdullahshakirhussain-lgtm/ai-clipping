@@ -340,8 +340,12 @@ export interface FreezePlan {
   startPad: number;
   /** Cut points; `e: null` is the tail. `stop` holds the last frame after it. */
   segments: Array<{ s: number; e: number | null; stop: number }>;
-  /** Each insert's start in the OUTPUT timeline, aligned to the input order. */
-  offsets: number[];
+  /**
+   * Each insert's start in the OUTPUT timeline, aligned to the input order.
+   * `null` means the insert was dropped (it couldn't be honoured without
+   * producing a degenerate segment) — the caller must not place audio for it.
+   */
+  offsets: Array<number | null>;
 }
 
 /**
@@ -354,11 +358,38 @@ export interface FreezePlan {
  */
 export function planFreezes(durationSec: number, inserts: FreezeInsert[]): FreezePlan {
   const EPS = 0.05;
-  const sorted = [...inserts].sort((a, b) => a.atSec - b.atSec);
+  // Anything at//past the end is a closing hold, not a split: cutting there would
+  // ask ffmpeg for a zero-length (or out-of-range) segment, and concat with a
+  // degenerate segment silently yields a broken clip — no freeze and dead audio,
+  // with ffmpeg still exiting 0. `atSec` comes from an LLM + a duration estimate,
+  // so it cannot be trusted to sit inside the file.
+  const clamped = inserts.map((i, idx) => ({
+    idx,
+    durationSec: i.durationSec,
+    atSec: Math.min(Math.max(i.atSec, 0), durationSec),
+  }));
+  const sorted = [...clamped].sort((a, b) => a.atSec - b.atSec);
   const intro = sorted.length > 0 && sorted[0]!.atSec <= EPS ? sorted[0]! : undefined;
   const last = sorted[sorted.length - 1];
   const outro = last && last !== intro && last.atSec >= durationSec - EPS ? last : undefined;
-  const mids = sorted.filter((i) => i !== intro && i !== outro);
+
+  // Only genuinely interior points may split the clip. A split at (or past) an
+  // edge, or two splits within EPS of each other, would leave a zero-length
+  // segment — which concat turns into a silently broken clip.
+  const mids: typeof sorted = [];
+  const dropped = new Set<number>();
+  for (const i of sorted) {
+    if (i === intro || i === outro) continue;
+    if (i.atSec <= EPS || i.atSec >= durationSec - EPS) {
+      dropped.add(i.idx);
+      continue;
+    }
+    if (mids.length && i.atSec - mids[mids.length - 1]!.atSec < EPS) {
+      dropped.add(i.idx);
+      continue;
+    }
+    mids.push(i);
+  }
 
   const startPad = intro?.durationSec ?? 0;
   const endPad = outro?.durationSec ?? 0;
@@ -372,16 +403,20 @@ export function planFreezes(durationSec: number, inserts: FreezeInsert[]): Freez
   }
   segments.push({ s: prev, e: null, stop: endPad });
 
-  const startOf = new Map<FreezeInsert, number>();
-  if (intro) startOf.set(intro, 0);
+  const startOf = new Map<number, number>();
+  if (intro) startOf.set(intro.idx, 0);
   let midAcc = 0;
   for (const m of mids) {
-    startOf.set(m, startPad + m.atSec + midAcc);
+    startOf.set(m.idx, startPad + m.atSec + midAcc);
     midAcc += m.durationSec;
   }
-  if (outro) startOf.set(outro, startPad + durationSec + midAcc);
+  if (outro) startOf.set(outro.idx, startPad + durationSec + midAcc);
 
-  return { startPad, segments, offsets: inserts.map((i) => startOf.get(i) ?? 0) };
+  return {
+    startPad,
+    segments,
+    offsets: inserts.map((_, idx) => (dropped.has(idx) ? null : (startOf.get(idx) ?? null))),
+  };
 }
 
 /**
@@ -402,7 +437,7 @@ export async function insertFreezes(
   inserts: FreezeInsert[],
   workDir: string,
   burnAssFileName?: string,
-): Promise<number[]> {
+): Promise<Array<number | null>> {
   if (inserts.length === 0) throw new Error("insertFreezes: no inserts");
   const { durationSec } = await probe(inputPath);
   const { startPad, segments, offsets } = planFreezes(durationSec, inserts);
