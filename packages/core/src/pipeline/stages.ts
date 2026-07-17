@@ -506,6 +506,16 @@ async function applyAutoSfx(
  * thing people clock as AI. This is the knob to turn if the read feels off —
  * OpenAI reads it as free-form direction, so it's safe to rewrite.
  */
+/**
+ * Silence held around each spoken line inside its freeze. The voice's offset is
+ * computed arithmetically while ffmpeg snaps video to frame boundaries and audio
+ * to samples, so the real freeze edges drift from the maths by up to a frame and
+ * the error accumulates across segments. This headroom keeps the line safely
+ * inside its own freeze instead of spilling onto the moving video.
+ */
+const FREEZE_LEAD_IN = 0.15;
+const FREEZE_TAIL = 0.25;
+
 const VOICE_INSTRUCTIONS: Record<CommentaryRole, string> = {
   intro: [
     "Voice: casual and dry, like you're leaning in to tell a friend something.",
@@ -601,7 +611,12 @@ async function applyCommentary(
     const { durationSec } = await probe(file);
     if (durationSec <= 0) continue;
 
-    inserts.push({ atSec: atClip, durationSec });
+    // Hold a beat longer than the line. The voice's position is computed
+    // arithmetically while ffmpeg snaps video to frames and audio to samples, so
+    // each segment drifts by up to a frame and the error accumulates — without
+    // headroom the tail of a line spills onto the moving video. The padding also
+    // just sounds better: a beat before it speaks and after it lands.
+    inserts.push({ atSec: atClip, durationSec: FREEZE_LEAD_IN + durationSec + FREEZE_TAIL });
     files.push(file);
     kept.push(line);
   }
@@ -613,8 +628,9 @@ async function applyCommentary(
   // A null offset means the planner refused that insert (it would have produced a
   // degenerate segment); mixing its audio anyway would drop the line at 0s over
   // the opening. Keep only the lines that actually got a freeze.
+  // Start each line just inside its freeze, not on the edge (see FREEZE_LEAD_IN).
   const mix = offsets
-    .map((atSec, i) => (atSec === null ? null : { atSec, file: files[i]! }))
+    .map((atSec, i) => (atSec === null ? null : { atSec: atSec + FREEZE_LEAD_IN, file: files[i]! }))
     .filter((m): m is { atSec: number; file: string } => m !== null);
   if (mix.length === 0) return null;
   const spoken = kept.filter((_, i) => offsets[i] !== null);

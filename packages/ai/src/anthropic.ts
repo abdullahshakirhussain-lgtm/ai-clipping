@@ -302,8 +302,8 @@ Rules: at most ${input.maxCues} cues total; most clips should get 0-1; never clu
       input.mode === "intro_outro"
         ? "Exactly one intro and one outro. No reacts."
         : input.mode === "interject"
-          ? "One or two reacts. No intro, no outro."
-          : "One intro, one or two reacts, one outro.";
+          ? "ONE react — the single best moment. A second only if the clip truly has two separate moments worth stopping for."
+          : "Exactly one intro, ONE react (the single best moment), and one outro. Four lines is already a lot.";
 
     const result = await this.callTool<{
       lines?: Array<{ atSec?: number; text?: string; role?: string }>;
@@ -314,6 +314,22 @@ Transcript (times in seconds within this ${input.durationSec.toFixed(0)}s clip):
 ${input.transcript}${input.category ? `\n\nChannel niche: ${input.category}` : ""}
 
 Your job is to have an OPINION about what's being said — agree, push back, call it out, or add the context the viewer doesn't have. Never narrate what they can already see and hear.
+
+THE TEST EVERY LINE MUST PASS: could this line be pasted onto a different video? If yes, it is filler — cut it. Anchor to something SPECIFIC in this clip: the number they said, the exact claim, the word they chose.
+
+Filler — never write anything like this:
+- "This is actually insane."
+- "Wait till you see what happens next."
+- "That's a bold strategy."
+- "And that's where it falls apart."
+These say nothing. They'd fit any clip ever made.
+
+Real commentary — only possible having heard THIS clip:
+- "Five Lamborghinis, and he's stressed about the jelly."
+- "He said guaranteed. Twice. Nothing here is guaranteed."
+- "That's the third rule he's invented in ten seconds."
+
+Every interruption freezes the video and spends the viewer's patience. If a moment doesn't clearly earn a full stop, leave it alone — fewer, better lines beat full coverage. Returning fewer lines than the structure allows is a valid answer.
 
 Structure: ${structure}
 - intro: atSec 0. Why this clip is worth the next 30 seconds.
