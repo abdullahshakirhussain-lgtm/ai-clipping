@@ -3,6 +3,7 @@ import {
   CreateCategoryInputSchema,
   IdParamSchema,
   RenameCategoryInputSchema,
+  SetPersonaInputSchema,
 } from "@clipfactory/core";
 import { z } from "zod";
 import type { RouteModule } from "./types.js";
@@ -39,6 +40,20 @@ export const categoryRoutes: RouteModule = (app, { container }): void => {
       },
     },
     (req) => categories.rename(req.params.id, req.body.name),
+  );
+
+  // Set/clear the commentary persona for a category (takes effect next render).
+  app.patch(
+    "/categories/:id/persona",
+    {
+      schema: {
+        tags: ["categories"],
+        params: IdParamSchema,
+        body: SetPersonaInputSchema,
+        response: { 200: z.object({ id: z.string(), persona: z.string().nullable() }) },
+      },
+    },
+    (req) => categories.setPersona(req.params.id, req.body.persona),
   );
 
   app.delete(

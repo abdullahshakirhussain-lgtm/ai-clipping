@@ -124,13 +124,31 @@ export class MockLlmProvider implements LlmProvider {
     const wantsFraming = input.mode === "intro_outro" || input.mode === "full";
     const wantsReacts = input.mode === "interject" || input.mode === "full";
     if (wantsFraming) {
-      lines.push({ atSec: 0, text: "Okay, you need context for this one.", role: "intro" });
+      lines.push({
+        atSec: 0,
+        text: "Okay, you need context for this one.",
+        role: "intro",
+        delivery: "Conspiratorial, leaning in, half-suppressed grin.",
+        intensity: "quiet",
+      });
     }
     if (wantsReacts) {
-      lines.push({ atSec: input.durationSec / 2, text: "And that's where it falls apart.", role: "react" });
+      lines.push({
+        atSec: input.durationSec / 2,
+        text: "And that's where it falls apart.",
+        role: "react",
+        delivery: "Disbelief building fast, almost a shout on the last word.",
+        intensity: "loud",
+      });
     }
     if (wantsFraming) {
-      lines.push({ atSec: input.durationSec, text: "Wild that anyone believed it.", role: "outro" });
+      lines.push({
+        atSec: input.durationSec,
+        text: "Wild that anyone believed it.",
+        role: "outro",
+        delivery: "Slow, dry, verdict delivered while walking away.",
+        intensity: "normal",
+      });
     }
     return lines;
   }

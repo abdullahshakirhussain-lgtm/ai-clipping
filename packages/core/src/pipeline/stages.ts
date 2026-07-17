@@ -516,27 +516,42 @@ async function applyAutoSfx(
 const FREEZE_LEAD_IN = 0.15;
 const FREEZE_TAIL = 0.25;
 
+/**
+ * Fallback per-role directions, used only when a line carries no `delivery` of
+ * its own (pre-M3 scripts, or a hand-edited line with the direction cleared).
+ * New scripts are directed line-by-line by the LLM that wrote them.
+ */
 const VOICE_INSTRUCTIONS: Record<CommentaryRole, string> = {
   intro: [
-    "Voice: casual and dry, like you're leaning in to tell a friend something.",
-    "Delivery: take a small audible breath before the first word. Never announcer-bright.",
-    "Pacing: uneven — throw away the setup, slow down and land the last few words.",
-    "Pauses: a short beat after the first clause. Don't rush into the end.",
-    "Emotion: mildly amused, a little conspiratorial.",
+    "Voice: like you're pulling a friend over to watch something dumb.",
+    "Delivery: a small audible breath, then in — never announcer-bright.",
+    "Pacing: uneven. Throw away the setup, lean hard on the last few words.",
+    "Emotion: amused, conspiratorial, already enjoying what's coming.",
   ].join("\n"),
   react: [
-    "Voice: dry, unimpressed, reacting in real time.",
-    "Delivery: a quick breath in, then slightly clipped — like it just slipped out.",
-    "Pacing: fast off the top, then a beat before the last word.",
-    "Emotion: incredulous and deadpan. Not shouty, not amused.",
+    "Voice: reacting in real time — it just slipped out.",
+    "Delivery: quick breath in, then let it spike. Raising your voice is allowed.",
+    "Pacing: fast off the top, a beat before the last word lands.",
+    "Emotion: genuine disbelief or mockery, not narration.",
   ].join("\n"),
   outro: [
-    "Voice: flat, final, deadpan.",
+    "Voice: the verdict. Slow, dry, a little contemptuous.",
     "Delivery: a small exhale first. Say it once, land it, stop.",
-    "Pacing: slow and deliberate, with a beat before the final word.",
-    "Emotion: a verdict — bored certainty, not triumph.",
+    "Pacing: deliberate, with a held beat before the final word.",
+    "Emotion: certainty — you watched the whole thing and you're done with it.",
   ].join("\n"),
 };
+
+/**
+ * Baseline voice character prepended to every line's per-line direction. A
+ * category persona (from the registry) replaces the default description so the
+ * read matches the channel's character, not a generic one.
+ */
+const DEFAULT_PERSONA =
+  "The friend on the couch who can't help talking back at the screen — quick, sarcastic, zero reverence.";
+
+/** Mix level per LLM-tagged intensity: shouted lines punch, asides sit back. */
+export const INTENSITY_GAIN: Record<string, number> = { quiet: 0.8, normal: 1.0, loud: 1.35 };
 
 /**
  * Freeze-frame commentary: writes a take, voices it, holds the picture for each
@@ -571,6 +586,11 @@ async function applyCommentary(
     .join("\n");
   if (!transcript.trim()) return null;
 
+  // Category persona is looked up by name at render time, so editing it on the
+  // registry changes the character of every subsequent render — no denorm.
+  const personaRow = clip.category ? await ctx.repos.categories.byName(clip.category) : null;
+  const persona = personaRow?.persona?.trim() || undefined;
+
   // A hand-edited script wins: re-generating here would silently discard the
   // user's rewrite on every re-render, which is the whole point of editing.
   const edl = (clip.edl as { commentary?: CommentaryLine[]; commentaryEdited?: boolean } | null) ?? {};
@@ -583,6 +603,7 @@ async function applyCommentary(
           mode: clip.commentaryMode as Exclude<CommentaryMode, "off">,
           category: clip.category ?? undefined,
           hook: clip.detectionReason ?? undefined,
+          persona,
         });
   if (script.length === 0) return null;
 
@@ -609,9 +630,13 @@ async function applyCommentary(
     if (mapped === null) continue; // reacted to a moment the jump-cuts removed
     const atClip = Math.min(Math.max(mapped, 0), realDuration);
 
+    // Persona sets the character; the line's own delivery (written by the LLM
+    // alongside the text) sets THIS read. Identical instructions on every line
+    // is exactly what "same pitch throughout" sounded like.
+    const character = `Character: ${persona ?? DEFAULT_PERSONA}`;
     const { audio, ext } = await ctx.tts.synthesize({
       text: line.text,
-      instructions: VOICE_INSTRUCTIONS[line.role],
+      instructions: `${character}\n${line.delivery?.trim() || VOICE_INSTRUCTIONS[line.role]}`,
     });
     const file = join(workDir, `${clip.id}-vo-${i}.${ext}`);
     await fs.writeFile(file, audio);
@@ -637,8 +662,17 @@ async function applyCommentary(
   // the opening. Keep only the lines that actually got a freeze.
   // Start each line just inside its freeze, not on the edge (see FREEZE_LEAD_IN).
   const mix = offsets
-    .map((atSec, i) => (atSec === null ? null : { atSec: atSec + FREEZE_LEAD_IN, file: files[i]! }))
-    .filter((m): m is { atSec: number; file: string } => m !== null);
+    .map((atSec, i) =>
+      atSec === null
+        ? null
+        : {
+            atSec: atSec + FREEZE_LEAD_IN,
+            file: files[i]!,
+            // Dynamics: shouted lines punch above the mix, muttered asides sit back.
+            gain: INTENSITY_GAIN[kept[i]!.intensity ?? "normal"] ?? 1,
+          },
+    )
+    .filter((m): m is { atSec: number; file: string; gain: number } => m !== null);
   if (mix.length === 0) return null;
   const spoken = kept.filter((_, i) => offsets[i] !== null);
 

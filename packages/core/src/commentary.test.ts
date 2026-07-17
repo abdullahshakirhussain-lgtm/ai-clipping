@@ -1,0 +1,60 @@
+import { MockLlmProvider } from "@clipfactory/ai";
+import { describe, expect, it } from "vitest";
+import { CommentaryLineSchema } from "./contracts/clip.js";
+import { INTENSITY_GAIN } from "./pipeline/stages.js";
+
+/**
+ * M3 gave each line a performance (delivery direction + intensity). These fields
+ * ride the edl through save/re-render, so losing them anywhere in the round-trip
+ * silently flattens the read back to "same pitch throughout".
+ */
+describe("commentary performance fields", () => {
+  it("round-trips delivery and intensity through the contract schema", () => {
+    const line = {
+      atSec: 12.5,
+      text: "He said guaranteed. TWICE.",
+      role: "react" as const,
+      delivery: "Disbelief building fast, shout the last word.",
+      intensity: "loud" as const,
+    };
+    expect(CommentaryLineSchema.parse(line)).toEqual(line);
+  });
+
+  it("still accepts pre-M3 lines without the new fields", () => {
+    const legacy = { atSec: 0, text: "Okay, context first.", role: "intro" as const };
+    const parsed = CommentaryLineSchema.parse(legacy);
+    expect(parsed.delivery).toBeUndefined();
+    expect(parsed.intensity).toBeUndefined();
+  });
+
+  it("rejects an unknown intensity instead of passing it to the mixer", () => {
+    expect(() =>
+      CommentaryLineSchema.parse({ atSec: 0, text: "hi", role: "intro", intensity: "screaming" }),
+    ).toThrow();
+  });
+
+  it("maps intensity to mix gain with loud above and quiet below unity", () => {
+    expect(INTENSITY_GAIN.loud).toBeGreaterThan(1);
+    expect(INTENSITY_GAIN.quiet).toBeLessThan(1);
+    expect(INTENSITY_GAIN.normal).toBe(1);
+    // The pipeline falls back to unity for absent/unknown intensities.
+    expect(INTENSITY_GAIN[(undefined as unknown as string) ?? "normal"] ?? 1).toBe(1);
+  });
+
+  it("mock planner directs every line so the keyless pipeline exercises the path", async () => {
+    const llm = new MockLlmProvider();
+    const lines = await llm.planCommentary({
+      transcript: "[0.0-5.0] test",
+      durationSec: 30,
+      mode: "full",
+    });
+    expect(lines.length).toBeGreaterThan(0);
+    for (const l of lines) {
+      expect(l.delivery).toBeTruthy();
+      expect(["quiet", "normal", "loud"]).toContain(l.intensity);
+    }
+    // Directions vary per line — identical direction everywhere is the old bug.
+    expect(new Set(lines.map((l) => l.delivery)).size).toBe(lines.length);
+    expect(new Set(lines.map((l) => l.intensity)).size).toBeGreaterThan(1);
+  });
+});

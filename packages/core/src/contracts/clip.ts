@@ -23,6 +23,10 @@ export const CommentaryLineSchema = z.object({
   atSec: z.number(),
   text: z.string().min(1).max(300),
   role: z.enum(["intro", "react", "outro"]),
+  /** Voice direction for this exact line ("slow, dripping contempt"). */
+  delivery: z.string().max(300).optional(),
+  /** Loudness in the mix; also a hint to the read. */
+  intensity: z.enum(["quiet", "normal", "loud"]).optional(),
 });
 export type CommentaryLineDto = z.infer<typeof CommentaryLineSchema>;
 

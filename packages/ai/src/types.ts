@@ -135,11 +135,22 @@ export type CommentaryMode = "off" | "intro_outro" | "interject" | "full";
 /** Where a commentary line sits. "react" interrupts mid-clip. */
 export type CommentaryRole = "intro" | "react" | "outro";
 
+/** Loudness of a line in the final mix (and a hint to the TTS read). */
+export type CommentaryIntensity = "quiet" | "normal" | "loud";
+
 /** One spoken line. For "react", `atSec` is a moment in clip-source time. */
 export interface CommentaryLine {
   atSec: number;
   text: string;
   role: CommentaryRole;
+  /**
+   * Voice direction for THIS line, written by the same LLM that wrote the text
+   * ("start half-laughing, disbelief building, shout the last word"). Fed to the
+   * TTS as `instructions`; absent on pre-M3 scripts, which fall back to the
+   * per-role defaults.
+   */
+  delivery?: string;
+  intensity?: CommentaryIntensity;
 }
 
 export interface PlanCommentaryInput {
@@ -149,6 +160,8 @@ export interface PlanCommentaryInput {
   mode: Exclude<CommentaryMode, "off">;
   category?: string;
   hook?: string;
+  /** Category-level character ("condescending finance guy…"). Overrides the default roast baseline. */
+  persona?: string;
 }
 
 /**

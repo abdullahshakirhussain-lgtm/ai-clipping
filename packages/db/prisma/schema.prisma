@@ -363,6 +363,10 @@ model SocialAccount {
 model Category {
   id        String   @id @default(cuid())
   name      String   @unique
+  /// Commentary character for clips in this category ("condescending finance
+  /// guy who's seen every scam"). Looked up by name at render time, so edits
+  /// apply to the next render automatically. Null = default roast baseline.
+  persona   String?
   createdAt DateTime @default(now())
 }
 

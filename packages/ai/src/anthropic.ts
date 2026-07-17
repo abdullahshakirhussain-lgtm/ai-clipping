@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type {
   ClipSignals,
+  CommentaryIntensity,
   CommentaryLine,
   CommentaryRole,
   DetectHighlightsInput,
@@ -305,15 +306,21 @@ Rules: at most ${input.maxCues} cues total; most clips should get 0-1; never clu
           ? "ONE react — the single best moment. A second only if the clip truly has two separate moments worth stopping for."
           : "Exactly one intro, ONE react (the single best moment), and one outro. Four lines is already a lot.";
 
+    const persona =
+      input.persona?.trim() ||
+      "The friend on the couch who can't help talking back at the screen — quick, sarcastic, zero reverence, but sharp enough that the mockery is earned.";
+
     const result = await this.callTool<{
-      lines?: Array<{ atSec?: number; text?: string; role?: string }>;
+      lines?: Array<{ atSec?: number; text?: string; role?: string; delivery?: string; intensity?: string }>;
     }>(
       `You are the commentator on a short-form clip. The video FREEZES, you speak, then it resumes — so every line has to earn the interruption.
+
+WHO YOU ARE: ${persona}
 
 Transcript (times in seconds within this ${input.durationSec.toFixed(0)}s clip):
 ${input.transcript}${input.category ? `\n\nChannel niche: ${input.category}` : ""}
 
-Your job is to have an OPINION about what's being said — agree, push back, call it out, or add the context the viewer doesn't have. Never narrate what they can already see and hear.
+Your job is to have an OPINION — and opinions have teeth. Find the dumbest thing in this clip and go after it; don't be polite about it. Where they're actually right, push back on the part everyone else would let slide. Mild profanity ("hell", "damn", "BS") is allowed when it lands — never forced, never stronger than that. What you may NOT do is hedge: no "to be fair", no "that said", no "in a way", no both-sides. Pick a side and commit.
 
 THE TEST EVERY LINE MUST PASS: could this line be pasted onto a different video? If yes, it is filler — cut it. Anchor to something SPECIFIC in this clip: the number they said, the exact claim, the word they chose.
 
@@ -322,12 +329,12 @@ Filler — never write anything like this:
 - "Wait till you see what happens next."
 - "That's a bold strategy."
 - "And that's where it falls apart."
-These say nothing. They'd fit any clip ever made.
+These say nothing. They'd fit any clip ever made. Polite observations are filler too.
 
-Real commentary — only possible having heard THIS clip:
-- "Five Lamborghinis, and he's stressed about the jelly."
-- "He said guaranteed. Twice. Nothing here is guaranteed."
-- "That's the third rule he's invented in ten seconds."
+Real commentary — only possible having heard THIS clip, and with a spine:
+- "Five Lamborghinis, and he's stressed... about the jelly."
+- "He said guaranteed. TWICE. Nothing here is guaranteed."
+- "Third rule he's invented in ten seconds. Just making it up now."
 
 Every interruption freezes the video and spends the viewer's patience. If a moment doesn't clearly earn a full stop, leave it alone — fewer, better lines beat full coverage. Returning fewer lines than the structure allows is a valid answer.
 
@@ -336,14 +343,19 @@ Structure: ${structure}
 - react: atSec = the exact moment you're reacting to.
 - outro: atSec ${input.durationSec.toFixed(0)}. Your verdict.
 
-This is spoken aloud by a voice that follows your punctuation, so it must not sound like an AI narrator:
+This is spoken aloud by a voice that performs EXACTLY what you write — text, punctuation, and your stage direction. Write the performance, not just the words:
+- CAPS on a word means it gets SHOUTED. Use it where a person would actually raise their voice.
+- "..." is a held beat. Stretch spellings when a human would ("riiiight", "nooo").
 - Contractions. Vary sentence length. Fragments are fine.
 - Max ~12 words a line. Shorter hits harder.
 - One idea per line. No lists, no "first/second/finally" cadence.
-- Punctuate for BREATH, not for grammar. A comma or "..." is where the voice pauses — put them where a person would actually hesitate, and leave a beat before the punch.
+- Punctuate for BREATH, not for grammar — commas and "..." where a person would actually hesitate, a beat before the punch.
 - Banned openers/phrases: "In this video", "Let's dive in", "Here's the thing", "buckle up", "little did they know", "you won't believe".
 - No throat-clearing, no summarising, no explaining the joke.
-- A person with a take — not a documentary voiceover.
+
+For EACH line, also direct the voice actor:
+- "delivery": 1-2 sentences on HOW to say this exact line — pace, pitch moves, where it breaks into a laugh or drops to contempt. Every line should read differently; a mocking imitation, a slow disgusted drawl, and a disbelieving shout are three different performances. Never reuse a direction.
+- "intensity": "loud" if the line is raised/shouted, "quiet" if it's a low deadpan or muttered aside, "normal" otherwise. Vary it — all-normal means you wrote it flat.
 
 Call submit_lines.`,
       {
@@ -360,17 +372,23 @@ Call submit_lines.`,
                   atSec: { type: "number", description: "seconds into the clip" },
                   text: { type: "string", description: "the spoken line, ~12 words max" },
                   role: { type: "string", enum: allowed },
+                  delivery: {
+                    type: "string",
+                    description: "voice-actor direction for this exact line: pace, pitch, attitude",
+                  },
+                  intensity: { type: "string", enum: ["quiet", "normal", "loud"] },
                 },
-                required: ["atSec", "text", "role"],
+                required: ["atSec", "text", "role", "delivery", "intensity"],
               },
             },
           },
           required: ["lines"],
         },
       },
-      1024,
+      1536,
     );
 
+    const intensities: CommentaryIntensity[] = ["quiet", "normal", "loud"];
     return (result.lines ?? [])
       .filter(
         (l) =>
@@ -382,6 +400,10 @@ Call submit_lines.`,
         atSec: clamp(l.atSec!, 0, input.durationSec),
         text: String(l.text).trim(),
         role: l.role as CommentaryRole,
+        ...(String(l.delivery ?? "").trim() ? { delivery: String(l.delivery).trim() } : {}),
+        ...(intensities.includes(l.intensity as CommentaryIntensity)
+          ? { intensity: l.intensity as CommentaryIntensity }
+          : {}),
       }));
   }
 

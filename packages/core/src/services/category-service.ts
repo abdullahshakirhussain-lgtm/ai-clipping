@@ -48,6 +48,7 @@ export class CategoryService {
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
+      persona: r.persona,
       accountCount: accountCounts.get(r.name) ?? 0,
       clipCount: clipCounts.get(r.name) ?? 0,
     }));
@@ -91,6 +92,18 @@ export class CategoryService {
     }
     await prisma.$transaction([...cascade, prisma.category.update({ where: { id }, data: { name: next } })]);
     return { id, name: next };
+  }
+
+  /**
+   * Set the commentary persona for a category (null/blank clears it back to
+   * the default). Looked up by name at render time, so it takes effect on the
+   * next render — nothing to cascade.
+   */
+  async setPersona(id: string, persona: string | null): Promise<{ id: string; persona: string | null }> {
+    const prisma = getPrisma();
+    const value = persona?.trim() || null;
+    const row = await prisma.category.update({ where: { id }, data: { persona: value } });
+    return { id: row.id, persona: row.persona };
   }
 
   /** Remove the option only; existing account/clip assignments keep their string. */

@@ -612,15 +612,48 @@ function CommentaryEditor({ clip }: { clip: ClipDto }) {
             >
               {l.role}
             </span>
-            <textarea
-              value={l.text}
-              rows={2}
-              onChange={(e) =>
-                setLines((cur) => cur.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))
-              }
-              className="text-[11px] px-1.5 py-1 rounded surface-2 border w-full resize-none"
-              style={{ borderColor: "var(--border)" }}
-            />
+            <div className="flex flex-col gap-0.5 w-full">
+              <textarea
+                value={l.text}
+                rows={2}
+                onChange={(e) =>
+                  setLines((cur) => cur.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))
+                }
+                className="text-[11px] px-1.5 py-1 rounded surface-2 border w-full resize-none"
+                style={{ borderColor: "var(--border)" }}
+              />
+              <div className="flex items-center gap-1">
+                <input
+                  value={l.delivery ?? ""}
+                  onChange={(e) =>
+                    setLines((cur) =>
+                      cur.map((x, j) => (j === i ? { ...x, delivery: e.target.value || undefined } : x)),
+                    )
+                  }
+                  placeholder="how to say it — e.g. slow, mocking, shout the last word"
+                  className="text-[10px] px-1.5 py-0.5 rounded surface-2 border w-full"
+                  style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+                  title="Voice direction for this line"
+                />
+                <select
+                  value={l.intensity ?? "normal"}
+                  onChange={(e) =>
+                    setLines((cur) =>
+                      cur.map((x, j) =>
+                        j === i ? { ...x, intensity: e.target.value as "quiet" | "normal" | "loud" } : x,
+                      ),
+                    )
+                  }
+                  className="text-[10px] px-1 py-0.5 rounded surface-2 border shrink-0"
+                  style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+                  title="Loudness in the mix"
+                >
+                  <option value="quiet">quiet</option>
+                  <option value="normal">normal</option>
+                  <option value="loud">loud</option>
+                </select>
+              </div>
+            </div>
             <button
               onClick={() => setLines((cur) => cur.filter((_, j) => j !== i))}
               className="text-[10px] px-1 shrink-0 mt-0.5"

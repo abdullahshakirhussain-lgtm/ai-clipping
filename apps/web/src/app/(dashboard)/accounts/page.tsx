@@ -254,6 +254,8 @@ function CategoryRow({ cat }: { cat: CategoryDto }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(cat.name);
   const [busy, setBusy] = useState(false);
+  const [personaOpen, setPersonaOpen] = useState(false);
+  const [persona, setPersona] = useState(cat.persona ?? "");
   const inUse = cat.accountCount + cat.clipCount;
 
   async function save() {
@@ -263,6 +265,17 @@ function CategoryRow({ cat }: { cat: CategoryDto }) {
     try {
       await apiSend(`/categories/${cat.id}`, "PATCH", { name: n });
       setEditing(false);
+      await revalidateAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function savePersona() {
+    setBusy(true);
+    try {
+      await apiSend(`/categories/${cat.id}/persona`, "PATCH", { persona: persona.trim() || null });
+      setPersonaOpen(false);
       await revalidateAll();
     } finally {
       setBusy(false);
@@ -283,36 +296,63 @@ function CategoryRow({ cat }: { cat: CategoryDto }) {
   }
 
   return (
-    <div className="flex items-center gap-3 py-1.5 px-2.5 rounded-lg surface-2">
-      {editing ? (
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); void save(); }
-            if (e.key === "Escape") { setName(cat.name); setEditing(false); }
-          }}
-          className="px-2 py-1 rounded surface border text-sm"
-          style={{ borderColor: "var(--border)" }}
-        />
-      ) : (
-        <span className="capitalize font-medium text-sm">{cat.name}</span>
-      )}
-      <span className="text-xs" style={{ color: "var(--muted)" }}>
-        {cat.accountCount} acct · {cat.clipCount} clips
-      </span>
-      <div className="ml-auto flex items-center gap-2 text-xs">
+    <div className="py-1.5 px-2.5 rounded-lg surface-2">
+      <div className="flex items-center gap-3">
         {editing ? (
-          <>
-            <button onClick={save} disabled={busy} style={{ color: "var(--primary)" }}>Save</button>
-            <button onClick={() => { setName(cat.name); setEditing(false); }} style={{ color: "var(--muted)" }}>Cancel</button>
-          </>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); void save(); }
+              if (e.key === "Escape") { setName(cat.name); setEditing(false); }
+            }}
+            className="px-2 py-1 rounded surface border text-sm"
+            style={{ borderColor: "var(--border)" }}
+          />
         ) : (
-          <button onClick={() => setEditing(true)} style={{ color: "var(--muted)" }}>Rename</button>
+          <span className="capitalize font-medium text-sm">{cat.name}</span>
         )}
-        <button onClick={remove} disabled={busy} style={{ color: "var(--danger)" }}>Delete</button>
+        {cat.persona ? <span title={cat.persona}>🎭</span> : null}
+        <span className="text-xs" style={{ color: "var(--muted)" }}>
+          {cat.accountCount} acct · {cat.clipCount} clips
+        </span>
+        <div className="ml-auto flex items-center gap-2 text-xs">
+          {editing ? (
+            <>
+              <button onClick={save} disabled={busy} style={{ color: "var(--primary)" }}>Save</button>
+              <button onClick={() => { setName(cat.name); setEditing(false); }} style={{ color: "var(--muted)" }}>Cancel</button>
+            </>
+          ) : (
+            <button onClick={() => setEditing(true)} style={{ color: "var(--muted)" }}>Rename</button>
+          )}
+          <button
+            onClick={() => { setPersona(cat.persona ?? ""); setPersonaOpen((v) => !v); }}
+            style={{ color: personaOpen ? "var(--primary)" : "var(--muted)" }}
+          >
+            Persona
+          </button>
+          <button onClick={remove} disabled={busy} style={{ color: "var(--danger)" }}>Delete</button>
+        </div>
       </div>
+      {personaOpen ? (
+        <div className="mt-2 flex flex-col gap-2">
+          <textarea
+            value={persona}
+            onChange={(e) => setPersona(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder={'Who does the commentary voice sound like for this niche? e.g. "condescending finance guy who\'s seen every scam" or "hyped gaming friend who screams at bad plays". Blank = default sarcastic roast.'}
+            className="w-full px-2.5 py-2 rounded-lg surface border outline-none text-sm"
+            style={{ borderColor: "var(--border)" }}
+          />
+          <div className="flex items-center gap-2 text-xs">
+            <button onClick={savePersona} disabled={busy} style={{ color: "var(--primary)" }}>Save persona</button>
+            <button onClick={() => setPersonaOpen(false)} style={{ color: "var(--muted)" }}>Cancel</button>
+            <span className="ml-auto" style={{ color: "var(--muted)" }}>Applies to the next render of clips in this category</span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
