@@ -58,6 +58,13 @@ export function toSourceVideoDto(v: VideoListRow): SourceVideoDto {
     category: v.category,
     error: v.error,
     createdAt: iso(v.createdAt),
+    captionStyle: v.captionStyle,
+    captionPosition: v.captionPosition,
+    reframe: v.reframe,
+    autoEnhance: v.autoEnhance,
+    subtitlesOnly: v.subtitlesOnly,
+    untouched: v.untouched,
+    commentaryMode: v.commentaryMode,
   };
 }
 

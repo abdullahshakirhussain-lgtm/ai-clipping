@@ -30,6 +30,18 @@ export const SourceVideoDtoSchema = z.object({
   category: z.string().nullable(),
   error: z.string().nullable(),
   createdAt: z.string(),
+  /**
+   * The render options this video was actually ingested with. Surfaced because
+   * they're captured at upload time and baked in — without showing them there's
+   * no way to tell whether a setting took effect.
+   */
+  captionStyle: z.string(),
+  captionPosition: z.string(),
+  reframe: z.boolean(),
+  autoEnhance: z.boolean(),
+  subtitlesOnly: z.boolean(),
+  untouched: z.boolean(),
+  commentaryMode: z.string(),
 });
 export type SourceVideoDto = z.infer<typeof SourceVideoDtoSchema>;
 
