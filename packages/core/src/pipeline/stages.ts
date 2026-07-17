@@ -400,7 +400,10 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
         const enhanced = await applyAutoSfx(ctx, clip, plan, outPath, workDir);
         if (enhanced) finalClip = enhanced;
       } catch (err) {
-        ctx.logger.warn({ clipId, err: String(err) }, "auto-sfx failed; using un-enhanced clip");
+        ctx.logger.warn(
+          { clipId },
+          `auto-sfx failed; using un-enhanced clip — ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -411,7 +414,11 @@ export async function runRender(ctx: PipelineContext, clipId: string): Promise<v
         const narrated = await applyCommentary(ctx, clip, plan, finalClip, workDir);
         if (narrated) finalClip = narrated;
       } catch (err) {
-        ctx.logger.warn({ clipId, err: String(err) }, "commentary failed; using clip without it");
+        // Put the reason in the MESSAGE, not a structured field: log viewers
+        // collapse fields, and this failing invisibly cost several debugging
+        // rounds. ffmpeg's stderr rides along inside err.message (see run()).
+        const reason = err instanceof Error ? err.message : String(err);
+        ctx.logger.warn({ clipId }, `commentary failed; using clip without it — ${reason}`);
       }
     }
 
