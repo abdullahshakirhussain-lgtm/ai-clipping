@@ -554,6 +554,16 @@ const DEFAULT_PERSONA =
 export const INTENSITY_GAIN: Record<string, number> = { quiet: 0.8, normal: 1.0, loud: 1.35 };
 
 /**
+ * Removes ElevenLabs-v3 audio tags ("[shouts]", "[bored sigh]") from a line so
+ * a provider that doesn't perform them (OpenAI, mock) doesn't read them aloud.
+ * The edl always keeps the tagged original — stripping is synthesis-time only,
+ * so switching providers never loses the performance markup.
+ */
+export function stripAudioTags(text: string): string {
+  return text.replace(/\[[^\]]{1,30}\]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
  * Freeze-frame commentary: writes a take, voices it, holds the picture for each
  * line so nothing gets talked over, and mixes the audio in.
  *
@@ -604,6 +614,7 @@ async function applyCommentary(
           category: clip.category ?? undefined,
           hook: clip.detectionReason ?? undefined,
           persona,
+          voiceTags: ctx.tts.speaksTags === true,
         });
   if (script.length === 0) return null;
 
@@ -634,8 +645,13 @@ async function applyCommentary(
     // alongside the text) sets THIS read. Identical instructions on every line
     // is exactly what "same pitch throughout" sounded like.
     const character = `Character: ${persona ?? DEFAULT_PERSONA}`;
+    // Tag-speaking providers (ElevenLabs v3) perform the "[shouts]" markup;
+    // everyone else gets it stripped so it isn't read aloud. Covers hand-edited
+    // scripts and provider switches either direction — the edl keeps the tags.
+    const speakable = ctx.tts.speaksTags ? line.text : stripAudioTags(line.text);
+    if (!speakable) continue; // a tags-only line has nothing to say without them
     const { audio, ext } = await ctx.tts.synthesize({
-      text: line.text,
+      text: speakable,
       instructions: `${character}\n${line.delivery?.trim() || VOICE_INSTRUCTIONS[line.role]}`,
     });
     const file = join(workDir, `${clip.id}-vo-${i}.${ext}`);

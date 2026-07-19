@@ -162,6 +162,12 @@ export interface PlanCommentaryInput {
   hook?: string;
   /** Category-level character ("condescending finance guy…"). Overrides the default roast baseline. */
   persona?: string;
+  /**
+   * When true, write ElevenLabs-v3-style audio tags inline in the text
+   * ("[scoffs] Five... [shouting] THE JELLY.") — set from the TTS provider's
+   * `speaksTags`. When false the text stays clean prose.
+   */
+  voiceTags?: boolean;
 }
 
 /**
@@ -170,6 +176,12 @@ export interface PlanCommentaryInput {
  * sounds like a narrator bot. Honoured by OpenAI; ignored by ElevenLabs.
  */
 export interface TtsProvider {
+  /**
+   * True when the provider PERFORMS inline "[tag]"s (ElevenLabs v3 audio tags)
+   * instead of reading them aloud. Callers must strip tags before sending text
+   * to a provider without this.
+   */
+  readonly speaksTags?: boolean;
   /** `ext` names the container so the caller can write a file ffmpeg will read. */
   synthesize(input: {
     text: string;

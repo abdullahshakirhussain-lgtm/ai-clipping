@@ -8,18 +8,24 @@ export interface ElevenLabsTtsOptions {
 }
 
 /**
- * ElevenLabs text-to-speech. Optional alternative to the OpenAI default: the
- * most human-sounding read available (breaths, micro-prosody), at roughly 10x
- * the cost. Worth switching to per-video for clips that carry a channel.
+ * ElevenLabs text-to-speech, defaulting to `eleven_v3` — the expressive model.
+ * v3 is driven by audio tags inline in the text ("[scoffs] Five... [shouting]
+ * THE JELLY."), which it performs rather than reads; `speaksTags` tells the
+ * pipeline to leave them in. Stability 0.0 ("Creative") maximizes pitch and
+ * emotional range; v3 ignores similarity/style/speed.
  *
- * Note: no delivery `instructions` — tone comes from the chosen voice and the
- * script itself, so the writing has to carry more of the personality here.
+ * Cost reality at our volume (~200 chars of commentary per clip): Starter
+ * $6/mo ≈ 150 clips, Creator $22/mo ≈ 600 — not the old 300-clips/day scare
+ * estimate. Delivery `instructions` are ignored; the writing carries the tags.
  */
 export class ElevenLabsTtsProvider implements TtsProvider {
   private readonly model: string;
+  readonly speaksTags: boolean;
 
   constructor(private readonly opts: ElevenLabsTtsOptions) {
-    this.model = opts.model || "eleven_turbo_v2_5";
+    this.model = opts.model || "eleven_v3";
+    // Only v3 interprets audio tags; older models would read "[shouts]" aloud.
+    this.speaksTags = this.model.startsWith("eleven_v3");
   }
 
   async synthesize(input: { text: string; voice?: string }): Promise<{ audio: Buffer; ext: "mp3" }> {
@@ -34,7 +40,9 @@ export class ElevenLabsTtsProvider implements TtsProvider {
       body: JSON.stringify({
         text: input.text,
         model_id: this.model,
-        voice_settings: { stability: 0.4, similarity_boost: 0.75, style: 0.35 },
+        voice_settings: this.speaksTags
+          ? { stability: 0.0 } // Creative: widest emotional range for tagged reads
+          : { stability: 0.4, similarity_boost: 0.75, style: 0.35 },
       }),
     });
     if (!res.ok) {

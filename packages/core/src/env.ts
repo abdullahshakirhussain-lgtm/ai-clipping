@@ -41,7 +41,9 @@ const EnvSchema = z.object({
   OPENAI_TTS_VOICE: z.string().default("ash"),
   ELEVENLABS_API_KEY: z.string().optional().default(""),
   ELEVENLABS_VOICE_ID: z.string().optional().default(""),
-  ELEVENLABS_MODEL: z.string().default("eleven_turbo_v2_5"),
+  // eleven_v3 performs inline audio tags ("[shouts]") — the expressive model.
+  // Switch on with TTS_PROVIDER=elevenlabs + ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID.
+  ELEVENLABS_MODEL: z.string().default("eleven_v3"),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),

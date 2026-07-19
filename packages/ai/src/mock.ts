@@ -135,7 +135,10 @@ export class MockLlmProvider implements LlmProvider {
     if (wantsReacts) {
       lines.push({
         atSec: input.durationSec / 2,
-        text: "And that's where it falls apart.",
+        // Tagged only for tag-speaking providers; others get clean prose.
+        text: input.voiceTags
+          ? "[scoffs] And that's where... [shouting] IT FALLS APART."
+          : "And that's where it falls apart.",
         role: "react",
         delivery: "Disbelief building fast, almost a shout on the last word.",
         intensity: "loud",

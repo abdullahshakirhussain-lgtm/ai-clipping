@@ -1,7 +1,7 @@
 import { MockLlmProvider } from "@clipfactory/ai";
 import { describe, expect, it } from "vitest";
 import { CommentaryLineSchema } from "./contracts/clip.js";
-import { INTENSITY_GAIN } from "./pipeline/stages.js";
+import { INTENSITY_GAIN, stripAudioTags } from "./pipeline/stages.js";
 
 /**
  * M3 gave each line a performance (delivery direction + intensity). These fields
@@ -38,7 +38,33 @@ describe("commentary performance fields", () => {
     expect(INTENSITY_GAIN.quiet).toBeLessThan(1);
     expect(INTENSITY_GAIN.normal).toBe(1);
     // The pipeline falls back to unity for absent/unknown intensities.
-    expect(INTENSITY_GAIN[(undefined as unknown as string) ?? "normal"] ?? 1).toBe(1);
+    expect(INTENSITY_GAIN["screaming"] ?? 1).toBe(1);
+  });
+
+  it("strips audio tags for providers that would read them aloud", () => {
+    expect(stripAudioTags("[scoffs] Five Lamborghinis... [shouting] THE JELLY.")).toBe(
+      "Five Lamborghinis... THE JELLY.",
+    );
+    // Adjacent tags and mid-word spacing collapse cleanly.
+    expect(stripAudioTags("[sighs][pause] Fine. He wins.")).toBe("Fine. He wins.");
+    // Bracket-free text passes through untouched.
+    expect(stripAudioTags("He said guaranteed. TWICE.")).toBe("He said guaranteed. TWICE.");
+    // A tags-only line strips to empty — the pipeline skips it instead of TTS-ing "".
+    expect(stripAudioTags("[laughs] [sighs]")).toBe("");
+    // Oversized brackets (>30 chars) are treated as speech, not a tag.
+    const notATag = "[this is a long bracketed aside that is definitely not an audio tag]";
+    expect(stripAudioTags(notATag)).toBe(notATag);
+  });
+
+  it("mock planner emits audio tags only when the provider speaks them", async () => {
+    const llm = new MockLlmProvider();
+    const base = { transcript: "[0.0-5.0] test", durationSec: 30, mode: "interject" as const };
+    const tagged = await llm.planCommentary({ ...base, voiceTags: true });
+    const clean = await llm.planCommentary({ ...base, voiceTags: false });
+    expect(tagged.some((l) => /\[[^\]]+\]/.test(l.text))).toBe(true);
+    expect(clean.some((l) => /\[[^\]]+\]/.test(l.text))).toBe(false);
+    // The tagged line still has words left after stripping (never tags-only).
+    for (const l of tagged) expect(stripAudioTags(l.text).length).toBeGreaterThan(0);
   });
 
   it("mock planner directs every line so the keyless pipeline exercises the path", async () => {

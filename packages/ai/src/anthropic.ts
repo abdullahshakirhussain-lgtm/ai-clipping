@@ -343,7 +343,13 @@ Structure: ${structure}
 - react: atSec = the exact moment you're reacting to.
 - outro: atSec ${input.durationSec.toFixed(0)}. Your verdict.
 
-This is spoken aloud by a voice that performs EXACTLY what you write — text, punctuation, and your stage direction. Write the performance, not just the words:
+${
+  input.voiceTags
+    ? `The voice model performs AUDIO TAGS — square-bracket cues placed inline in the text, acted rather than spoken. Use them where the performance shifts, at the exact word where it shifts: [shouts], [laughs], [scoffs], [whispers], [sighs], [sarcastic], [pause]. Sparingly — 1-3 per line; a tag on every clause reads as random. Example: "[scoffs] Five Lamborghinis... [shouting] AND HE'S STRESSED ABOUT THE JELLY."
+
+`
+    : ""
+}This is spoken aloud by a voice that performs EXACTLY what you write — text, punctuation, and your stage direction. Write the performance, not just the words:
 - CAPS on a word means it gets SHOUTED. Use it where a person would actually raise their voice.
 - "..." is a held beat. Stretch spellings when a human would ("riiiight", "nooo").
 - Contractions. Vary sentence length. Fragments are fine.
