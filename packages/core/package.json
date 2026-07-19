@@ -14,6 +14,7 @@
   "dependencies": {
     "@clipfactory/ai": "workspace:*",
     "@clipfactory/db": "workspace:*",
+    "@clipfactory/discovery": "workspace:*",
     "@clipfactory/media": "workspace:*",
     "@clipfactory/publishers": "workspace:*",
     "@clipfactory/queue": "workspace:*",

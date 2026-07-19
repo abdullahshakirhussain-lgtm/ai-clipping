@@ -177,6 +177,9 @@ importers:
       '@clipfactory/db':
         specifier: workspace:*
         version: link:../db
+      '@clipfactory/discovery':
+        specifier: workspace:*
+        version: link:../discovery
       '@clipfactory/media':
         specifier: workspace:*
         version: link:../media
@@ -236,6 +239,15 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.23.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/discovery:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.0
+        version: 22.20.0
       typescript:
         specifier: ^5.7.3
         version: 5.9.3

@@ -379,6 +379,49 @@ model Category {
   createdAt DateTime @default(now())
 }
 
+enum DiscoveredVideoStatus {
+  NEW
+  INGESTED
+  HIDDEN
+}
+
+/// A candidate video the Finder discovered on a source platform (Reddit, later
+/// Twitch/Kick), ranked by velocity. Reviewed by the user, then one-click sent
+/// into the normal URL ingest pipeline. firstSeen* are captured on the first
+/// poll so velocity can measure acceleration across subsequent polls.
+model DiscoveredVideo {
+  id              String                @id @default(cuid())
+  platform        String
+  /// Stable per-platform id (e.g. Reddit "t3_abc"); dedupes across polls.
+  externalId      String
+  /// The URL handed to yt-dlp when ingested (video or post permalink).
+  url             String
+  permalink       String
+  title           String
+  thumbnailUrl    String?
+  author          String?
+  /// Where it came from (subreddit name, later game/streamer).
+  source          String
+  /// "reddit_video" | "youtube" | "streamable" | ...
+  mediaType       String
+  sourceCreatedAt DateTime
+  score           Int                   @default(0)
+  comments        Int                   @default(0)
+  firstSeenAt     DateTime              @default(now())
+  firstSeenScore  Int                   @default(0)
+  peakScore       Int                   @default(0)
+  lastPolledAt    DateTime              @default(now())
+  /// Computed rank key (higher = accelerating faster while still young).
+  velocity        Float                 @default(0)
+  status          DiscoveredVideoStatus @default(NEW)
+  /// Set once the user ingests it — links to the created SourceVideo.
+  ingestedVideoId String?
+  createdAt       DateTime              @default(now())
+
+  @@unique([platform, externalId])
+  @@index([status, velocity])
+}
+
 model PublishJob {
   id              String           @id @default(cuid())
   clipId          String

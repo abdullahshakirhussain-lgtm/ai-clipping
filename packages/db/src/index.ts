@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { CalibrationRepository } from "./repositories/calibration.js";
 import { CampaignRepository } from "./repositories/campaign.js";
 import { CategoryRepository } from "./repositories/category.js";
+import { DiscoveredVideoRepository } from "./repositories/discovered-video.js";
 import { ClipRepository } from "./repositories/clip.js";
 import { PublishRepository } from "./repositories/publish.js";
 import { SocialAccountRepository } from "./repositories/social-account.js";
@@ -11,6 +12,7 @@ export { getPrisma, disconnectPrisma } from "./client.js";
 export * from "./repositories/calibration.js";
 export * from "./repositories/campaign.js";
 export * from "./repositories/category.js";
+export * from "./repositories/discovered-video.js";
 export * from "./repositories/clip.js";
 export * from "./repositories/publish.js";
 export * from "./repositories/social-account.js";
@@ -29,6 +31,7 @@ export {
   ReviewActionType,
   SocialAccountStatus,
   PublishJobStatus,
+  DiscoveredVideoStatus,
   UserRole,
 } from "@prisma/client";
 
@@ -40,6 +43,7 @@ export interface Repositories {
   publish: PublishRepository;
   calibration: CalibrationRepository;
   categories: CategoryRepository;
+  discovered: DiscoveredVideoRepository;
 }
 
 export function createRepositories(prisma: PrismaClient): Repositories {
@@ -51,5 +55,6 @@ export function createRepositories(prisma: PrismaClient): Repositories {
     publish: new PublishRepository(prisma),
     calibration: new CalibrationRepository(prisma),
     categories: new CategoryRepository(prisma),
+    discovered: new DiscoveredVideoRepository(prisma),
   };
 }

@@ -18,8 +18,24 @@ async function main() {
     `API listening — docs at ${container.env.API_URL}/docs`,
   );
 
+  // Finder poll: refresh the discovery feed on an interval so velocity can be
+  // tracked across samples. Guarded + best-effort like the admin bootstrap; only
+  // runs when DISCOVERY_ENABLED and a provider is configured. The API always
+  // runs on Railway and the poll is light HTTP, so no BullMQ repeatable job.
+  let pollTimer: NodeJS.Timeout | undefined;
+  if (container.env.DISCOVERY_ENABLED && container.services.discovery.enabled) {
+    const runPoll = () =>
+      container.services.discovery
+        .poll()
+        .catch((err) => container.logger.warn({ err: String(err) }, "discovery poll errored"));
+    void runPoll(); // once at startup
+    pollTimer = setInterval(runPoll, container.env.DISCOVERY_POLL_MIN * 60_000);
+    container.logger.info({ everyMin: container.env.DISCOVERY_POLL_MIN }, "discovery poll scheduled");
+  }
+
   const shutdown = async () => {
     container.logger.info("shutting down api");
+    if (pollTimer) clearInterval(pollTimer);
     await app.close();
     await container.shutdown();
     process.exit(0);

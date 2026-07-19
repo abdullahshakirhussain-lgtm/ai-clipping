@@ -6,6 +6,7 @@ import type {
   CategoryDto,
   ClipDetailDto,
   ClipDto,
+  DiscoveredVideoDto,
   DistributeResult,
   DistributionOverview,
   OverviewDto,
@@ -116,6 +117,8 @@ export const useCampaigns = () => useApi<CampaignDto[]>("/campaigns", { refreshI
 export const useVideos = () => useApi<SourceVideoDto[]>("/videos", { refreshInterval: 4000 });
 export const useAccounts = () => useApi<SocialAccountDto[]>("/accounts");
 export const useCategories = () => useApi<CategoryDto[]>("/categories");
+export const useDiscovery = () =>
+  useApi<DiscoveredVideoDto[]>("/discovery", { refreshInterval: 20000 });
 export const usePublishJobs = (status?: string) =>
   useApi<PublishJobDto[]>(`/publish-jobs${status ? `?status=${status}` : ""}`, { refreshInterval: 5000 });
 
@@ -177,6 +180,7 @@ export type {
   CategoryDto,
   ClipDto,
   ClipDetailDto,
+  DiscoveredVideoDto,
   DistributeResult,
   DistributionOverview,
   OverviewDto,

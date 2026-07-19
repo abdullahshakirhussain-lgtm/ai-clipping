@@ -86,6 +86,45 @@ export class VideoService {
     return { sourceVideoId: video.id };
   }
 
+  /**
+   * Ingest from a URL (Finder / campaign source): create the SourceVideo with
+   * the chosen settings and enqueue the yt-dlp download stage. Same downstream
+   * pipeline as an upload — the download job fetches the file first.
+   */
+  async ingestUrl(input: {
+    url: string;
+    title?: string;
+    campaignId?: string;
+    captionStyle?: string;
+    captionPosition?: string;
+    reframe?: boolean;
+    autoEnhance?: boolean;
+    subtitlesOnly?: boolean;
+    untouched?: boolean;
+    commentaryMode?: string;
+    category?: string;
+    context?: string;
+  }): Promise<{ sourceVideoId: string }> {
+    const campaignId = input.campaignId ?? (await this.getOrCreateDefaultCampaignId());
+    const video = await this.repos.sourceVideos.create({
+      campaignId,
+      originalUrl: input.url,
+      title: input.title ?? null,
+      status: "PENDING",
+      captionStyle: input.captionStyle ?? "bold-center",
+      captionPosition: input.captionPosition ?? "bottom",
+      reframe: input.reframe ?? false,
+      autoEnhance: input.autoEnhance ?? false,
+      subtitlesOnly: input.subtitlesOnly ?? false,
+      untouched: input.untouched ?? false,
+      commentaryMode: input.commentaryMode ?? "off",
+      category: input.category?.trim() || null,
+      context: input.context?.trim() || null,
+    });
+    await this.dispatcher.enqueue("video.download", { sourceVideoId: video.id }, { jobId: video.id });
+    return { sourceVideoId: video.id };
+  }
+
   /** Background: probe the uploaded file, push it to storage, start the pipeline. */
   private async finishIngest(videoId: string, localPath: string): Promise<void> {
     try {

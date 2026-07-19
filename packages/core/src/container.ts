@@ -13,6 +13,7 @@ import {
   type TtsProvider,
 } from "@clipfactory/ai";
 import { createRepositories, getPrisma, type Repositories } from "@clipfactory/db";
+import { MockFeedProvider, RedditProvider, type SourceFeedProvider } from "@clipfactory/discovery";
 import { MockDownloader, YtDlpDownloader, type DownloadProvider } from "@clipfactory/media";
 import {
   InstagramPublisher,
@@ -38,6 +39,7 @@ import { AnalyticsService } from "./services/analytics-service.js";
 import { CalibrationService } from "./services/calibration-service.js";
 import { CampaignService } from "./services/campaign-service.js";
 import { CategoryService } from "./services/category-service.js";
+import { DiscoveryService } from "./services/discovery-service.js";
 import { DistributionService } from "./services/distribution-service.js";
 import { SystemService } from "./services/system-service.js";
 import { ClipService } from "./services/clip-service.js";
@@ -64,9 +66,32 @@ export interface Container {
     analytics: AnalyticsService;
     calibration: CalibrationService;
     distribution: DistributionService;
+    discovery: DiscoveryService;
     system: SystemService;
   };
   shutdown(): Promise<void>;
+}
+
+/**
+ * Finder feed providers. Reddit when credentials are set; otherwise mock so the
+ * poll/list flow is runnable in dev, and empty (no poll) when discovery is off.
+ */
+function buildFeedProviders(env: Env, logger: Logger): SourceFeedProvider[] {
+  if (!env.DISCOVERY_ENABLED) return [];
+  const subreddits = env.DISCOVERY_SUBREDDITS.split(",").map((s) => s.trim()).filter(Boolean);
+  if (env.REDDIT_CLIENT_ID && env.REDDIT_CLIENT_SECRET) {
+    logger.info({ subreddits: subreddits.length }, "discovery: Reddit provider");
+    return [
+      new RedditProvider({
+        clientId: env.REDDIT_CLIENT_ID,
+        clientSecret: env.REDDIT_CLIENT_SECRET,
+        userAgent: env.REDDIT_USER_AGENT,
+        subreddits,
+      }),
+    ];
+  }
+  logger.info("discovery enabled without Reddit creds — using mock feed");
+  return [new MockFeedProvider()];
 }
 
 function buildStorage(env: Env, logger: Logger): ObjectStorage {
@@ -266,9 +291,10 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   }
   pipeline.dispatcher = dispatcher;
 
+  const videos = new VideoService(repos, storage, dispatcher);
   const services = {
     campaigns: new CampaignService(repos, dispatcher),
-    videos: new VideoService(repos, storage, dispatcher),
+    videos,
     clips: new ClipService(repos, storage, dispatcher),
     review: new ReviewService(repos, dispatcher),
     publish: new PublishService(repos, dispatcher),
@@ -277,6 +303,9 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     analytics: new AnalyticsService(repos, dispatcher),
     calibration: new CalibrationService(repos),
     distribution: new DistributionService(repos, storage),
+    discovery: new DiscoveryService(repos, buildFeedProviders(env, logger), videos, logger, {
+      maxAgeHours: env.DISCOVERY_MAX_AGE_H,
+    }),
     system: new SystemService(),
   };
 

@@ -82,6 +82,20 @@ const EnvSchema = z.object({
 
   PUBLISH_DRIVER: z.enum(["mock", "live"]).default("mock"),
 
+  // ── Finder (source discovery) ──────────────────────────────────────────────
+  // Opt-in: needs Reddit app credentials. When off, the poll never runs.
+  DISCOVERY_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  REDDIT_CLIENT_ID: z.string().optional().default(""),
+  REDDIT_CLIENT_SECRET: z.string().optional().default(""),
+  REDDIT_USER_AGENT: z.string().default("clipfactory/1.0"),
+  /** Comma-separated subreddits to watch (without "r/"). */
+  DISCOVERY_SUBREDDITS: z.string().default("PublicFreakout,nextfuckinglevel,sports,funny,Damnthatsinteresting"),
+  DISCOVERY_POLL_MIN: z.coerce.number().min(1).default(15),
+  DISCOVERY_MAX_AGE_H: z.coerce.number().min(1).default(24),
+
   BETTER_AUTH_SECRET: z.string().default("dev-only-secret-change-me"),
   /** Key for encrypting vault secrets (account passwords). Falls back to BETTER_AUTH_SECRET. */
   CREDENTIALS_SECRET: z.string().optional().default(""),
