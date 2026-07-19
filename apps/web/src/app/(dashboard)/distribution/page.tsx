@@ -257,6 +257,12 @@ function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolea
   const [url, setUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [extStatus, setExtStatus] = useState<string | null>(null);
+  // Freeze the preview src: the queue polls and hands us a fresh presigned URL
+  // each time, and a changed <video> src reloads the clip mid-play. Keep the
+  // first real URL for this card's lifetime (see the same fix in the Library).
+  const srcRef = useRef<string | null>(null);
+  if (srcRef.current === null && task.previewUrl) srcRef.current = task.previewUrl;
+  const stableSrc = srcRef.current;
 
   const caption = [task.title, task.description, task.hashtags.join(" ")].filter(Boolean).join("\n\n");
   const AUTOMATED: PostTask["platform"][] = ["YOUTUBE", "TIKTOK", "FACEBOOK"];
@@ -306,8 +312,8 @@ function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolea
   return (
     <Card className="flex gap-4">
       <div className="bg-black rounded-lg overflow-hidden shrink-0" style={{ width: 120, aspectRatio: "9/16" }}>
-        {task.previewUrl && (
-          <video src={task.previewUrl} poster={task.thumbnailUrl ?? undefined} controls preload="none" className="w-full h-full object-contain" />
+        {stableSrc && (
+          <video src={stableSrc} poster={task.thumbnailUrl ?? undefined} controls preload="none" className="w-full h-full object-contain" />
         )}
       </div>
       <div className="flex-1 min-w-0">

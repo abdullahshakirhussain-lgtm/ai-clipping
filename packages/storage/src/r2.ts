@@ -83,10 +83,18 @@ export class R2Storage implements ObjectStorage {
     if (this.opts.publicBaseUrl) {
       return `${this.opts.publicBaseUrl}/${key}`;
     }
+    // Quantize the signing time to a fixed window so repeated calls for the same
+    // key return a BYTE-IDENTICAL URL. The clip list polls every few seconds and
+    // re-derives previewUrl each time; without this the signature changed on
+    // every poll, so the <video> src kept changing and playback snapped back to
+    // the start mid-play. A 10-min bucket keeps the URL stable and still valid
+    // (expiresIn is measured from the quantized time, so 50-60 min of validity).
+    const bucketMs = 10 * 60 * 1000;
+    const signingDate = new Date(Math.floor(Date.now() / bucketMs) * bucketMs);
     return getSignedUrl(
       this.client,
       new GetObjectCommand({ Bucket: this.opts.bucket, Key: key }),
-      { expiresIn: 3600 },
+      { expiresIn: 3600, signingDate },
     );
   }
 }

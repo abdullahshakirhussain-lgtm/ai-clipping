@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiSend,
   clipExportUrl,
@@ -442,15 +442,22 @@ function ClipCard({
   const notes = notesOf(clip).slice(0, 2);
   const scoreColor = clip.overallScore >= 75 ? "var(--success)" : clip.overallScore >= 55 ? "var(--warning)" : "var(--muted)";
   const [more, setMore] = useState(false);
+  // Freeze the video src for the card's lifetime. The clip list re-fetches every
+  // few seconds and each poll can hand us a fresh preview URL; letting that reach
+  // the <video> reloads it and playback jumps to the start. Capture the first
+  // real URL and keep it, so a background refresh never interrupts a playing clip.
+  const srcRef = useRef<string | null>(null);
+  if (srcRef.current === null && clip.previewUrl) srcRef.current = clip.previewUrl;
+  const stableSrc = srcRef.current;
   return (
     <div
       className="card p-0 overflow-hidden flex flex-col transition-all"
       style={{ outline: selected ? "2px solid var(--primary)" : "1px solid var(--border)" }}
     >
       <div className="relative bg-black" style={{ aspectRatio: "9 / 16" }}>
-        {clip.previewUrl ? (
+        {stableSrc ? (
           <video
-            src={clip.previewUrl}
+            src={stableSrc}
             poster={clip.thumbnailUrl ?? undefined}
             controls
             preload="none"
