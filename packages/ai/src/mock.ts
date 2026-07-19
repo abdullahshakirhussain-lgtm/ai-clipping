@@ -1,5 +1,6 @@
 import type {
   CommentaryLine,
+  DescribeVideoContextInput,
   DetectHighlightsInput,
   EnhanceClipInput,
   EnhancementResult,
@@ -154,6 +155,11 @@ export class MockLlmProvider implements LlmProvider {
       });
     }
     return lines;
+  }
+
+  async describeVideoContext(_input: DescribeVideoContextInput): Promise<string> {
+    // Offline stub: reading on-screen text needs real vision.
+    return "";
   }
 
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {

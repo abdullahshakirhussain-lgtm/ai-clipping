@@ -30,6 +30,8 @@ export interface PipelineContext {
   config: {
     /** Clip detection + scoring knobs (env-driven; see env.ts DETECT_*). */
     detection: DetectionConfig;
+    /** Derive who/what a video is about from sampled frames' on-screen text. */
+    visionContext: boolean;
   };
 }
 

@@ -7,6 +7,7 @@ import {
   type CaptionWord,
   type EditPlan,
   extractAudio,
+  extractFrames,
   extractSmartThumbnail,
   findLoudnessPeaks,
   type FreezeInsert,
@@ -104,11 +105,51 @@ export async function runTranscribe(ctx: PipelineContext, sourceVideoId: string)
       segments: transcript.segments as never,
       provider: transcript.provider,
     });
+    await deriveVideoContext(ctx, sourceVideoId, localSource, workDir, transcript.text);
     await ctx.repos.sourceVideos.update(sourceVideoId, { status: SourceVideoStatus.TRANSCRIBED });
     await ctx.dispatcher.enqueue("clip.detect", { sourceVideoId }, { jobId: sourceVideoId });
   } catch (err) {
     await failVideo(ctx, sourceVideoId, err);
     throw err;
+  }
+}
+
+/**
+ * Vision context: sample up to 12 frames across the video and have the LLM read
+ * the on-screen text (watermarks, captions, usernames, title cards) to learn
+ * who/what the video is about — the transcript alone rarely names the speaker.
+ * Batched with early stop inside the provider, so obvious videos cost one call.
+ * Best-effort: failure logs and moves on, it never fails the video.
+ */
+async function deriveVideoContext(
+  ctx: PipelineContext,
+  sourceVideoId: string,
+  localSource: string,
+  workDir: string,
+  transcriptText: string,
+): Promise<void> {
+  if (!ctx.config.visionContext) return;
+  try {
+    const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
+    const { durationSec } = await probe(localSource);
+    if (durationSec <= 0) return;
+    const framesDir = join(workDir, "ctx-frames");
+    await fs.mkdir(framesDir, { recursive: true });
+    // 854x480, not the face-detect default 320x240 — on-screen text must be legible.
+    const framePaths = await extractFrames(localSource, 0, durationSec, 12, framesDir, 854, 480);
+    if (framePaths.length === 0) return;
+    const frames = await Promise.all(framePaths.map((p) => fs.readFile(p)));
+    const autoContext = await ctx.llm.describeVideoContext({
+      frames,
+      title: video?.title ?? null,
+      transcriptSample: transcriptText.slice(0, 800),
+    });
+    if (autoContext.trim()) {
+      await ctx.repos.sourceVideos.update(sourceVideoId, { autoContext: autoContext.trim() });
+      ctx.logger.info({ sourceVideoId, chars: autoContext.length }, "vision context derived");
+    }
+  } catch (err) {
+    ctx.logger.warn({ sourceVideoId, reason: String(err) }, "vision context failed — continuing without it");
   }
 }
 
@@ -564,6 +605,19 @@ export function stripAudioTags(text: string): string {
 }
 
 /**
+ * Combined video context for prompts: the uploader's own words first (they're
+ * authoritative), then whatever vision read off the screen. Undefined when
+ * neither exists so prompts can omit the block entirely.
+ */
+export function assembleContext(
+  userContext: string | null | undefined,
+  autoContext: string | null | undefined,
+): string | undefined {
+  const parts = [userContext?.trim(), autoContext?.trim()].filter((s): s is string => !!s);
+  return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+/**
  * Freeze-frame commentary: writes a take, voices it, holds the picture for each
  * line so nothing gets talked over, and mixes the audio in.
  *
@@ -582,7 +636,11 @@ async function applyCommentary(
     category: string | null;
     detectionReason: string | null;
     edl: unknown;
-    sourceVideo: { transcript: { segments: unknown } | null };
+    sourceVideo: {
+      context: string | null;
+      autoContext: string | null;
+      transcript: { segments: unknown } | null;
+    };
   },
   plan: EditPlan,
   clipPath: string,
@@ -620,6 +678,7 @@ async function applyCommentary(
           hook: clip.detectionReason ?? undefined,
           persona,
           voiceTags: tts.speaksTags === true,
+          context: assembleContext(clip.sourceVideo.context, clip.sourceVideo.autoContext),
         });
   if (script.length === 0) return null;
 
@@ -742,6 +801,7 @@ export async function runEnhance(ctx: PipelineContext, clipId: string): Promise<
       topic: "general",
       durationSec: clip.endSec - clip.startSec,
       platformHints: clip.campaign.allowedPlatforms,
+      context: assembleContext(clip.sourceVideo.context, clip.sourceVideo.autoContext),
     });
     // Scores were computed at detection time and live on the Clip; mirror them
     // into the enhancement row so existing readers keep working.

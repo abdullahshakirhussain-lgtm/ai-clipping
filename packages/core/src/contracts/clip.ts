@@ -70,6 +70,10 @@ export const SourceVideoDtoSchema = z.object({
   subtitlesOnly: z.boolean(),
   untouched: z.boolean(),
   commentaryMode: z.string(),
+  /** Uploader-typed context (who/what this video is about). */
+  context: z.string().nullable(),
+  /** Vision-derived context read from on-screen text. */
+  autoContext: z.string().nullable(),
 });
 export type SourceVideoDto = z.infer<typeof SourceVideoDtoSchema>;
 

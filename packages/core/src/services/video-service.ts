@@ -58,6 +58,7 @@ export class VideoService {
     untouched?: boolean;
     commentaryMode?: string;
     category?: string;
+    context?: string;
   }): Promise<{ sourceVideoId: string }> {
     const campaignId = input.campaignId ?? (await this.getOrCreateDefaultCampaignId());
     // Create the row immediately so the video shows up in the queue at once.
@@ -75,6 +76,7 @@ export class VideoService {
       untouched: input.untouched ?? false,
       commentaryMode: input.commentaryMode ?? "off",
       category: input.category?.trim() || null,
+      context: input.context?.trim() || null,
     });
     // Probing + copying a large file to storage can take tens of seconds — far
     // longer than a proxy will hold the request open (Railway closes long

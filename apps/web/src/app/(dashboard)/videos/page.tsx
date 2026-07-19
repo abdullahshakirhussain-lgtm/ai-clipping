@@ -75,6 +75,15 @@ export default function VideosPage() {
                           {s}
                         </span>
                       ))}
+                      {(v.context || v.autoContext) && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded surface-2 border cursor-help"
+                          style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+                          title={[v.context, v.autoContext].filter(Boolean).join("\n— auto: ")}
+                        >
+                          📝 context
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="p-4">{v.durationSec ? duration(v.durationSec) : "—"}</td>

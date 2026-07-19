@@ -1,8 +1,8 @@
-import { MockLlmProvider, MockTtsProvider, type TtsProvider } from "@clipfactory/ai";
+import { MockLlmProvider, MockTtsProvider, planVisionBatches, type TtsProvider } from "@clipfactory/ai";
 import { describe, expect, it } from "vitest";
 import { makeTtsFor } from "./container.js";
 import { CommentaryLineSchema } from "./contracts/clip.js";
-import { INTENSITY_GAIN, stripAudioTags } from "./pipeline/stages.js";
+import { assembleContext, INTENSITY_GAIN, stripAudioTags } from "./pipeline/stages.js";
 
 /**
  * M3 gave each line a performance (delivery direction + intensity). These fields
@@ -85,6 +85,42 @@ describe("commentary performance fields", () => {
     expect(clean.some((l) => /\[[^\]]+\]/.test(l.text))).toBe(false);
     // The tagged line still has words left after stripping (never tags-only).
     for (const l of tagged) expect(stripAudioTags(l.text).length).toBeGreaterThan(0);
+  });
+
+  it("assembles video context with the uploader's words first", () => {
+    expect(assembleContext("Tate on Fresh&Fit", "Watermark reads @freshfit")).toBe(
+      "Tate on Fresh&Fit\nWatermark reads @freshfit",
+    );
+    expect(assembleContext("Tate on Fresh&Fit", null)).toBe("Tate on Fresh&Fit");
+    expect(assembleContext(null, "Watermark reads @freshfit")).toBe("Watermark reads @freshfit");
+    // Empty/whitespace on both sides means the prompt block is omitted entirely.
+    expect(assembleContext("  ", null)).toBeUndefined();
+    expect(assembleContext(null, undefined)).toBeUndefined();
+  });
+
+  it("interleaves vision batches so each batch spans the whole timeline", () => {
+    const frames = Array.from({ length: 12 }, (_, i) => i);
+    const batches = planVisionBatches(frames, 3);
+    expect(batches).toEqual([
+      [0, 4, 8],
+      [1, 5, 9],
+      [2, 6, 10],
+      [3, 7, 11],
+    ]);
+    // Every frame used exactly once.
+    expect(batches.flat().sort((a, b) => a - b)).toEqual(frames);
+    // Short videos (fewer frames) still batch without loss or empties.
+    const seven = planVisionBatches([0, 1, 2, 3, 4, 5, 6], 3);
+    expect(seven.flat().sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    for (const b of seven) expect(b.length).toBeGreaterThan(0);
+    expect(planVisionBatches([], 3)).toEqual([]);
+  });
+
+  it("mock vision context is empty so the keyless pipeline skips the block", async () => {
+    const llm = new MockLlmProvider();
+    await expect(
+      llm.describeVideoContext({ frames: [Buffer.alloc(0)], title: "x.mp4", transcriptSample: "" }),
+    ).resolves.toBe("");
   });
 
   it("mock planner directs every line so the keyless pipeline exercises the path", async () => {

@@ -212,6 +212,12 @@ model SourceVideo {
   untouched       Boolean       @default(false)
   /// AI commentary voice-over: off | intro_outro | interject | full. Inherited by clips.
   commentaryMode  String        @default("off")
+  /// User-typed context at upload ("Andrew Tate on the Fresh&Fit podcast") —
+  /// authoritative; fed to commentary + enhancement prompts.
+  context         String?
+  /// Vision-derived context (on-screen text/watermarks read from sampled frames).
+  /// Separate from `context` so regeneration never clobbers the user's text.
+  autoContext     String?
   /// Content category chosen at upload; clips inherit it and route to matching accounts.
   category        String?
   createdAt   DateTime          @default(now())

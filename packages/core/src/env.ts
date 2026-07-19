@@ -69,6 +69,15 @@ const EnvSchema = z.object({
     .default("true")
     .transform((v) => v === "true"),
 
+  /**
+   * Read on-screen text from up to 12 sampled frames to learn who/what a video
+   * is about (batched vision with early stop, ≤~3¢/video). Live AI only.
+   */
+  VISION_CONTEXT: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+
   PUBLISH_DRIVER: z.enum(["mock", "live"]).default("mock"),
 
   BETTER_AUTH_SECRET: z.string().default("dev-only-secret-change-me"),

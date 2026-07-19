@@ -243,6 +243,8 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
         chunkMinutes: env.DETECT_CHUNK_MIN,
         audioPeaks: env.DETECT_AUDIO_PEAKS,
       },
+      // Mock LLM returns "" anyway; the flag mainly saves the frame extraction.
+      visionContext: env.VISION_CONTEXT && env.AI_DRIVER === "live",
     },
   } as PipelineContext;
 

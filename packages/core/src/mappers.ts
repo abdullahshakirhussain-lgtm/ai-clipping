@@ -66,6 +66,8 @@ export function toSourceVideoDto(v: VideoListRow): SourceVideoDto {
     subtitlesOnly: v.subtitlesOnly,
     untouched: v.untouched,
     commentaryMode: v.commentaryMode,
+    context: v.context ?? null,
+    autoContext: v.autoContext ?? null,
   };
 }
 

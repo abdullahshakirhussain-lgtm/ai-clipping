@@ -65,6 +65,8 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
           untouched: z.enum(["true", "false"]).optional(),
           commentaryMode: z.enum(["off", "intro_outro", "interject", "full"]).optional(),
           category: z.string().max(60).optional(),
+          // Who/what the video is about ("Andrew Tate on the Fresh&Fit podcast").
+          context: z.string().max(500).optional(),
         }),
         response: { 200: z.object({ sourceVideoId: z.string() }) },
       },
@@ -103,6 +105,7 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
         untouched: req.query.untouched === "true",
         commentaryMode: req.query.commentaryMode,
         category: req.query.category,
+        context: req.query.context,
       });
     },
   );

@@ -1,9 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { planVisionBatches } from "./types.js";
 import type {
   ClipSignals,
   CommentaryIntensity,
   CommentaryLine,
   CommentaryRole,
+  DescribeVideoContextInput,
   DetectHighlightsInput,
   EnhanceClipInput,
   EnhancementResult,
@@ -86,7 +88,11 @@ export class AnthropicLlmProvider implements LlmProvider {
   }
 
   /** Force a single tool call and return its (already-parsed) input object. */
-  private async callTool<T>(prompt: string, tool: Anthropic.Tool, maxTokens = 4096): Promise<T> {
+  private async callTool<T>(
+    prompt: string | Anthropic.ContentBlockParam[],
+    tool: Anthropic.Tool,
+    maxTokens = 4096,
+  ): Promise<T> {
     const msg = await this.client.messages.create({
       model: this.model,
       max_tokens: maxTokens,
@@ -318,7 +324,11 @@ Rules: at most ${input.maxCues} cues total; most clips should get 0-1; never clu
 WHO YOU ARE: ${persona}
 
 Transcript (times in seconds within this ${input.durationSec.toFixed(0)}s clip):
-${input.transcript}${input.category ? `\n\nChannel niche: ${input.category}` : ""}
+${input.transcript}${input.category ? `\n\nChannel niche: ${input.category}` : ""}${
+        input.context
+          ? `\n\nWHAT YOU KNOW ABOUT THIS VIDEO (from the uploader and on-screen text — use these names and facts freely, they're verified):\n${input.context}`
+          : ""
+      }
 
 Your job is to have an OPINION — and opinions have teeth. Find the dumbest thing in this clip and go after it; don't be polite about it. Where they're actually right, push back on the part everyone else would let slide. Mild profanity ("hell", "damn", "BS") is allowed when it lands — never forced, never stronger than that. What you may NOT do is hedge: no "to be fair", no "that said", no "in a way", no both-sides. Pick a side and commit.
 
@@ -413,6 +423,65 @@ Call submit_lines.`,
       }));
   }
 
+  /**
+   * Who/what is this video about? Reads ON-SCREEN TEXT from frames sampled
+   * across the timeline — captions, watermarks, usernames, title cards — plus
+   * the title/filename and a transcript sample. Batched (3 frames per call,
+   * stride-interleaved so every batch spans the whole video) with EARLY STOP:
+   * a confident answer after batch 1 means the remaining frames are never sent.
+   * Identity comes from written text and context only, never face recognition.
+   */
+  async describeVideoContext(input: DescribeVideoContextInput): Promise<string> {
+    const batches = planVisionBatches(input.frames, 3).slice(0, 4);
+    let notes = "";
+    let context = "";
+    for (const [i, batch] of batches.entries()) {
+      const prompt = `These are ${batch.length} frames sampled from across one video (not consecutive).
+
+Read ALL on-screen text: captions, subtitles, watermarks, usernames, channel names, title cards, chat overlays, lower thirds. Describe the setting and what is happening.
+
+Video title/filename: ${input.title || "(none)"}
+Transcript sample: """${input.transcriptSample.slice(0, 800)}"""${notes ? `\n\nNotes from earlier frames of this same video:\n${notes}` : ""}
+
+Say who is speaking and what the video is about ONLY as far as the text, title, or transcript states it — never guess a name from a face. If you can't tell who it is, describe what you CAN see. 2-4 sentences.
+
+Set confident=true ONLY if you now know who/what this video is about well enough that more frames wouldn't change your answer. Call submit_context.`;
+
+      const content: Anthropic.ContentBlockParam[] = [
+        ...batch.map(
+          (f): Anthropic.ContentBlockParam => ({
+            type: "image",
+            source: { type: "base64", media_type: "image/jpeg", data: f.toString("base64") },
+          }),
+        ),
+        { type: "text", text: prompt },
+      ];
+      const result = await this.callTool<{ context?: string; confident?: boolean }>(
+        content,
+        {
+          name: "submit_context",
+          description: "Submit what this video is about, based on visible text and context.",
+          input_schema: {
+            type: "object",
+            properties: {
+              context: { type: "string", description: "2-4 sentences: who/what this video is about" },
+              confident: {
+                type: "boolean",
+                description: "true only if more frames would not change the answer",
+              },
+            },
+            required: ["context", "confident"],
+          },
+        },
+        768,
+      );
+      context = String(result.context ?? "").trim();
+      if (result.confident === true || i === batches.length - 1) break;
+      notes = context; // carry findings forward as text; images are never re-sent
+    }
+    return context;
+  }
+
   async enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult> {
     const p = await this.callTool<Partial<EnhancementResult>>(
       `You optimize short-form clips for TikTok/Reels/Shorts. Target platforms: ${input.platformHints.join(", ")}.
@@ -420,7 +489,7 @@ Call submit_lines.`,
 Clip transcript (${input.durationSec.toFixed(0)}s${input.creatorName ? `, creator: ${input.creatorName}` : ""}):
 """${input.transcriptExcerpt}"""
 Current hook: "${input.hook}"
-Topic: ${input.topic}
+Topic: ${input.topic}${input.context ? `\nAbout this video (verified — use names in titles/hashtags): ${input.context}` : ""}
 
 Call submit_metadata with optimized fields.`,
       {

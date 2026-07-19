@@ -88,6 +88,8 @@ export interface EnhanceClipInput {
   durationSec: number;
   platformHints: string[];
   creatorName?: string;
+  /** Video-level context (who/what this is about) for titles/hashtags. */
+  context?: string;
 }
 
 /** Metadata only — scoring is computed in packages/core, not here. */
@@ -160,6 +162,12 @@ export interface PlanCommentaryInput {
   mode: Exclude<CommentaryMode, "off">;
   category?: string;
   hook?: string;
+  /**
+   * What we know about the video beyond the transcript: uploader-typed context
+   * plus on-screen text read from sampled frames ("Andrew Tate, Fresh&Fit
+   * podcast"). Lets the take name who/what it's about.
+   */
+  context?: string;
   /** Category-level character ("condescending finance guy…"). Overrides the default roast baseline. */
   persona?: string;
   /**
@@ -168,6 +176,30 @@ export interface PlanCommentaryInput {
    * `speaksTags`. When false the text stays clean prose.
    */
   voiceTags?: boolean;
+}
+
+export interface DescribeVideoContextInput {
+  /** JPEG frames sampled evenly across the video, chronological order. */
+  frames: Buffer[];
+  /** Video title (for uploads this is the original filename). */
+  title: string | null;
+  /** First ~800 chars of the transcript, for cross-referencing names. */
+  transcriptSample: string;
+}
+
+/**
+ * Groups chronologically-ordered frames into batches of `batchSize` where every
+ * batch spans the WHOLE timeline (stride interleaving: [0,4,8] [1,5,9] …).
+ * The vision loop early-stops after any confident batch, so each batch needs a
+ * shot at wherever the title card / watermark happens to be — front-loading
+ * chronologically would make a late title card cost all four batches.
+ */
+export function planVisionBatches<T>(frames: T[], batchSize = 3): T[][] {
+  if (frames.length === 0) return [];
+  const numBatches = Math.max(1, Math.ceil(frames.length / batchSize));
+  const batches: T[][] = Array.from({ length: numBatches }, () => []);
+  frames.forEach((f, i) => batches[i % numBatches]!.push(f));
+  return batches.filter((b) => b.length > 0);
 }
 
 /**
@@ -208,6 +240,12 @@ export interface LlmProvider {
    * point of view — not narration of what the viewer can already see.
    */
   planCommentary(input: PlanCommentaryInput): Promise<CommentaryLine[]>;
+  /**
+   * Derive who/what a video is about by READING on-screen text (captions,
+   * watermarks, usernames, title cards) from sampled frames — never by face
+   * recognition. Batched with early stop to cap vision spend. "" when unknown.
+   */
+  describeVideoContext(input: DescribeVideoContextInput): Promise<string>;
   enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult>;
   improveHooks(input: { currentHook: string; transcriptExcerpt: string }): Promise<string[]>;
 }

@@ -69,6 +69,9 @@ export default function UploadPage() {
   const [dragging, setDragging] = useState(false);
   const [s, set] = useUploadSettings();
   const { style, position, reframe, autoEnhance, subtitlesOnly, untouched, commentaryMode, category } = s;
+  // Per-video, not a remembered setting: context describes THIS upload
+  // ("Andrew Tate on the Fresh&Fit podcast"), so it clears after each one.
+  const [context, setContext] = useState("");
   // Untouched renders as-is, so framing/SFX genuinely cannot apply — show that
   // rather than letting the toggles look active while being ignored.
   const effectsDisabled = untouched;
@@ -79,8 +82,10 @@ export default function UploadPage() {
     setProgress(0);
     try {
       const cat = category ? `&category=${encodeURIComponent(category)}` : "";
-      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}&subtitlesOnly=${subtitlesOnly}&untouched=${untouched}&commentaryMode=${commentaryMode}${cat}`;
+      const ctx = context.trim() ? `&context=${encodeURIComponent(context.trim().slice(0, 500))}` : "";
+      const qs = `?captionStyle=${style}&captionPosition=${position}&reframe=${reframe}&autoEnhance=${autoEnhance}&subtitlesOnly=${subtitlesOnly}&untouched=${untouched}&commentaryMode=${commentaryMode}${cat}${ctx}`;
       await apiUpload<{ sourceVideoId: string }>(`/videos/upload${qs}`, file, setProgress);
+      setContext("");
       await revalidateAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -213,6 +218,20 @@ export default function UploadPage() {
             </span>
           </label>
         </div>
+        <label className="block mb-4">
+          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>
+            Context for this video (optional — not remembered, applies to the next upload only)
+          </span>
+          <textarea
+            value={context}
+            onChange={(e) => setContext(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder={'Who/what is this? e.g. "Andrew Tate on the Fresh&Fit podcast, defending his ban" — the commentary and titles will use these names.'}
+            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
+            style={{ borderColor: context.trim() ? "var(--primary)" : "var(--border)" }}
+          />
+        </label>
         <div
           onDragOver={(e) => {
             e.preventDefault();
