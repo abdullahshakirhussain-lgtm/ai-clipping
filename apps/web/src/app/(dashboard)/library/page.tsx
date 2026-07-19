@@ -478,6 +478,15 @@ function ClipCard({
               🎙
             </span>
           )}
+          {clip.voiceTier === "premium" && (
+            <span
+              className="px-1.5 h-6 flex items-center rounded-md text-xs"
+              style={{ background: "rgba(0,0,0,0.55)", color: "#fff" }}
+              title="Premium voice (ElevenLabs)"
+            >
+              ⭐
+            </span>
+          )}
           {clip.hasSfx && (
             <span className="px-1.5 h-6 flex items-center rounded-md text-xs" style={{ background: "rgba(0,0,0,0.55)", color: "#fff" }} title="Sound effects added">
               🔊
@@ -559,6 +568,7 @@ function ClipCard({
               </label>
             )}
             {clip.commentary.length > 0 && <CommentaryEditor clip={clip} />}
+            {clip.commentary.length > 0 && <VoiceTierRow clip={clip} />}
             <div>
               <span className="text-[10px] block mb-1" style={{ color: "var(--muted)" }}>Performance once posted</span>
               <OutcomeRow clipId={clip.id} current={clip.outcome} />
@@ -676,6 +686,55 @@ function CommentaryEditor({ clip }: { clip: ClipDto }) {
           }}
         >
           {busy ? "Saving…" : "Save & re-render"}
+        </button>
+        {msg && <span className="text-[10px]" style={{ color: "var(--muted)" }}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Per-clip voice tier: standard renders are cheap; premium re-renders through
+ * ElevenLabs and spends paid credits, so it's an explicit upgrade on the clips
+ * worth it — never automatic.
+ */
+function VoiceTierRow({ clip }: { clip: ClipDto }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const premium = clip.voiceTier === "premium";
+
+  async function set(tier: "standard" | "premium") {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await apiSend("/clips/voice", "POST", { ids: [clip.id], tier });
+      setMsg("Re-rendering…");
+      await revalidateAll();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <span className="text-[10px] block mb-1" style={{ color: "var(--muted)" }}>
+        Voice tier {premium ? "— ⭐ premium (ElevenLabs)" : "— standard"}
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => set(premium ? "standard" : "premium")}
+          disabled={busy}
+          className="text-[10px] px-2 py-1 rounded border font-medium"
+          style={{ borderColor: "var(--primary)", color: "var(--primary)" }}
+          title={
+            premium
+              ? "Re-render with the standard (cheap) voice"
+              : "Re-render this clip's commentary with the expressive ElevenLabs voice — uses paid credits"
+          }
+        >
+          {busy ? "Working…" : premium ? "↩ Standard voice" : "⭐ Premium voice"}
         </button>
         {msg && <span className="text-[10px]" style={{ color: "var(--muted)" }}>{msg}</span>}
       </div>

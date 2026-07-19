@@ -1,5 +1,6 @@
-import { MockLlmProvider } from "@clipfactory/ai";
+import { MockLlmProvider, MockTtsProvider, type TtsProvider } from "@clipfactory/ai";
 import { describe, expect, it } from "vitest";
+import { makeTtsFor } from "./container.js";
 import { CommentaryLineSchema } from "./contracts/clip.js";
 import { INTENSITY_GAIN, stripAudioTags } from "./pipeline/stages.js";
 
@@ -54,6 +55,25 @@ describe("commentary performance fields", () => {
     // Oversized brackets (>30 chars) are treated as speech, not a tag.
     const notATag = "[this is a long bracketed aside that is definitely not an audio tag]";
     expect(stripAudioTags(notATag)).toBe(notATag);
+  });
+
+  it("routes voice tiers: premium only on explicit request, standard for everything else", () => {
+    const standard = new MockTtsProvider();
+    const premium: TtsProvider = { speaksTags: true, synthesize: () => Promise.reject(new Error("unused")) };
+    const ttsFor = makeTtsFor({ standard, premium });
+    expect(ttsFor("premium")).toBe(premium);
+    expect(ttsFor("standard")).toBe(standard);
+    // Unknown/legacy tier strings must never spend premium credits.
+    expect(ttsFor("")).toBe(standard);
+    expect(ttsFor("gold")).toBe(standard);
+  });
+
+  it("premium tier falls back to standard when ElevenLabs isn't configured", () => {
+    // The container wires premium = standard in that case; same-instance means
+    // the Library button degrades to a no-op re-render instead of crashing.
+    const standard = new MockTtsProvider();
+    const ttsFor = makeTtsFor({ standard, premium: standard });
+    expect(ttsFor("premium")).toBe(standard);
   });
 
   it("mock planner emits audio tags only when the provider speaks them", async () => {

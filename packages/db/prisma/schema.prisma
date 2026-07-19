@@ -262,6 +262,9 @@ model Clip {
   untouched       Boolean    @default(false)
   /// AI commentary voice-over mode (inherited from the source video).
   commentaryMode  String     @default("off")
+  /// Commentary voice tier: "standard" (cheap TTS) | "premium" (ElevenLabs v3).
+  /// Manual per-clip upgrade only — premium spends paid credits.
+  voiceTier       String     @default("standard")
   /// Edit-decision list applied at render (sfx cues; zoom/emoji later).
   edl             Json?
   /// Content category (inherited from the source video); routes distribution.

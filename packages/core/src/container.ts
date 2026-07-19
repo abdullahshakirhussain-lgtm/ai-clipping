@@ -144,6 +144,33 @@ function buildTtsProvider(env: Env, logger: Logger): TtsProvider {
   return new MockTtsProvider();
 }
 
+/**
+ * Per-clip voice tiers. "standard" is whatever TTS_PROVIDER says (the cheap
+ * default for every render); "premium" is ElevenLabs v3, chosen clip-by-clip
+ * from the Library because it spends paid credits. Premium falls back to
+ * standard when ElevenLabs isn't configured, so the button degrades gracefully.
+ */
+export function makeTtsFor(tiers: { standard: TtsProvider; premium: TtsProvider }): (tier: string) => TtsProvider {
+  return (tier) => (tier === "premium" ? tiers.premium : tiers.standard);
+}
+
+function buildTtsTiers(env: Env, logger: Logger): (tier: string) => TtsProvider {
+  const standard = buildTtsProvider(env, logger);
+  let premium: TtsProvider;
+  if (env.ELEVENLABS_API_KEY && env.ELEVENLABS_VOICE_ID) {
+    logger.info({ voice: env.ELEVENLABS_VOICE_ID, model: env.ELEVENLABS_MODEL }, "premium voice: ElevenLabs");
+    premium = new ElevenLabsTtsProvider({
+      apiKey: env.ELEVENLABS_API_KEY,
+      voiceId: env.ELEVENLABS_VOICE_ID,
+      model: env.ELEVENLABS_MODEL,
+    });
+  } else {
+    logger.info("premium voice not configured — premium tier falls back to standard");
+    premium = standard;
+  }
+  return makeTtsFor({ standard, premium });
+}
+
 function buildDownloader(env: Env): DownloadProvider {
   return env.DOWNLOAD_DRIVER === "ytdlp"
     ? new YtDlpDownloader({
@@ -188,7 +215,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const repos = createRepositories(prisma);
   const storage = buildStorage(env, logger);
   const { transcription, llm } = buildAiProviders(env, logger);
-  const tts = buildTtsProvider(env, logger);
+  const ttsFor = buildTtsTiers(env, logger);
   const downloader = buildDownloader(env);
   const publisherFor = buildPublisherFactory(env);
 
@@ -202,7 +229,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     storage,
     transcription,
     llm,
-    tts,
+    ttsFor,
     downloader,
     publisherFor,
     logger,

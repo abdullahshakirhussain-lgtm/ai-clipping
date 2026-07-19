@@ -14,6 +14,7 @@ import {
   SetClipCategoryInputSchema,
   SetCommentaryInputSchema,
   SetOutcomeInputSchema,
+  SetVoiceTierInputSchema,
 } from "@clipfactory/core";
 import archiver from "archiver";
 import { z } from "zod";
@@ -113,6 +114,19 @@ export const clipRoutes: RouteModule = (app, { container }): void => {
       },
     },
     (req) => clips.bulkCull(req.body.ids, req.body.action === "keep"),
+  );
+
+  // Upgrade/downgrade the commentary voice tier and re-render (premium = paid).
+  app.post(
+    "/clips/voice",
+    {
+      schema: {
+        tags: ["clips"],
+        body: SetVoiceTierInputSchema,
+        response: { 200: z.object({ updated: z.number() }) },
+      },
+    },
+    (req) => clips.setVoiceTier(req.body.ids, req.body.tier),
   );
 
   // Reassign the routing category on one or many clips (post-render).

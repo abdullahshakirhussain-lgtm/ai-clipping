@@ -51,6 +51,30 @@ export class ClipService {
     return { clipId: id, rerendering: true };
   }
 
+  /**
+   * Move clips between voice tiers and re-render their commentary. Premium
+   * (ElevenLabs) spends paid credits, so it's only ever set here — explicitly,
+   * per clip — never by the pipeline on its own. Clips with commentary off just
+   * store the tier for a later mode change; nothing to re-render.
+   */
+  async setVoiceTier(ids: string[], tier: "standard" | "premium"): Promise<{ updated: number }> {
+    let updated = 0;
+    for (const id of ids) {
+      const clip = await this.repos.clips.byId(id);
+      if (!clip || clip.voiceTier === tier) continue;
+      const rerender = clip.commentaryMode !== "off";
+      await this.repos.clips.update(id, {
+        voiceTier: tier,
+        ...(rerender ? { status: ClipStatus.RENDERING, error: null } : {}),
+      });
+      if (rerender) {
+        await this.dispatcher.enqueue("clip.render", { clipId: id }, { jobId: `voice-${id}-${Date.now()}` });
+      }
+      updated++;
+    }
+    return { updated };
+  }
+
   async list(query: ClipListQuery): Promise<{ items: ClipDto[]; total: number }> {
     const [rows, total] = await this.repos.clips.list(query);
     const items = await Promise.all(rows.map((c) => toClipDto(c, this.storage)));

@@ -16,8 +16,12 @@ export interface PipelineContext {
   dispatcher: Dispatcher;
   transcription: TranscriptionProvider;
   llm: LlmProvider;
-  /** Voice for the commentary track (mock/OpenAI/ElevenLabs). */
-  tts: TtsProvider;
+  /**
+   * Voice for the commentary track by clip tier: "premium" → ElevenLabs v3
+   * when configured (manual per-clip upgrade, paid credits), anything else →
+   * the standard mock/OpenAI provider.
+   */
+  ttsFor: (tier: string) => TtsProvider;
   downloader: DownloadProvider;
   publisherFor: (platform: PublishPlatform) => PublisherAdapter;
   logger: Logger;

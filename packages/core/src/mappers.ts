@@ -119,6 +119,7 @@ export async function toClipDto(clip: ClipListRow, storage: ObjectStorage): Prom
     commentary: Array.isArray((clip.edl as { commentary?: unknown[] } | null)?.commentary)
       ? ((clip.edl as { commentary: CommentaryLineDto[] }).commentary ?? [])
       : [],
+    voiceTier: clip.voiceTier,
     outcome: clip.outcome ?? null,
     publishJobs: clip.publishJobs.map((j) => ({
       jobId: j.id,

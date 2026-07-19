@@ -36,6 +36,16 @@ export const SetCommentaryInputSchema = z.object({
 });
 export type SetCommentaryInput = z.infer<typeof SetCommentaryInputSchema>;
 
+/**
+ * Move clips between voice tiers and re-render their commentary. "premium"
+ * (ElevenLabs v3) spends paid credits — it's a deliberate per-clip upgrade.
+ */
+export const SetVoiceTierInputSchema = z.object({
+  ids: z.array(z.string()).min(1).max(100),
+  tier: z.enum(["standard", "premium"]),
+});
+export type SetVoiceTierInput = z.infer<typeof SetVoiceTierInputSchema>;
+
 export const SourceVideoDtoSchema = z.object({
   id: z.string(),
   campaignId: z.string(),
@@ -110,6 +120,8 @@ export const ClipDtoSchema = z.object({
   hasSfx: z.boolean(),
   /** The spoken commentary lines (empty when the clip has no voice-over). */
   commentary: z.array(CommentaryLineSchema),
+  /** Commentary voice tier: "standard" | "premium" (ElevenLabs, paid). */
+  voiceTier: z.string(),
   outcome: ClipOutcomeSchema.nullable(),
   publishJobs: z.array(ClipPublishSummarySchema),
   createdAt: z.string(),

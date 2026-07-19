@@ -578,6 +578,7 @@ async function applyCommentary(
     startSec: number;
     endSec: number;
     commentaryMode: string;
+    voiceTier: string;
     category: string | null;
     detectionReason: string | null;
     edl: unknown;
@@ -588,6 +589,10 @@ async function applyCommentary(
   workDir: string,
 ): Promise<string | null> {
   if (clip.commentaryMode === "off") return null;
+
+  // Voice tier is per clip: standard for everything, premium (ElevenLabs v3)
+  // only where the user explicitly upgraded — that's the cost control.
+  const tts = ctx.ttsFor(clip.voiceTier);
 
   const segments = (clip.sourceVideo.transcript?.segments as unknown as TranscriptSegment[]) ?? [];
   const transcript = segments
@@ -614,7 +619,7 @@ async function applyCommentary(
           category: clip.category ?? undefined,
           hook: clip.detectionReason ?? undefined,
           persona,
-          voiceTags: ctx.tts.speaksTags === true,
+          voiceTags: tts.speaksTags === true,
         });
   if (script.length === 0) return null;
 
@@ -648,9 +653,9 @@ async function applyCommentary(
     // Tag-speaking providers (ElevenLabs v3) perform the "[shouts]" markup;
     // everyone else gets it stripped so it isn't read aloud. Covers hand-edited
     // scripts and provider switches either direction — the edl keeps the tags.
-    const speakable = ctx.tts.speaksTags ? line.text : stripAudioTags(line.text);
+    const speakable = tts.speaksTags ? line.text : stripAudioTags(line.text);
     if (!speakable) continue; // a tags-only line has nothing to say without them
-    const { audio, ext } = await ctx.tts.synthesize({
+    const { audio, ext } = await tts.synthesize({
       text: speakable,
       instructions: `${character}\n${line.delivery?.trim() || VOICE_INSTRUCTIONS[line.role]}`,
     });
