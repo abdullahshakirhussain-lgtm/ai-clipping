@@ -2,7 +2,7 @@ import { MockLlmProvider, MockTtsProvider, planVisionBatches, type TtsProvider }
 import { describe, expect, it } from "vitest";
 import { makeTtsFor } from "./container.js";
 import { CommentaryLineSchema } from "./contracts/clip.js";
-import { assembleContext, INTENSITY_GAIN, stripAudioTags } from "./pipeline/stages.js";
+import { assembleContext, INTENSITY_GAIN, reactFreezeSourceSec, stripAudioTags } from "./pipeline/stages.js";
 
 /**
  * M3 gave each line a performance (delivery direction + intensity). These fields
@@ -121,6 +121,26 @@ describe("commentary performance fields", () => {
     await expect(
       llm.describeVideoContext({ frames: [Buffer.alloc(0)], title: "x.mp4", transcriptSample: "" }),
     ).resolves.toBe("");
+  });
+
+  it("snaps a react freeze to AFTER the beat it reacts to (anti-spoiler)", () => {
+    // Clip runs source 100..140; react atSec 12 -> source 112, inside [110,116].
+    const segments = [
+      { start: 100, end: 106 },
+      { start: 108, end: 116 },
+      { start: 120, end: 130 },
+    ];
+    // Lands at the segment END (116), never before it — the line has finished.
+    expect(reactFreezeSourceSec(segments, 100, 140, 12)).toBe(116);
+    // A react over the last segment snaps to its end too.
+    expect(reactFreezeSourceSec(segments, 100, 140, 25)).toBe(130);
+    // No segment at that moment (non-speech gap): fall back to the raw time.
+    expect(reactFreezeSourceSec(segments, 100, 140, 18)).toBe(118);
+    // Never escapes the clip window (far-past-end clamps to the clip end).
+    expect(reactFreezeSourceSec(segments, 100, 140, 999)).toBe(140);
+    // A negative atSec clamps to the clip start (source 100), which falls inside
+    // the first segment, so it still snaps to that segment's end.
+    expect(reactFreezeSourceSec(segments, 100, 140, -5)).toBe(106);
   });
 
   it("mock planner directs every line so the keyless pipeline exercises the path", async () => {

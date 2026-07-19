@@ -23,6 +23,8 @@ const EnvSchema = z.object({
   GROQ_WHISPER_MODEL: z.string().default("whisper-large-v3-turbo"),
   ANTHROPIC_API_KEY: z.string().optional().default(""),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5"),
+  /** Model for commentary writing only (two-pass). Opus is wittier; ~5x text cost. */
+  COMMENTARY_MODEL: z.string().default("claude-opus-4-8"),
   // ── Wave 3 (cloud): transcription provider. "groq" = Whisper (no diarization);
   //    "deepgram" = word-level + speaker labels. Needs DEEPGRAM_API_KEY.
   TRANSCRIBE_PROVIDER: z.enum(["groq", "deepgram"]).default("groq"),

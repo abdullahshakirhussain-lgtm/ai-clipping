@@ -605,6 +605,26 @@ export function stripAudioTags(text: string): string {
 }
 
 /**
+ * Where a react freeze should land in SOURCE time. A reaction must come AFTER
+ * the beat it reacts to, or the freeze interrupts before the viewer hears the
+ * payoff (the "reacts before it happens" bug). We snap the react's clip-relative
+ * atSec to the END of the transcript segment it falls in, so the pause lands
+ * once the line has finished. Falls back to the raw moment when no segment
+ * matches (e.g. a react over non-speech). All times clamped to the clip window.
+ */
+export function reactFreezeSourceSec(
+  segments: Array<{ start: number; end: number }>,
+  clipStartSec: number,
+  clipEndSec: number,
+  reactAtSec: number,
+): number {
+  const src = clipStartSec + Math.max(0, reactAtSec);
+  const hit = segments.find((s) => src >= s.start && src <= s.end);
+  const at = hit ? hit.end : src;
+  return Math.min(Math.max(at, clipStartSec), clipEndSec);
+}
+
+/**
  * Combined video context for prompts: the uploader's own words first (they're
  * authoritative), then whatever vision read off the screen. Undefined when
  * neither exists so prompts can omit the block entirely.
@@ -701,7 +721,8 @@ async function applyCommentary(
         ? 0
         : line.role === "outro"
           ? realDuration
-          : plan.mapSourceTime(clip.startSec + line.atSec);
+          : // Snap the react to AFTER the beat it reacts to, then map into post-cut time.
+            plan.mapSourceTime(reactFreezeSourceSec(segments, clip.startSec, clip.endSec, line.atSec));
     if (mapped === null) continue; // reacted to a moment the jump-cuts removed
     const atClip = Math.min(Math.max(mapped, 0), realDuration);
 

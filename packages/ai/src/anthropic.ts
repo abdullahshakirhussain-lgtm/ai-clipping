@@ -23,6 +23,8 @@ import type {
 export interface AnthropicLlmOptions {
   apiKey: string;
   model?: string;
+  /** Model for commentary writing only (defaults to `model`). Opus is wittier. */
+  commentaryModel?: string;
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number(n) || lo));
@@ -81,10 +83,12 @@ function chunkSegments(segments: TranscriptSegment[], chunkSec: number): Transcr
 export class AnthropicLlmProvider implements LlmProvider {
   private readonly client: Anthropic;
   private readonly model: string;
+  private readonly commentaryModel: string;
 
   constructor(opts: AnthropicLlmOptions) {
     this.client = new Anthropic({ apiKey: opts.apiKey });
     this.model = opts.model ?? "claude-sonnet-5";
+    this.commentaryModel = opts.commentaryModel ?? this.model;
   }
 
   /** Force a single tool call and return its (already-parsed) input object. */
@@ -92,10 +96,12 @@ export class AnthropicLlmProvider implements LlmProvider {
     prompt: string | Anthropic.ContentBlockParam[],
     tool: Anthropic.Tool,
     maxTokens = 4096,
+    opts?: { model?: string; temperature?: number },
   ): Promise<T> {
     const msg = await this.client.messages.create({
-      model: this.model,
+      model: opts?.model ?? this.model,
       max_tokens: maxTokens,
+      ...(opts?.temperature !== undefined ? { temperature: opts.temperature } : {}),
       tools: [tool],
       tool_choice: { type: "tool", name: tool.name },
       messages: [{ role: "user", content: prompt }],
@@ -298,6 +304,15 @@ Rules: at most ${input.maxCues} cues total; most clips should get 0-1; never clu
       }));
   }
 
+  /**
+   * Two-pass so the take is creative AND disciplined (mirrors detect→refine):
+   *   Pass 1 brainstorms many angled candidate lines hot (temp 1.0);
+   *   Pass 2 coldly (temp 0.4) keeps only the sharpest 1-3, drops narration/
+   *   spoilers/repeats, and finalizes delivery + intensity.
+   * Both run on the commentary model (Opus by default). Anti-spoiler rules are
+   * in both prompts: a line may only reference what a first-time viewer has
+   * already heard by its atSec.
+   */
   async planCommentary(input: PlanCommentaryInput): Promise<CommentaryLine[]> {
     const allowed: CommentaryRole[] =
       input.mode === "intro_outro"
@@ -310,73 +325,121 @@ Rules: at most ${input.maxCues} cues total; most clips should get 0-1; never clu
         ? "Exactly one intro and one outro. No reacts."
         : input.mode === "interject"
           ? "ONE react — the single best moment. A second only if the clip truly has two separate moments worth stopping for."
-          : "Exactly one intro, ONE react (the single best moment), and one outro. Four lines is already a lot.";
+          : "One intro, ONE react (the single best moment), and one outro. Fewer is fine.";
 
     const persona =
       input.persona?.trim() ||
       "The friend on the couch who can't help talking back at the screen — quick, sarcastic, zero reverence, but sharp enough that the mockery is earned.";
 
-    const result = await this.callTool<{
-      lines?: Array<{ atSec?: number; text?: string; role?: string; delivery?: string; intensity?: string }>;
+    const contextBlock = input.context
+      ? `\n\nWHAT YOU KNOW ABOUT THIS VIDEO (from the uploader and on-screen text — use these names and facts freely, they're verified):\n${input.context}`
+      : "";
+
+    const antiSpoiler = `TIMING (critical): each line is spoken while the video is PAUSED at its atSec, so a line may only reference what a first-time viewer has ALREADY HEARD by that point.
+- intro (atSec 0): the viewer has seen NOTHING yet. Tease why it's worth watching — never reveal the payoff or the ending.
+- react: set atSec to JUST AFTER the line you're reacting to finishes — never at or before it, or you talk over the moment and spoil it.
+- outro (atSec ${input.durationSec.toFixed(0)}): the clip is over; now you can judge the whole thing.`;
+
+    // ── Pass 1: brainstorm many angles, hot. ──────────────────────────────────
+    const brainstorm = await this.callTool<{
+      candidates?: Array<{ atSec?: number; role?: string; text?: string; angle?: string }>;
     }>(
-      `You are the commentator on a short-form clip. The video FREEZES, you speak, then it resumes — so every line has to earn the interruption.
+      `You are the commentator on a short-form clip. The video FREEZES, you speak, then resumes. Brainstorm the raw material for a great take — quantity now, we cut later.
 
 WHO YOU ARE: ${persona}
 
 Transcript (times in seconds within this ${input.durationSec.toFixed(0)}s clip):
-${input.transcript}${input.category ? `\n\nChannel niche: ${input.category}` : ""}${
-        input.context
-          ? `\n\nWHAT YOU KNOW ABOUT THIS VIDEO (from the uploader and on-screen text — use these names and facts freely, they're verified):\n${input.context}`
-          : ""
-      }
+${input.transcript}${input.category ? `\n\nChannel niche: ${input.category}` : ""}${contextBlock}
 
-Your job is to have an OPINION — and opinions have teeth. Find the dumbest thing in this clip and go after it; don't be polite about it. Where they're actually right, push back on the part everyone else would let slide. Mild profanity ("hell", "damn", "BS") is allowed when it lands — never forced, never stronger than that. What you may NOT do is hedge: no "to be fair", no "that said", no "in a way", no both-sides. Pick a side and commit.
+THE ONE RULE: you add what the audio does NOT contain. The subtext. The contradiction. The context the viewer lacks. What everyone's thinking but nobody says. Where this is obviously headed. If a line just restates what's said or describes what's on screen, it is WORTHLESS — the viewer already heard it.
 
-THE TEST EVERY LINE MUST PASS: could this line be pasted onto a different video? If yes, it is filler — cut it. Anchor to something SPECIFIC in this clip: the number they said, the exact claim, the word they chose.
+So for each candidate, commit to an ANGLE:
+- contradiction — they just contradicted themselves; name it.
+- hypocrisy — the thing they'd never accept from someone else.
+- subtext — what they actually mean under the words.
+- the-unsaid — the obvious point they're carefully avoiding.
+- prediction — where this is heading, said before it lands.
+- callback — tie this to something specific from earlier in the clip.
+- absurdity — the detail that makes the whole thing ridiculous.
 
-Filler — never write anything like this:
-- "This is actually insane."
-- "Wait till you see what happens next."
-- "That's a bold strategy."
-- "And that's where it falls apart."
-These say nothing. They'd fit any clip ever made. Polite observations are filler too.
+Have a spine — opinions have teeth. Go after the dumbest thing; don't be polite. Push back where they're wrong. Mild profanity ("hell", "damn", "BS") when it lands, never forced, never stronger. NO hedging ("to be fair", "that said", "in a way", both-sides).
 
-Real commentary — only possible having heard THIS clip, and with a spine:
-- "Five Lamborghinis, and he's stressed... about the jelly."
-- "He said guaranteed. TWICE. Nothing here is guaranteed."
-- "Third rule he's invented in ten seconds. Just making it up now."
+${antiSpoiler}
 
-Every interruption freezes the video and spends the viewer's patience. If a moment doesn't clearly earn a full stop, leave it alone — fewer, better lines beat full coverage. Returning fewer lines than the structure allows is a valid answer.
+Give me 6-8 candidates across the clip, each ≤ ~12 words, anchored to something SPECIFIC (the number, the exact claim, the word chosen) — nothing that could be pasted onto a different video. Roles allowed: ${allowed.join(", ")}. Call submit_candidates.`,
+      {
+        name: "submit_candidates",
+        description: "Submit many candidate commentary lines to choose from later.",
+        input_schema: {
+          type: "object",
+          properties: {
+            candidates: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  atSec: { type: "number", description: "seconds into the clip" },
+                  role: { type: "string", enum: allowed },
+                  text: { type: "string", description: "the candidate line, ~12 words max" },
+                  angle: { type: "string", description: "which angle this line takes" },
+                },
+                required: ["atSec", "role", "text", "angle"],
+              },
+            },
+          },
+          required: ["candidates"],
+        },
+      },
+      1536,
+      { model: this.commentaryModel, temperature: 1 },
+    );
 
-Structure: ${structure}
-- intro: atSec 0. Why this clip is worth the next 30 seconds.
-- react: atSec = the exact moment you're reacting to.
-- outro: atSec ${input.durationSec.toFixed(0)}. Your verdict.
+    const candidates = (brainstorm.candidates ?? []).filter(
+      (c) => Number.isFinite(c.atSec) && String(c.text ?? "").trim() && allowed.includes(c.role as CommentaryRole),
+    );
+    if (candidates.length === 0) return [];
 
+    // ── Pass 2: select the sharpest, finalize performance, cold. ──────────────
+    const candidateList = candidates
+      .map((c, i) => `${i + 1}. [${c.role} @ ${Number(c.atSec).toFixed(1)}s | ${c.angle ?? "?"}] ${c.text}`)
+      .join("\n");
+
+    const result = await this.callTool<{
+      lines?: Array<{ atSec?: number; text?: string; role?: string; delivery?: string; intensity?: string }>;
+    }>(
+      `You are the editor choosing the final commentary for this ${input.durationSec.toFixed(0)}s clip. Here are the writer's candidates:
+
+${candidateList}
+
+Pick the SHARPEST few and throw out the rest. Ruthless bar:
+- Cut anything that narrates or describes what the viewer can already see/hear.
+- Cut anything that could be pasted onto another video (generic).
+- Cut repeats of the same angle — variety beats coverage.
+- A react must clearly EARN a full pause; if in doubt, drop it.
+- Returning fewer lines than allowed is the RIGHT answer more often than not.
+
+Structure to fill (do not pad to it): ${structure}
+
+${antiSpoiler}
+
+You may lightly rewrite a chosen line for punch, but keep its meaning and its atSec. Then perform it — this is read aloud by a voice that follows your text and punctuation EXACTLY:
+- CAPS = shouted word. "..." = held beat. Stretch spellings a human would ("riiiight").
+- Contractions, varied length, fragments. ≤ ~12 words. One idea per line.
+- Punctuate for BREATH, not grammar — a beat before the punch.
+- No throat-clearing, no summarising, no explaining the joke.
 ${
   input.voiceTags
-    ? `The voice model performs AUDIO TAGS — square-bracket cues placed inline in the text, acted rather than spoken. Use them where the performance shifts, at the exact word where it shifts: [shouts], [laughs], [scoffs], [whispers], [sighs], [sarcastic], [pause]. Sparingly — 1-3 per line; a tag on every clause reads as random. Example: "[scoffs] Five Lamborghinis... [shouting] AND HE'S STRESSED ABOUT THE JELLY."
-
-`
+    ? `- Place AUDIO TAGS inline where the performance shifts (acted, not spoken): [shouts], [laughs], [scoffs], [whispers], [sighs], [sarcastic], [pause]. 1-3 per line, at the exact word. e.g. "[scoffs] Five Lamborghinis... [shouting] AND HE'S STRESSED ABOUT THE JELLY."\n`
     : ""
-}This is spoken aloud by a voice that performs EXACTLY what you write — text, punctuation, and your stage direction. Write the performance, not just the words:
-- CAPS on a word means it gets SHOUTED. Use it where a person would actually raise their voice.
-- "..." is a held beat. Stretch spellings when a human would ("riiiight", "nooo").
-- Contractions. Vary sentence length. Fragments are fine.
-- Max ~12 words a line. Shorter hits harder.
-- One idea per line. No lists, no "first/second/finally" cadence.
-- Punctuate for BREATH, not for grammar — commas and "..." where a person would actually hesitate, a beat before the punch.
-- Banned openers/phrases: "In this video", "Let's dive in", "Here's the thing", "buckle up", "little did they know", "you won't believe".
-- No throat-clearing, no summarising, no explaining the joke.
-
-For EACH line, also direct the voice actor:
-- "delivery": 1-2 sentences on HOW to say this exact line — pace, pitch moves, where it breaks into a laugh or drops to contempt. Every line should read differently; a mocking imitation, a slow disgusted drawl, and a disbelieving shout are three different performances. Never reuse a direction.
-- "intensity": "loud" if the line is raised/shouted, "quiet" if it's a low deadpan or muttered aside, "normal" otherwise. Vary it — all-normal means you wrote it flat.
+}
+For EACH final line also give:
+- "delivery": 1-2 sentences on HOW to say THIS line — pace, pitch, where it breaks into a laugh or drops to contempt. Never reuse a direction across lines.
+- "intensity": "loud" (raised/shouted), "quiet" (low deadpan/muttered), or "normal". Vary it.
 
 Call submit_lines.`,
       {
         name: "submit_lines",
-        description: "Submit the spoken commentary lines for this clip.",
+        description: "Submit the final chosen commentary lines, performed.",
         input_schema: {
           type: "object",
           properties: {
@@ -402,6 +465,7 @@ Call submit_lines.`,
         },
       },
       1536,
+      { model: this.commentaryModel, temperature: 0.4 },
     );
 
     const intensities: CommentaryIntensity[] = ["quiet", "normal", "loud"];

@@ -109,7 +109,11 @@ function buildAiProviders(env: Env, logger: Logger): {
     }
     return {
       transcription,
-      llm: new AnthropicLlmProvider({ apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL }),
+      llm: new AnthropicLlmProvider({
+        apiKey: env.ANTHROPIC_API_KEY,
+        model: env.ANTHROPIC_MODEL,
+        commentaryModel: env.COMMENTARY_MODEL,
+      }),
     };
   }
   logger.info("using mock AI providers");
