@@ -111,6 +111,27 @@ export class AnthropicLlmProvider implements LlmProvider {
     return block.input as T;
   }
 
+  /**
+   * Commentary tool call on the (possibly premium) commentary model, with an
+   * automatic fall back to the base model if that call fails — so switching
+   * COMMENTARY_MODEL to something the account can't reach degrades to Sonnet
+   * commentary instead of silently killing the feature (it's best-effort
+   * upstream, so an unhandled throw = no voice-over at all).
+   */
+  private async commentaryCall<T>(
+    prompt: string,
+    tool: Anthropic.Tool,
+    maxTokens: number,
+    temperature: number,
+  ): Promise<T> {
+    try {
+      return await this.callTool<T>(prompt, tool, maxTokens, { model: this.commentaryModel, temperature });
+    } catch (err) {
+      if (this.commentaryModel === this.model) throw err;
+      return await this.callTool<T>(prompt, tool, maxTokens, { model: this.model, temperature });
+    }
+  }
+
   async detectHighlights(input: DetectHighlightsInput): Promise<HighlightCandidate[]> {
     const chunkSec = Math.max(60, input.chunkMinutes * 60);
     const chunks = chunkSegments(input.segments, chunkSec);
@@ -341,7 +362,7 @@ Rules: at most ${input.maxCues} cues total; most clips should get 0-1; never clu
 - outro (atSec ${input.durationSec.toFixed(0)}): the clip is over; now you can judge the whole thing.`;
 
     // ── Pass 1: brainstorm many angles, hot. ──────────────────────────────────
-    const brainstorm = await this.callTool<{
+    const brainstorm = await this.commentaryCall<{
       candidates?: Array<{ atSec?: number; role?: string; text?: string; angle?: string }>;
     }>(
       `You are the commentator on a short-form clip. The video FREEZES, you speak, then resumes. Brainstorm the raw material for a great take — quantity now, we cut later.
@@ -391,7 +412,7 @@ Give me 6-8 candidates across the clip, each ≤ ~12 words, anchored to somethin
         },
       },
       1536,
-      { model: this.commentaryModel, temperature: 1 },
+      1,
     );
 
     const candidates = (brainstorm.candidates ?? []).filter(
@@ -404,7 +425,7 @@ Give me 6-8 candidates across the clip, each ≤ ~12 words, anchored to somethin
       .map((c, i) => `${i + 1}. [${c.role} @ ${Number(c.atSec).toFixed(1)}s | ${c.angle ?? "?"}] ${c.text}`)
       .join("\n");
 
-    const result = await this.callTool<{
+    const result = await this.commentaryCall<{
       lines?: Array<{ atSec?: number; text?: string; role?: string; delivery?: string; intensity?: string }>;
     }>(
       `You are the editor choosing the final commentary for this ${input.durationSec.toFixed(0)}s clip. Here are the writer's candidates:
@@ -465,7 +486,7 @@ Call submit_lines.`,
         },
       },
       1536,
-      { model: this.commentaryModel, temperature: 0.4 },
+      0.4,
     );
 
     const intensities: CommentaryIntensity[] = ["quiet", "normal", "loud"];
