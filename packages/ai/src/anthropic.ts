@@ -101,14 +101,27 @@ export class AnthropicLlmProvider implements LlmProvider {
     maxTokens = 4096,
     opts?: { model?: string; temperature?: number },
   ): Promise<T> {
-    const msg = await this.client.messages.create({
+    const params: Anthropic.MessageCreateParamsNonStreaming = {
       model: opts?.model ?? this.model,
       max_tokens: maxTokens,
       ...(opts?.temperature !== undefined ? { temperature: opts.temperature } : {}),
       tools: [tool],
       tool_choice: { type: "tool", name: tool.name },
       messages: [{ role: "user", content: prompt }],
-    });
+    };
+    let msg: Anthropic.Message;
+    try {
+      msg = await this.client.messages.create(params);
+    } catch (err) {
+      // Newer models reject `temperature` ("temperature is deprecated for this
+      // model"); drop it and retry once so one param doesn't sink the call.
+      if (params.temperature !== undefined && /temperature/i.test(err instanceof Error ? err.message : String(err))) {
+        const { temperature: _omit, ...rest } = params;
+        msg = await this.client.messages.create(rest);
+      } else {
+        throw err;
+      }
+    }
     const block = msg.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (!block) throw new Error("Claude did not return the expected tool call");
     return block.input as T;
