@@ -19,6 +19,7 @@ import { calibrationRoutes } from "./routes/calibration.js";
 import { categoryRoutes } from "./routes/categories.js";
 import { campaignRoutes } from "./routes/campaigns.js";
 import { discoveryRoutes } from "./routes/discovery.js";
+import { storyRoutes } from "./routes/story.js";
 import { distributionRoutes } from "./routes/distribution.js";
 import { clipRoutes } from "./routes/clips.js";
 import { fileRoutes } from "./routes/files.js";
@@ -139,6 +140,7 @@ export async function buildApp(container: Container) {
       calibrationRoutes(typed, deps);
       distributionRoutes(typed, deps);
       discoveryRoutes(typed, deps);
+      storyRoutes(typed, deps);
       systemRoutes(typed, deps);
     },
     { prefix: "/api/v1" },

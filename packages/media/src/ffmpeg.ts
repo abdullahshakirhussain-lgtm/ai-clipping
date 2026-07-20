@@ -593,3 +593,99 @@ export async function extractSmartThumbnail(inputPath: string, outPath: string):
   }
   await extractThumbnail(inputPath, outPath, 0.5);
 }
+
+// ── Story Studio slideshow ───────────────────────────────────────────────────
+
+export interface SlideshowBeat {
+  /** Image filename (in workDir) shown for this beat. */
+  imageFile: string;
+  /** Narration audio filename (in workDir) for this beat. */
+  audioFile: string;
+  /** How long this beat lasts — the measured audio duration. */
+  durationSec: number;
+}
+
+export interface CaptionTimingBeat {
+  text: string;
+  durationSec: number;
+}
+
+/**
+ * Turn per-beat narration into caption segments with word timings, by spreading
+ * each beat's words evenly across its measured duration. `buildAss` then chunks
+ * them into short on-screen groups. Pure + deterministic so it can be tested
+ * without ffmpeg. Returns segments in absolute (whole-video) time.
+ */
+export function planCaptionTiming(
+  beats: CaptionTimingBeat[],
+): Array<{ start: number; end: number; text: string; words: Array<{ start: number; end: number; word: string }> }> {
+  const segments = [];
+  let offset = 0;
+  for (const beat of beats) {
+    const dur = Math.max(0.1, beat.durationSec);
+    const words = beat.text.split(/\s+/).filter(Boolean);
+    const end = offset + dur;
+    if (words.length > 0) {
+      const per = dur / words.length;
+      const timed = words.map((word, i) => ({
+        start: offset + i * per,
+        end: offset + (i + 1) * per,
+        word,
+      }));
+      segments.push({ start: offset, end, text: words.join(" "), words: timed });
+    }
+    offset = end;
+  }
+  return segments;
+}
+
+/**
+ * Assemble a narrated slideshow: each beat's image is held for its narration's
+ * length (perfect sync, since the duration IS the measured audio), padded to
+ * 1080x1920, concatenated with its audio, and the burned captions laid over the
+ * whole thing in one pass. Images are static (reliable) — motion is a later polish.
+ */
+export async function assembleSlideshow(input: {
+  beats: SlideshowBeat[];
+  captionsFileName?: string;
+  outPath: string;
+  workDir: string;
+}): Promise<void> {
+  const { beats } = input;
+  if (beats.length === 0) throw new Error("assembleSlideshow: no beats");
+
+  const args: string[] = ["-y"];
+  for (const b of beats) args.push("-loop", "1", "-t", b.durationSec.toFixed(3), "-i", b.imageFile);
+  for (const b of beats) args.push("-i", b.audioFile);
+
+  const n = beats.length;
+  const chains: string[] = [];
+  const concatIn: string[] = [];
+  beats.forEach((b, i) => {
+    // Fit the image inside 9:16 on a white card (doodles shouldn't be cropped).
+    chains.push(
+      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+        `pad=1080:1920:-1:-1:color=white,setsar=1,fps=30,format=yuv420p[v${i}]`,
+    );
+    // Match audio length to the image hold exactly (pad then trim).
+    chains.push(`[${n + i}:a]aresample=44100,apad,atrim=duration=${b.durationSec.toFixed(3)},asetpts=N/SR/TB[a${i}]`);
+    concatIn.push(`[v${i}][a${i}]`);
+  });
+  chains.push(`${concatIn.join("")}concat=n=${n}:v=1:a=1[cv][ca]`);
+  let vLabel = "[cv]";
+  if (input.captionsFileName) {
+    chains.push(`[cv]subtitles=${input.captionsFileName}[outv]`);
+    vLabel = "[outv]";
+  }
+
+  args.push(
+    "-filter_complex", chains.join(";"),
+    "-map", vLabel, "-map", "[ca]",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "128k",
+    "-movflags", "+faststart",
+    input.outPath,
+  );
+
+  await run(bin("ffmpeg"), args, { cwd: input.workDir, timeoutMs: 6 * 60 * 1000 });
+}

@@ -5,6 +5,7 @@ export const QUEUE_NAMES = [
   "clip.detect",
   "clip.render",
   "clip.enhance",
+  "story.generate",
   "publish.execute",
 ] as const;
 
@@ -17,6 +18,7 @@ export interface JobPayloads {
   "clip.detect": { sourceVideoId: string };
   "clip.render": { clipId: string };
   "clip.enhance": { clipId: string };
+  "story.generate": { sourceVideoId: string };
   "publish.execute": { publishJobId: string };
 }
 

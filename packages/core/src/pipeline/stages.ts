@@ -1,14 +1,24 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import type { CommentaryLine, CommentaryMode, CommentaryRole, TranscriptSegment } from "@clipfactory/ai";
+import {
+  styledImagePrompt,
+  type CommentaryLine,
+  type CommentaryMode,
+  type CommentaryRole,
+  type TranscriptSegment,
+} from "@clipfactory/ai";
 import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db";
 import {
   analyzeLoudness,
+  assembleSlideshow,
+  buildAss,
   type CaptionWord,
   type EditPlan,
   extractAudio,
   extractFrames,
   extractSmartThumbnail,
+  planCaptionTiming,
+  type SlideshowBeat,
   findLoudnessPeaks,
   type FreezeInsert,
   insertFreezes,
@@ -793,6 +803,163 @@ async function applyCommentary(
     "commentary track added",
   );
   return out;
+}
+
+interface StorySpec {
+  topic: string;
+  style: string;
+  voiceTier: string;
+  targetBeats: number;
+  category?: string;
+}
+
+/**
+ * Story Studio: generate a narrated slideshow from a topic. Writes the script,
+ * makes an image + voice per beat, holds each image for exactly its narration's
+ * length (perfect sync), assembles + burns captions, and lands the result as a
+ * ready-to-review Clip with metadata — no transcript/detect/render path.
+ */
+export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+  const moved = await ctx.repos.sourceVideos.transition(
+    sourceVideoId,
+    [SourceVideoStatus.PENDING],
+    SourceVideoStatus.DETECTING,
+  );
+  if (!moved) return;
+
+  const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
+  if (!video) return;
+  const spec = (video.storySpec as StorySpec | null) ?? null;
+  if (!spec?.topic) {
+    await failVideo(ctx, sourceVideoId, new Error("story video has no spec"));
+    return;
+  }
+
+  const workDir = join(ctx.workRoot, sourceVideoId);
+  try {
+    await fs.mkdir(workDir, { recursive: true });
+
+    // 1. Script → beats. This is the whole product; everything else is assembly.
+    const story = await ctx.llm.writeStory({
+      topic: spec.topic,
+      style: spec.style,
+      targetBeats: spec.targetBeats,
+    });
+    if (story.beats.length === 0) {
+      await failVideo(ctx, sourceVideoId, new Error("story writer returned no beats"));
+      return;
+    }
+
+    // 2. Per beat: image + voice (measured). Images run with small concurrency;
+    // a failed image falls back to a plain card so one bad frame never sinks it.
+    const tts = ctx.ttsFor(spec.voiceTier);
+    const beats: SlideshowBeat[] = [];
+    const timing: Array<{ text: string; durationSec: number }> = [];
+
+    const images = await mapWithConcurrency(story.beats, 3, async (beat, i) => {
+      const imgFile = join(workDir, `img-${i}.png`);
+      try {
+        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(beat.imagePrompt, spec.style) });
+        await fs.writeFile(imgFile, image);
+      } catch (err) {
+        ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err) }, "image gen failed; using plain card");
+        await fs.writeFile(imgFile, plainCardPng());
+      }
+      return imgFile;
+    });
+
+    for (let i = 0; i < story.beats.length; i++) {
+      const beat = story.beats[i]!;
+      const speakable = tts.speaksTags ? beat.text : stripAudioTags(beat.text);
+      const { audio, ext } = await tts.synthesize({ text: speakable });
+      const audioFile = join(workDir, `vo-${i}.${ext}`);
+      await fs.writeFile(audioFile, audio);
+      const { durationSec } = await probe(audioFile);
+      const dur = durationSec > 0 ? durationSec : 2.5;
+      beats.push({ imageFile: images[i]!, audioFile, durationSec: dur });
+      timing.push({ text: beat.text, durationSec: dur });
+    }
+
+    // 3. Captions timed to the measured beats, then assemble.
+    const segments = planCaptionTiming(timing);
+    const totalDur = timing.reduce((s, t) => s + t.durationSec, 0);
+    const assName = `${sourceVideoId}.ass`;
+    const ass = buildAss(segments, 0, totalDur, video.captionStyle, 3);
+    if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
+
+    const outPath = join(workDir, "story.mp4");
+    await assembleSlideshow({ beats, captionsFileName: ass.trim() ? assName : undefined, outPath, workDir });
+
+    // 4. Store + create a ready-to-review Clip with the LLM's metadata.
+    const thumbPath = join(workDir, "thumb.jpg");
+    await extractSmartThumbnail(outPath, thumbPath);
+
+    const [clip] = await ctx.repos.clips.createMany([
+      {
+        sourceVideoId,
+        campaignId: video.campaignId,
+        startSec: 0,
+        endSec: totalDur,
+        status: ClipStatus.READY_FOR_REVIEW,
+        detectionReason: story.title,
+        detectionSource: "story",
+        captionStyle: video.captionStyle,
+        captionPosition: video.captionPosition,
+        commentaryMode: "off",
+        category: video.category,
+        hookScore: 80,
+        viralScore: 80,
+        overallScore: 80,
+        scoreBreakdown: { notes: ["story-generated"] } as never,
+      },
+    ]);
+    await ctx.storage.putFile(clipKey(clip!.id), outPath, "video/mp4");
+    await ctx.storage.putFile(thumbKey(clip!.id), thumbPath, "image/jpeg");
+    await ctx.repos.clips.update(clip!.id, {
+      storageKey: clipKey(clip!.id),
+      thumbnailKey: thumbKey(clip!.id),
+      error: null,
+    });
+    await ctx.repos.clips.upsertEnhancement(clip!.id, {
+      title: story.title,
+      description: story.description,
+      hashtags: story.hashtags,
+      hooks: { variants: [story.title], selectedIndex: 0 } as never,
+      qualityScore: 80,
+      viralScore: 80,
+      estimatedEngagement: 80,
+      model: "story",
+    });
+
+    await ctx.repos.sourceVideos.update(sourceVideoId, { status: SourceVideoStatus.PROCESSED });
+    ctx.logger.info({ sourceVideoId, beats: beats.length, durationSec: Number(totalDur.toFixed(1)) }, "story video generated");
+  } catch (err) {
+    await failVideo(ctx, sourceVideoId, err);
+    throw err;
+  }
+}
+
+/** Run an async mapper over items with bounded concurrency, preserving order. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]!, i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/** A blank white PNG card — fallback when image generation fails for a beat. */
+function plainCardPng(): Buffer {
+  // 2x2 white PNG (ffmpeg scales/pads it to the 9:16 card). Precomputed bytes.
+  return Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
 }
 
 /** Generates metadata + scores, then moves the clip to READY_FOR_REVIEW. */

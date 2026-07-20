@@ -23,6 +23,7 @@ async function main() {
     "clip.render": 2, // FFmpeg is CPU-heavy — keep render concurrency low
     "video.download": 2,
     "clip.enhance": 4,
+    "story.generate": 1, // image+voice+assemble is heavy and rate-limited
     "publish.execute": 4,
   });
   logger.info("worker started — processing pipeline queues");

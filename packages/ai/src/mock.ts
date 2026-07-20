@@ -1,7 +1,12 @@
+import { deflateSync } from "node:zlib";
 import type {
   CommentaryLine,
   DescribeVideoContextInput,
   DetectHighlightsInput,
+  ImageProvider,
+  StoryScript,
+  SuggestTopicsInput,
+  WriteStoryInput,
   EnhanceClipInput,
   EnhancementResult,
   HighlightCandidate,
@@ -183,6 +188,91 @@ export class MockLlmProvider implements LlmProvider {
       `${input.currentHook} (watch till the end)`,
     ];
   }
+
+  async suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]> {
+    const base = input.category ? `${input.category}: ` : "";
+    return Array.from({ length: input.count }, (_, i) => `${base}A wild true story #${i + 1}`);
+  }
+
+  async writeStory(input: WriteStoryInput): Promise<StoryScript> {
+    const n = Math.max(4, Math.min(20, input.targetBeats));
+    const beats = Array.from({ length: n }, (_, i) => ({
+      text: `Beat ${i + 1} of the story about ${input.topic}. Something surprising happens here.`,
+      imagePrompt: `A simple scene for beat ${i + 1}: a stick figure reacting to ${input.topic}.`,
+    }));
+    return {
+      title: `The untold story of ${input.topic}`,
+      script: beats.map((b) => b.text).join(" "),
+      description: `A quick story about ${input.topic}. Follow for more.`,
+      hashtags: ["#story", "#didyouknow", "#fyp", "#shorts"],
+      beats,
+    };
+  }
+}
+
+/**
+ * Offline image stub: a valid solid-colour PNG so the assembler runs keyless.
+ * Colour varies by prompt hash so successive beats look different in a mock run.
+ */
+export class MockImageProvider implements ImageProvider {
+  async generate(input: { prompt: string; size?: string }): Promise<{ image: Buffer; ext: "png" }> {
+    const hue = hash(input.prompt) % 6;
+    const palette: Array<[number, number, number]> = [
+      [230, 120, 120],
+      [120, 200, 230],
+      [140, 220, 150],
+      [235, 200, 120],
+      [200, 150, 230],
+      [120, 220, 210],
+    ];
+    return { image: solidPng(64, 96, palette[hue]!), ext: "png" };
+  }
+}
+
+/** Minimal uncompressed-ish PNG of a solid RGB colour (w×h), valid for ffmpeg. */
+function solidPng(width: number, height: number, [r, g, b]: [number, number, number]): Buffer {
+  const crcTable = (() => {
+    const t: number[] = [];
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  const crc32 = (buf: Buffer): number => {
+    let c = 0xffffffff;
+    for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]!) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const typeBuf = Buffer.from(type, "ascii");
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+    return Buffer.concat([len, typeBuf, data, crc]);
+  };
+  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.writeUInt8(8, 8); // bit depth
+  ihdr.writeUInt8(2, 9); // colour type 2 = RGB
+  // rows: each prefixed with filter byte 0, then w*3 bytes
+  const raw = Buffer.alloc(height * (1 + width * 3));
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * (1 + width * 3);
+    raw[rowStart] = 0;
+    for (let x = 0; x < width; x++) {
+      const p = rowStart + 1 + x * 3;
+      raw[p] = r;
+      raw[p + 1] = g;
+      raw[p + 2] = b;
+    }
+  }
+  const idat = deflateSync(raw);
+  return Buffer.concat([sig, chunk("IHDR", ihdr), chunk("IDAT", idat), chunk("IEND", Buffer.alloc(0))]);
 }
 
 /** A valid silent PCM WAV of `seconds` — enough for ffprobe/ffmpeg to work with. */

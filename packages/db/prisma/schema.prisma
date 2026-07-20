@@ -212,6 +212,10 @@ model SourceVideo {
   untouched       Boolean       @default(false)
   /// AI commentary voice-over: off | intro_outro | interject | full. Inherited by clips.
   commentaryMode  String        @default("off")
+  /// "clip" (default: repost/upload pipeline) | "story" (AI-generated slideshow).
+  kind            String        @default("clip")
+  /// For kind=story: the generation spec (topic, style, voiceTier, targetBeats).
+  storySpec       Json?
   /// User-typed context at upload ("Andrew Tate on the Fresh&Fit podcast") —
   /// authoritative; fed to commentary + enhancement prompts.
   context         String?

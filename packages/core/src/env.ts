@@ -47,6 +47,13 @@ const EnvSchema = z.object({
   // Switch on with TTS_PROVIDER=elevenlabs + ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID.
   ELEVENLABS_MODEL: z.string().default("eleven_v3"),
 
+  // ── Story Studio (generated videos) ────────────────────────────────────────
+  // Image generation for narrated slideshows. "openai" uses gpt-image-1 (same
+  // OPENAI_API_KEY as TTS); "mock" draws solid cards so the pipeline runs keyless.
+  IMAGE_PROVIDER: z.enum(["mock", "openai"]).default("mock"),
+  OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1"),
+  STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(15),
+
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),
   /** Optional yt-dlp proxy (http://user:pass@host:port) for YouTube/geo blocks. */

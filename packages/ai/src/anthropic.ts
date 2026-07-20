@@ -7,6 +7,9 @@ import type {
   CommentaryRole,
   DescribeVideoContextInput,
   DetectHighlightsInput,
+  StoryScript,
+  SuggestTopicsInput,
+  WriteStoryInput,
   EnhanceClipInput,
   EnhancementResult,
   HighlightCandidate,
@@ -600,6 +603,84 @@ Call submit_metadata with optimized fields.`,
       hashtags: (p.hashtags ?? []).map(String).slice(0, 6),
       hookVariants: (p.hookVariants ?? [input.hook]).map(String).slice(0, 3),
       model: this.model,
+    };
+  }
+
+  async suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]> {
+    const result = await this.callTool<{ topics?: string[] }>(
+      `Propose ${input.count} short-form video story topics that would genuinely stop a scroll${
+        input.category ? ` for a "${input.category}" channel` : ""
+      }. Each is a specific, surprising, TRUE-leaning story hook — a person, event, scam, discovery, or "wait, that really happened?" moment — not a broad theme. 6-12 words each. No numbering. Call submit_topics.`,
+      {
+        name: "submit_topics",
+        description: "Submit candidate story topics.",
+        input_schema: {
+          type: "object",
+          properties: { topics: { type: "array", items: { type: "string" } } },
+          required: ["topics"],
+        },
+      },
+      1024,
+      { temperature: 1 },
+    );
+    return (result.topics ?? []).map(String).map((s) => s.trim()).filter(Boolean).slice(0, input.count);
+  }
+
+  async writeStory(input: WriteStoryInput): Promise<StoryScript> {
+    const beats = Math.max(4, Math.min(20, input.targetBeats));
+    const result = await this.callTool<{
+      title?: string;
+      script?: string;
+      description?: string;
+      hashtags?: string[];
+      beats?: Array<{ text?: string; imagePrompt?: string }>;
+    }>(
+      `Write a short-form narrated story about: "${input.topic}".
+
+This is the whole product — it must be genuinely INTERESTING, not filler. Open on a hook in the first line (a question, a shocking fact, a "you won't believe"), build tension, and land a payoff. Conversational, punchy, spoken aloud — contractions, short sentences, no throat-clearing, no "in this video".
+
+Break it into EXACTLY ${beats} beats. Each beat is ONE spoken line (~12-22 words, one idea) plus a concrete image prompt describing a SIMPLE scene for that moment — one clear subject/action, no text in the image. The images are a simple doodle style, so keep prompts about WHAT is happening, not art direction.
+
+Also give a title, a 1-2 sentence description with a soft CTA, and up to 6 hashtags.
+Call submit_story.`,
+      {
+        name: "submit_story",
+        description: "Submit the narrated story broken into beats.",
+        input_schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            script: { type: "string", description: "the full narration, all beats joined" },
+            description: { type: "string" },
+            hashtags: { type: "array", items: { type: "string" } },
+            beats: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  text: { type: "string", description: "spoken narration for this beat" },
+                  imagePrompt: { type: "string", description: "simple scene to draw for this beat" },
+                },
+                required: ["text", "imagePrompt"],
+              },
+            },
+          },
+          required: ["title", "script", "description", "hashtags", "beats"],
+        },
+      },
+      3072,
+      { model: this.commentaryModel, temperature: 0.9 },
+    );
+
+    const cleanBeats = (result.beats ?? [])
+      .filter((b) => String(b.text ?? "").trim() && String(b.imagePrompt ?? "").trim())
+      .map((b) => ({ text: String(b.text).trim(), imagePrompt: String(b.imagePrompt).trim() }));
+    return {
+      title: String(result.title ?? input.topic).slice(0, 120),
+      script: String(result.script ?? cleanBeats.map((b) => b.text).join(" ")),
+      description: String(result.description ?? ""),
+      hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
+      beats: cleanBeats,
     };
   }
 

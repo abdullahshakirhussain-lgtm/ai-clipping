@@ -1,4 +1,4 @@
-import type { LlmProvider, TranscriptionProvider, TtsProvider } from "@clipfactory/ai";
+import type { ImageProvider, LlmProvider, TranscriptionProvider, TtsProvider } from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
 import type { DownloadProvider } from "@clipfactory/media";
 import type { PublisherAdapter, PublishPlatform } from "@clipfactory/publishers";
@@ -22,6 +22,8 @@ export interface PipelineContext {
    * the standard mock/OpenAI provider.
    */
   ttsFor: (tier: string) => TtsProvider;
+  /** Image generation for Story Studio slideshows. */
+  images: ImageProvider;
   downloader: DownloadProvider;
   publisherFor: (platform: PublishPlatform) => PublisherAdapter;
   logger: Logger;

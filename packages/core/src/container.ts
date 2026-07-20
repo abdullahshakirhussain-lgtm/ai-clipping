@@ -4,10 +4,13 @@ import {
   DeepgramTranscriptionProvider,
   ElevenLabsTtsProvider,
   GroqWhisperProvider,
+  MockImageProvider,
   MockLlmProvider,
   MockTranscriptionProvider,
   MockTtsProvider,
+  OpenAiImageProvider,
   OpenAiTtsProvider,
+  type ImageProvider,
   type LlmProvider,
   type TranscriptionProvider,
   type TtsProvider,
@@ -45,6 +48,7 @@ import { SystemService } from "./services/system-service.js";
 import { ClipService } from "./services/clip-service.js";
 import { PublishService } from "./services/publish-service.js";
 import { ReviewService } from "./services/review-service.js";
+import { StoryService } from "./services/story-service.js";
 import { VideoService } from "./services/video-service.js";
 
 export interface Container {
@@ -67,6 +71,7 @@ export interface Container {
     calibration: CalibrationService;
     distribution: DistributionService;
     discovery: DiscoveryService;
+    story: StoryService;
     system: SystemService;
   };
   shutdown(): Promise<void>;
@@ -200,6 +205,16 @@ function buildTtsTiers(env: Env, logger: Logger): (tier: string) => TtsProvider 
   return makeTtsFor({ standard, premium });
 }
 
+function buildImageProvider(env: Env, logger: Logger): ImageProvider {
+  if (env.IMAGE_PROVIDER === "openai") {
+    if (!env.OPENAI_API_KEY) throw new Error("IMAGE_PROVIDER=openai requires OPENAI_API_KEY");
+    logger.info({ model: env.OPENAI_IMAGE_MODEL }, "using OpenAI image generation");
+    return new OpenAiImageProvider({ apiKey: env.OPENAI_API_KEY, model: env.OPENAI_IMAGE_MODEL });
+  }
+  logger.info("using mock image provider (solid cards)");
+  return new MockImageProvider();
+}
+
 function buildDownloader(env: Env): DownloadProvider {
   return env.DOWNLOAD_DRIVER === "ytdlp"
     ? new YtDlpDownloader({
@@ -245,6 +260,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const storage = buildStorage(env, logger);
   const { transcription, llm } = buildAiProviders(env, logger);
   const ttsFor = buildTtsTiers(env, logger);
+  const images = buildImageProvider(env, logger);
   const downloader = buildDownloader(env);
   const publisherFor = buildPublisherFactory(env);
 
@@ -259,6 +275,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     transcription,
     llm,
     ttsFor,
+    images,
     downloader,
     publisherFor,
     logger,
@@ -306,6 +323,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     discovery: new DiscoveryService(repos, buildFeedProviders(env, logger), videos, logger, {
       maxAgeHours: env.DISCOVERY_MAX_AGE_H,
     }),
+    story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS),
     system: new SystemService(),
   };
 

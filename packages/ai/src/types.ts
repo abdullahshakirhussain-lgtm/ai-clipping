@@ -129,6 +129,46 @@ export interface PlanEnhancementsInput {
   maxCues: number;
 }
 
+// ── Story Studio (generated videos) ─────────────────────────────────────────
+
+/** One narrated beat: a line spoken over one generated image. */
+export interface StoryBeat {
+  /** Spoken narration for this beat (~1-2 sentences). */
+  text: string;
+  /** What the image for this beat depicts (style anchor appended by the caller). */
+  imagePrompt: string;
+}
+
+export interface WriteStoryInput {
+  topic: string;
+  /** Style preset key (doodle | whiteboard | flat-vector | notebook-sketch). */
+  style: string;
+  /** How many beats/images to produce. */
+  targetBeats: number;
+}
+
+export interface StoryScript {
+  title: string;
+  /** Full narration (for reference/debug; beats carry the spoken text). */
+  script: string;
+  description: string;
+  hashtags: string[];
+  beats: StoryBeat[];
+}
+
+export interface SuggestTopicsInput {
+  category?: string;
+  count: number;
+}
+
+/**
+ * Generates images for the story beats. gpt-image-1 in production; a mock draws
+ * a solid card so the pipeline runs keyless.
+ */
+export interface ImageProvider {
+  generate(input: { prompt: string; size?: string }): Promise<{ image: Buffer; ext: "png" }>;
+}
+
 // ── Commentary track ────────────────────────────────────────────────────────
 
 /** How much commentary a video gets. Chosen per upload. */
@@ -248,4 +288,11 @@ export interface LlmProvider {
   describeVideoContext(input: DescribeVideoContextInput): Promise<string>;
   enhanceClip(input: EnhanceClipInput): Promise<EnhancementResult>;
   improveHooks(input: { currentHook: string; transcriptExcerpt: string }): Promise<string[]>;
+  /** Propose interesting short-form story topics (optionally for a category). */
+  suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]>;
+  /**
+   * Write a narrated story broken into beats, each with an image prompt. The
+   * story is the whole product — it must actually be interesting, not filler.
+   */
+  writeStory(input: WriteStoryInput): Promise<StoryScript>;
 }

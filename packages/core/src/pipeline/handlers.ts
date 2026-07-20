@@ -6,6 +6,7 @@ import {
   runEnhance,
   runPublish,
   runRender,
+  runStoryGenerate,
   runTranscribe,
 } from "./stages.js";
 
@@ -17,6 +18,7 @@ export function buildHandlers(ctx: PipelineContext): HandlerRegistry {
     "clip.detect": (p) => runDetect(ctx, p.sourceVideoId),
     "clip.render": (p) => runRender(ctx, p.clipId),
     "clip.enhance": (p) => runEnhance(ctx, p.clipId),
+    "story.generate": (p) => runStoryGenerate(ctx, p.sourceVideoId),
     "publish.execute": (p) => runPublish(ctx, p.publishJobId),
   };
 }
