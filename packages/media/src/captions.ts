@@ -81,14 +81,25 @@ const escapeAss = (text: string) => text.replace(/[{}]/g, "").replace(/\r?\n/g, 
  * When word timestamps exist, words are grouped into short punchy caption
  * chunks (short-form style); otherwise full segment texts are used.
  */
+/** Independent caption placement: overrides the style's baked-in alignment/marginV. */
+type CaptionPosition = "top" | "middle" | "bottom";
+const POSITION_MAP: Record<CaptionPosition, { alignment: number; marginV: number }> = {
+  top: { alignment: 8, marginV: 220 },
+  middle: { alignment: 5, marginV: 0 },
+  bottom: { alignment: 2, marginV: 260 },
+};
+
 export function buildAss(
   segments: CaptionSegment[],
   clipStart: number,
   clipEnd: number,
   styleName = "bold-center",
   wordsPerChunk = 3,
+  position?: CaptionPosition,
 ): string {
   const style = CAPTION_STYLES[styleName] ?? CAPTION_STYLES["bold-center"]!;
+  // Position, when given, wins over the style's default placement.
+  const place = position ? POSITION_MAP[position] : { alignment: style.alignment, marginV: style.marginV };
   const events: Array<{ start: number; end: number; text: string }> = [];
 
   for (const seg of segments) {
@@ -122,7 +133,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${style.fontName},${style.fontSize},${style.primaryColour},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${style.outline},1,${style.alignment},60,60,${style.marginV},1
+Style: Default,${style.fontName},${style.fontSize},${style.primaryColour},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${style.outline},1,${place.alignment},60,60,${place.marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

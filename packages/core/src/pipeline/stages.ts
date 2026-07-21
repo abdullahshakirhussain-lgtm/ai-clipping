@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import {
+  narratorInstruction,
   styledImagePrompt,
   type CommentaryLine,
   type CommentaryMode,
@@ -17,7 +18,9 @@ import {
   extractAudio,
   extractFrames,
   extractSmartThumbnail,
+  mixMusic,
   planCaptionTiming,
+  resolveMusicFile,
   type SlideshowBeat,
   findLoudnessPeaks,
   type FreezeInsert,
@@ -809,8 +812,13 @@ interface StorySpec {
   topic: string;
   style: string;
   voiceTier: string;
+  narrator?: string;
   targetBeats: number;
   category?: string;
+  captionStyle?: string;
+  captionPosition?: "top" | "middle" | "bottom";
+  music?: string;
+  motion?: boolean;
 }
 
 /**
@@ -840,10 +848,13 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     await fs.mkdir(workDir, { recursive: true });
 
     // 1. Script → beats. This is the whole product; everything else is assembly.
+    const tts = ctx.ttsFor(spec.voiceTier);
     const story = await ctx.llm.writeStory({
       topic: spec.topic,
       style: spec.style,
       targetBeats: spec.targetBeats,
+      narrator: spec.narrator,
+      voiceTags: tts.speaksTags === true,
     });
     if (story.beats.length === 0) {
       await failVideo(ctx, sourceVideoId, new Error("story writer returned no beats"));
@@ -852,7 +863,6 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
 
     // 2. Per beat: image + voice (measured). Images run with small concurrency;
     // a failed image falls back to a plain card so one bad frame never sinks it.
-    const tts = ctx.ttsFor(spec.voiceTier);
     const beats: SlideshowBeat[] = [];
     const timing: Array<{ text: string; durationSec: number }> = [];
 
@@ -868,27 +878,53 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       return imgFile;
     });
 
+    const narrator = spec.narrator ?? "storyteller";
     for (let i = 0; i < story.beats.length; i++) {
       const beat = story.beats[i]!;
+      // Tag-speaking providers (ElevenLabs v3) perform the inline tags; others
+      // get them stripped and steer on `instructions` (persona + this beat's
+      // delivery) — the fix for the flat read.
       const speakable = tts.speaksTags ? beat.text : stripAudioTags(beat.text);
-      const { audio, ext } = await tts.synthesize({ text: speakable });
+      const { audio, ext } = await tts.synthesize({
+        text: speakable,
+        instructions: narratorInstruction(narrator, beat.delivery),
+      });
       const audioFile = join(workDir, `vo-${i}.${ext}`);
       await fs.writeFile(audioFile, audio);
       const { durationSec } = await probe(audioFile);
       const dur = durationSec > 0 ? durationSec : 2.5;
       beats.push({ imageFile: images[i]!, audioFile, durationSec: dur });
-      timing.push({ text: beat.text, durationSec: dur });
+      // Captions show the spoken words, never the audio-tag markup.
+      timing.push({ text: stripAudioTags(beat.text), durationSec: dur });
     }
 
-    // 3. Captions timed to the measured beats, then assemble.
+    // 3. Captions timed to the measured beats (style + position from the spec),
+    //    then assemble (optional Ken Burns motion).
     const segments = planCaptionTiming(timing);
     const totalDur = timing.reduce((s, t) => s + t.durationSec, 0);
     const assName = `${sourceVideoId}.ass`;
-    const ass = buildAss(segments, 0, totalDur, video.captionStyle, 3);
+    const ass = buildAss(segments, 0, totalDur, spec.captionStyle ?? video.captionStyle, 3, spec.captionPosition);
     if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
 
-    const outPath = join(workDir, "story.mp4");
-    await assembleSlideshow({ beats, captionsFileName: ass.trim() ? assName : undefined, outPath, workDir });
+    let outPath = join(workDir, "story.mp4");
+    await assembleSlideshow({
+      beats,
+      captionsFileName: ass.trim() ? assName : undefined,
+      motion: spec.motion === true,
+      outPath,
+      workDir,
+    });
+
+    // 3b. Optional background-music bed (skips cleanly if no track is present).
+    const musicFile = spec.music ? await resolveMusicFile(spec.music) : null;
+    if (musicFile) {
+      const withMusic = join(workDir, "story-music.mp4");
+      await mixMusic(outPath, musicFile, withMusic, workDir);
+      outPath = withMusic;
+      ctx.logger.info({ sourceVideoId, mood: spec.music }, "music bed mixed in");
+    } else if (spec.music && spec.music !== "none") {
+      ctx.logger.info({ sourceVideoId, mood: spec.music }, "no music track found; skipping bed");
+    }
 
     // 4. Store + create a ready-to-review Clip with the LLM's metadata.
     const thumbPath = join(workDir, "thumb.jpg");

@@ -8,8 +8,13 @@ export interface StorySpec {
   topic: string;
   style: string;
   voiceTier: string;
+  narrator: string;
   targetBeats: number;
   category?: string;
+  captionStyle: string;
+  captionPosition: "top" | "middle" | "bottom";
+  music: string;
+  motion: boolean;
 }
 
 /**
@@ -35,8 +40,13 @@ export class StoryService {
       topic: input.topic.trim(),
       style: input.style,
       voiceTier: input.voiceTier,
+      narrator: input.narrator,
       targetBeats: Math.min(input.targetBeats, this.maxBeats),
       category: input.category?.trim() || undefined,
+      captionStyle: input.captionStyle,
+      captionPosition: input.captionPosition,
+      music: input.music,
+      motion: input.motion,
     };
     const video = await this.repos.sourceVideos.create({
       campaignId,

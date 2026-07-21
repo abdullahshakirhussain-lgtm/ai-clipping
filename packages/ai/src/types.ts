@@ -133,10 +133,12 @@ export interface PlanEnhancementsInput {
 
 /** One narrated beat: a line spoken over one generated image. */
 export interface StoryBeat {
-  /** Spoken narration for this beat (~1-2 sentences). */
+  /** Spoken narration for this beat (~1-2 sentences; may carry inline audio tags). */
   text: string;
   /** What the image for this beat depicts (style anchor appended by the caller). */
   imagePrompt: string;
+  /** How this beat should be read — pace/pitch/emotion; fed to the TTS per beat. */
+  delivery?: string;
 }
 
 export interface WriteStoryInput {
@@ -145,6 +147,10 @@ export interface WriteStoryInput {
   style: string;
   /** How many beats/images to produce. */
   targetBeats: number;
+  /** Narrator persona key — shapes the emotional arc the writer directs. */
+  narrator?: string;
+  /** When true, embed ElevenLabs-v3 audio tags inline in the beat text. */
+  voiceTags?: boolean;
 }
 
 export interface StoryScript {

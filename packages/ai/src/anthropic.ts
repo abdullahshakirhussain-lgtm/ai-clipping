@@ -641,18 +641,32 @@ Call submit_metadata with optimized fields.`,
 
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
     const beats = Math.max(4, Math.min(20, input.targetBeats));
+    const narrator = input.narrator ?? "storyteller";
     const result = await this.callTool<{
       title?: string;
       script?: string;
       description?: string;
       hashtags?: string[];
-      beats?: Array<{ text?: string; imagePrompt?: string }>;
+      beats?: Array<{ text?: string; imagePrompt?: string; delivery?: string }>;
     }>(
-      `Write a short-form narrated story about: "${input.topic}".
+      `Write a short-form narrated STORY about: "${input.topic}".
 
-This is the whole product — it must be genuinely INTERESTING, not filler. Open on a hook in the first line (a question, a shocking fact, a "you won't believe"), build tension, and land a payoff. Conversational, punchy, spoken aloud — contractions, short sentences, no throat-clearing, no "in this video".
+This is the whole product — it has to be a genuinely gripping little story, not a list of facts. Structure it like one:
+- COLD OPEN on the single most surprising hook (a question, a "wait, what?", a shocking image) — earn the first 2 seconds.
+- Build: each beat raises a new question or ups the stakes; end beats on mini-cliffhangers that pull to the next.
+- PAYOFF: a real, satisfying turn or reveal near the end. Then a one-line button.
+Conversational, spoken aloud — contractions, short punchy sentences, vivid concrete detail (names, numbers, the telling image). No throat-clearing, no "in this video", no wiki-summary tone.
 
-Break it into EXACTLY ${beats} beats. Each beat is ONE spoken line (~12-22 words, one idea) plus a concrete image prompt describing a SIMPLE scene for that moment — one clear subject/action, no text in the image. The images are a simple doodle style, so keep prompts about WHAT is happening, not art direction.
+The narrator persona is "${narrator}" — write the emotional ARC to suit it: curiosity → tension → payoff, rising and falling, never flat.
+
+Break it into EXACTLY ${beats} beats. Each beat:
+- "text": ONE spoken line (~12-22 words, one idea).${
+        input.voiceTags
+          ? ` Embed 1-2 ElevenLabs audio tags inline where the read shifts (acted, not spoken): [pause], [whispers], [excited], [sighs], [laughs], [curious]. e.g. "[whispers] Nobody noticed the tower was gone... [excited] until the SECOND buyer showed up."`
+          : ""
+      }
+- "imagePrompt": a SIMPLE concrete scene for this moment — one clear subject/action, no text in the image, doodle-friendly.
+- "delivery": 1-2 sentences directing HOW to say THIS line — pace, pitch move, where it drops to a hush or lifts with excitement. Make every beat's delivery different; together they form the arc.
 
 Also give a title, a 1-2 sentence description with a soft CTA, and up to 6 hashtags.
 Call submit_story.`,
@@ -673,8 +687,9 @@ Call submit_story.`,
                 properties: {
                   text: { type: "string", description: "spoken narration for this beat" },
                   imagePrompt: { type: "string", description: "simple scene to draw for this beat" },
+                  delivery: { type: "string", description: "how to read this beat: pace, pitch, emotion" },
                 },
-                required: ["text", "imagePrompt"],
+                required: ["text", "imagePrompt", "delivery"],
               },
             },
           },
@@ -687,7 +702,11 @@ Call submit_story.`,
 
     const cleanBeats = (result.beats ?? [])
       .filter((b) => String(b.text ?? "").trim() && String(b.imagePrompt ?? "").trim())
-      .map((b) => ({ text: String(b.text).trim(), imagePrompt: String(b.imagePrompt).trim() }));
+      .map((b) => ({
+        text: String(b.text).trim(),
+        imagePrompt: String(b.imagePrompt).trim(),
+        ...(String(b.delivery ?? "").trim() ? { delivery: String(b.delivery).trim() } : {}),
+      }));
     return {
       title: String(result.title ?? input.topic).slice(0, 120),
       script: String(result.script ?? cleanBeats.map((b) => b.text).join(" ")),

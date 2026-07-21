@@ -197,8 +197,11 @@ export class MockLlmProvider implements LlmProvider {
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
     const n = Math.max(4, Math.min(20, input.targetBeats));
     const beats = Array.from({ length: n }, (_, i) => ({
-      text: `Beat ${i + 1} of the story about ${input.topic}. Something surprising happens here.`,
+      text: input.voiceTags
+        ? `[curious] Beat ${i + 1} of the story about ${input.topic}. [pause] Something surprising happens.`
+        : `Beat ${i + 1} of the story about ${input.topic}. Something surprising happens here.`,
       imagePrompt: `A simple scene for beat ${i + 1}: a stick figure reacting to ${input.topic}.`,
+      delivery: i === 0 ? "Open with curiosity, slow and inviting." : `Build tension, beat ${i + 1}.`,
     }));
     return {
       title: `The untold story of ${input.topic}`,

@@ -531,6 +531,52 @@ export async function resolveSfxFile(name: string): Promise<string | null> {
   return (await stat(p).then(() => true).catch(() => false)) ? p : null;
 }
 
+const MUSIC_DIR = fileURLToPath(new URL("../assets/music/", import.meta.url));
+
+/**
+ * Resolve a background-music track by mood (calm | tense | upbeat | epic). The
+ * user drops royalty-free/CC0 mp3s into packages/media/assets/music/; missing →
+ * null so the caller skips music cleanly (we can't bundle copyrighted tracks).
+ */
+export async function resolveMusicFile(mood: string): Promise<string | null> {
+  if (!mood || mood === "none") return null;
+  const p = join(MUSIC_DIR, `${mood}.mp3`);
+  return (await stat(p).then(() => true).catch(() => false)) ? p : null;
+}
+
+/**
+ * Lay a music bed UNDER an assembled video's narration: loop/trim the track to
+ * the video's length, drop it to `gain` (~0.15 so speech stays on top), and mix.
+ * Video is stream-copied (already encoded). Best-effort — the caller only calls
+ * this when a track exists.
+ */
+export async function mixMusic(
+  inputVideo: string,
+  musicFile: string,
+  outPath: string,
+  workDir: string,
+  opts?: { gain?: number },
+): Promise<void> {
+  const gain = opts?.gain ?? 0.15;
+  const filter =
+    `[1:a]aloop=loop=-1:size=2e9,volume=${gain.toFixed(2)}[bed];` +
+    `[0:a][bed]amix=inputs=2:duration=first:normalize=0[a]`;
+  await run(
+    bin("ffmpeg"),
+    [
+      "-y",
+      "-i", inputVideo,
+      "-i", musicFile,
+      "-filter_complex", filter,
+      "-map", "0:v", "-map", "[a]",
+      "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+      "-movflags", "+faststart",
+      outPath,
+    ],
+    { cwd: workDir, timeoutMs: 3 * 60 * 1000 },
+  );
+}
+
 export interface SfxMix {
   /** Clip-time (post-cut) seconds to play the effect at. */
   atSec: number;
@@ -643,11 +689,13 @@ export function planCaptionTiming(
  * Assemble a narrated slideshow: each beat's image is held for its narration's
  * length (perfect sync, since the duration IS the measured audio), padded to
  * 1080x1920, concatenated with its audio, and the burned captions laid over the
- * whole thing in one pass. Images are static (reliable) — motion is a later polish.
+ * whole thing in one pass. Static by default (rock-solid); `motion` opts into a
+ * slow Ken Burns zoom + soft fades per beat.
  */
 export async function assembleSlideshow(input: {
   beats: SlideshowBeat[];
   captionsFileName?: string;
+  motion?: boolean;
   outPath: string;
   workDir: string;
 }): Promise<void> {
@@ -662,11 +710,27 @@ export async function assembleSlideshow(input: {
   const chains: string[] = [];
   const concatIn: string[] = [];
   beats.forEach((b, i) => {
-    // Fit the image inside 9:16 on a white card (doodles shouldn't be cropped).
-    chains.push(
-      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
-        `pad=1080:1920:-1:-1:color=white,setsar=1,fps=30,format=yuv420p[v${i}]`,
-    );
+    const fps = 30;
+    const fadeD = Math.min(0.4, b.durationSec / 4);
+    let vChain: string;
+    if (input.motion) {
+      // Ken Burns: the image is looped into `frames` frames upstream, so zoompan
+      // must emit exactly ONE output frame per input frame (d=1) and drive the
+      // zoom off the input frame counter `in`. Using d=frames here multiplies
+      // (frames per input frame) into an O(n^2) render that never finishes.
+      // Modest 1.25x scale gives headroom so the zoom-in doesn't soften.
+      vChain =
+        `[${i}:v]scale=1350:2400:force_original_aspect_ratio=increase,` +
+        `zoompan=z='min(1.0+0.0009*in,1.15)':d=1:s=1080x1920:fps=${fps},` +
+        `pad=1080:1920:-1:-1:color=white,setsar=1,format=yuv420p,` +
+        `fade=t=in:st=0:d=${fadeD.toFixed(2)},fade=t=out:st=${(b.durationSec - fadeD).toFixed(2)}:d=${fadeD.toFixed(2)}[v${i}]`;
+    } else {
+      // Fit the image inside 9:16 on a white card (doodles shouldn't be cropped).
+      vChain =
+        `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+        `pad=1080:1920:-1:-1:color=white,setsar=1,fps=${fps},format=yuv420p[v${i}]`;
+    }
+    chains.push(vChain);
     // Match audio length to the image hold exactly (pad then trim).
     chains.push(`[${n + i}:a]aresample=44100,apad,atrim=duration=${b.durationSec.toFixed(3)},asetpts=N/SR/TB[a${i}]`);
     concatIn.push(`[v${i}][a${i}]`);
