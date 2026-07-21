@@ -6,13 +6,13 @@
  */
 export const STYLE_PRESETS: Record<string, string> = {
   doodle:
-    "Simple black-marker stick-figure doodle on a plain off-white background. Minimal, hand-drawn, thick uneven lines, no shading, lots of empty space. Consistent childlike doodle style.",
+    "Bright, colorful hand-drawn cartoon doodle. Expressive stick figures with clear, exaggerated facial expressions and emotions (big eyes, open mouths, eyebrows). Bold cheerful colors, thick colorful outlines, playful and lively, simple flat shapes on a soft light background. Consistent fun doodle style.",
   whiteboard:
-    "Black dry-erase marker sketch on a clean white whiteboard. Simple line drawings and stick figures, a few flat accent colors, explainer-video look. Consistent whiteboard style.",
+    "Colorful whiteboard explainer drawing. Expressive stick figures and simple objects in bright marker colors (red, blue, green, orange), clear facial expressions and emotion, energetic and friendly, clean white background. Consistent colorful whiteboard style.",
   "flat-vector":
-    "Flat vector illustration, bold simple shapes, limited 4-color palette, thick outlines, no gradients, modern minimal infographic style. Consistent flat-vector style.",
+    "Vibrant flat vector illustration. Bold simple shapes, bright saturated palette, thick clean outlines, expressive characters with clear emotions, modern lively infographic look, no gradients. Consistent colorful flat-vector style.",
   "notebook-sketch":
-    "Ballpoint-pen sketch on lined notebook paper, quick loose hand-drawn doodles and stick figures, slightly messy, monochrome blue ink. Consistent notebook-sketch style.",
+    "Colorful pen-and-marker sketch on notebook paper. Loose hand-drawn cartoon doodles and expressive stick figures with visible emotions, pops of bright color over blue-ink linework, energetic and charming. Consistent colorful sketch style.",
 };
 
 export const DEFAULT_STYLE = "doodle";

@@ -642,12 +642,10 @@ export async function extractSmartThumbnail(inputPath: string, outPath: string):
 
 // ── Story Studio slideshow ───────────────────────────────────────────────────
 
-export interface SlideshowBeat {
-  /** Image filename (in workDir) shown for this beat. */
+export interface SlideshowSlide {
+  /** Image filename (in workDir) shown for this slide. */
   imageFile: string;
-  /** Narration audio filename (in workDir) for this beat. */
-  audioFile: string;
-  /** How long this beat lasts — the measured audio duration. */
+  /** How long this image stays on screen (computed from the narration). */
   durationSec: number;
 }
 
@@ -686,56 +684,40 @@ export function planCaptionTiming(
 }
 
 /**
- * Assemble a narrated slideshow: each beat's image is held for its narration's
- * length (perfect sync, since the duration IS the measured audio), padded to
- * 1080x1920, concatenated with its audio, and the burned captions laid over the
- * whole thing in one pass. Static by default (rock-solid); `motion` opts into a
- * slow Ken Burns zoom + soft fades per beat.
+ * Assemble a narrated slideshow over ONE continuous narration track: each image
+ * is held for its computed on-screen duration and the images are concatenated
+ * video-only (no per-image audio, no fades), then the single audio file is laid
+ * over the whole thing and captions burned in one pass. Recording the narration
+ * as one take — not beat by beat — is what removes the audible seam and the
+ * fade-to-black between beats.
  */
 export async function assembleSlideshow(input: {
-  beats: SlideshowBeat[];
+  slides: SlideshowSlide[];
+  audioFile: string;
   captionsFileName?: string;
-  motion?: boolean;
   outPath: string;
   workDir: string;
 }): Promise<void> {
-  const { beats } = input;
-  if (beats.length === 0) throw new Error("assembleSlideshow: no beats");
+  const { slides } = input;
+  if (slides.length === 0) throw new Error("assembleSlideshow: no slides");
 
   const args: string[] = ["-y"];
-  for (const b of beats) args.push("-loop", "1", "-t", b.durationSec.toFixed(3), "-i", b.imageFile);
-  for (const b of beats) args.push("-i", b.audioFile);
+  for (const s of slides) args.push("-loop", "1", "-t", s.durationSec.toFixed(3), "-i", s.imageFile);
+  const audioIdx = slides.length;
+  args.push("-i", input.audioFile);
 
-  const n = beats.length;
   const chains: string[] = [];
   const concatIn: string[] = [];
-  beats.forEach((b, i) => {
-    const fps = 30;
-    const fadeD = Math.min(0.4, b.durationSec / 4);
-    let vChain: string;
-    if (input.motion) {
-      // Ken Burns: the image is looped into `frames` frames upstream, so zoompan
-      // must emit exactly ONE output frame per input frame (d=1) and drive the
-      // zoom off the input frame counter `in`. Using d=frames here multiplies
-      // (frames per input frame) into an O(n^2) render that never finishes.
-      // Modest 1.25x scale gives headroom so the zoom-in doesn't soften.
-      vChain =
-        `[${i}:v]scale=1350:2400:force_original_aspect_ratio=increase,` +
-        `zoompan=z='min(1.0+0.0009*in,1.15)':d=1:s=1080x1920:fps=${fps},` +
-        `pad=1080:1920:-1:-1:color=white,setsar=1,format=yuv420p,` +
-        `fade=t=in:st=0:d=${fadeD.toFixed(2)},fade=t=out:st=${(b.durationSec - fadeD).toFixed(2)}:d=${fadeD.toFixed(2)}[v${i}]`;
-    } else {
-      // Fit the image inside 9:16 on a white card (doodles shouldn't be cropped).
-      vChain =
-        `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
-        `pad=1080:1920:-1:-1:color=white,setsar=1,fps=${fps},format=yuv420p[v${i}]`;
-    }
-    chains.push(vChain);
-    // Match audio length to the image hold exactly (pad then trim).
-    chains.push(`[${n + i}:a]aresample=44100,apad,atrim=duration=${b.durationSec.toFixed(3)},asetpts=N/SR/TB[a${i}]`);
-    concatIn.push(`[v${i}][a${i}]`);
+  slides.forEach((_, i) => {
+    // Fit the image inside 9:16 on a white card (art shouldn't be cropped).
+    chains.push(
+      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+        `pad=1080:1920:-1:-1:color=white,setsar=1,fps=30,format=yuv420p[v${i}]`,
+    );
+    concatIn.push(`[v${i}]`);
   });
-  chains.push(`${concatIn.join("")}concat=n=${n}:v=1:a=1[cv][ca]`);
+  // Video-only concat — the audio is one uninterrupted file, mapped straight in.
+  chains.push(`${concatIn.join("")}concat=n=${slides.length}:v=1:a=0[cv]`);
   let vLabel = "[cv]";
   if (input.captionsFileName) {
     chains.push(`[cv]subtitles=${input.captionsFileName}[outv]`);
@@ -744,12 +726,13 @@ export async function assembleSlideshow(input: {
 
   args.push(
     "-filter_complex", chains.join(";"),
-    "-map", vLabel, "-map", "[ca]",
+    "-map", vLabel, "-map", `${audioIdx}:a`,
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "128k",
+    "-c:a", "aac", "-b:a", "160k",
+    "-shortest",
     "-movflags", "+faststart",
     input.outPath,
   );
 
-  await run(bin("ffmpeg"), args, { cwd: input.workDir, timeoutMs: 6 * 60 * 1000 });
+  await run(bin("ffmpeg"), args, { cwd: input.workDir, timeoutMs: 8 * 60 * 1000 });
 }

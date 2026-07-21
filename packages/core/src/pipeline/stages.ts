@@ -19,9 +19,7 @@ import {
   extractFrames,
   extractSmartThumbnail,
   mixMusic,
-  planCaptionTiming,
   resolveMusicFile,
-  type SlideshowBeat,
   findLoudnessPeaks,
   type FreezeInsert,
   insertFreezes,
@@ -43,6 +41,7 @@ import {
   selectDiverse,
   type ScoringWeights,
 } from "../detection.js";
+import { planStoryTiming } from "../story-timing.js";
 import type { PipelineContext } from "./context.js";
 
 const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
@@ -814,18 +813,18 @@ interface StorySpec {
   voiceTier: string;
   narrator?: string;
   targetBeats: number;
+  targetWords?: number;
   category?: string;
   captionStyle?: string;
   captionPosition?: "top" | "middle" | "bottom";
   music?: string;
-  motion?: boolean;
 }
 
 /**
  * Story Studio: generate a narrated slideshow from a topic. Writes the script,
- * makes an image + voice per beat, holds each image for exactly its narration's
- * length (perfect sync), assembles + burns captions, and lands the result as a
- * ready-to-review Clip with metadata — no transcript/detect/render path.
+ * records the narration as ONE continuous take, draws an image per beat, times
+ * the images + captions against that audio (exact word timings when available),
+ * assembles a seamless slideshow, and lands it as a ready-to-review Clip.
  */
 export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
   const moved = await ctx.repos.sourceVideos.transition(
@@ -844,15 +843,24 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
   }
 
   const workDir = join(ctx.workRoot, sourceVideoId);
+  // Progress is written into storySpec so the Video Queue can show a bar; we hold
+  // the spec in memory and rewrite it (JSON) at each stage.
+  const setProgress = async (stage: string, pct: number, extra?: Record<string, unknown>) => {
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      storySpec: { ...spec, ...extra, progress: { stage, pct } } as never,
+    });
+  };
   try {
     await fs.mkdir(workDir, { recursive: true });
 
     // 1. Script → beats. This is the whole product; everything else is assembly.
+    await setProgress("Writing the script", 10);
     const tts = ctx.ttsFor(spec.voiceTier);
     const story = await ctx.llm.writeStory({
       topic: spec.topic,
       style: spec.style,
       targetBeats: spec.targetBeats,
+      targetWords: spec.targetWords ?? 320,
       narrator: spec.narrator,
       voiceTags: tts.speaksTags === true,
     });
@@ -860,12 +868,28 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       await failVideo(ctx, sourceVideoId, new Error("story writer returned no beats"));
       return;
     }
+    // Persist the script immediately so it's viewable even while images render.
+    await setProgress("Recording the narration", 25, {
+      script: story.script,
+      beats: story.beats,
+    });
 
-    // 2. Per beat: image + voice (measured). Images run with small concurrency;
-    // a failed image falls back to a plain card so one bad frame never sinks it.
-    const beats: SlideshowBeat[] = [];
-    const timing: Array<{ text: string; durationSec: number }> = [];
+    // 2a. Record the WHOLE narration in one continuous take (no per-beat seams).
+    const narrator = spec.narrator ?? "storyteller";
+    const fullText = story.beats.map((b) => b.text).join("\n\n");
+    const speakable = tts.speaksTags ? fullText : stripAudioTags(fullText);
+    const voice = await tts.synthesize({
+      text: speakable,
+      instructions: narratorInstruction(narrator),
+    });
+    const audioFile = join(workDir, `narration.${voice.ext}`);
+    await fs.writeFile(audioFile, voice.audio);
+    const probed = await probe(audioFile);
+    const totalDur = probed.durationSec > 0 ? probed.durationSec : Math.max(4, story.beats.length * 3);
 
+    // 2b. Images, one per beat, with bounded concurrency (progress per image).
+    await setProgress("Drawing the images", 30);
+    let done = 0;
     const images = await mapWithConcurrency(story.beats, 3, async (beat, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
@@ -875,42 +899,26 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err) }, "image gen failed; using plain card");
         await fs.writeFile(imgFile, plainCardPng());
       }
+      done++;
+      await setProgress(`Drawing the images (${done}/${story.beats.length})`, 30 + Math.round((done / story.beats.length) * 55));
       return imgFile;
     });
 
-    const narrator = spec.narrator ?? "storyteller";
-    for (let i = 0; i < story.beats.length; i++) {
-      const beat = story.beats[i]!;
-      // Tag-speaking providers (ElevenLabs v3) perform the inline tags; others
-      // get them stripped and steer on `instructions` (persona + this beat's
-      // delivery) — the fix for the flat read.
-      const speakable = tts.speaksTags ? beat.text : stripAudioTags(beat.text);
-      const { audio, ext } = await tts.synthesize({
-        text: speakable,
-        instructions: narratorInstruction(narrator, beat.delivery),
-      });
-      const audioFile = join(workDir, `vo-${i}.${ext}`);
-      await fs.writeFile(audioFile, audio);
-      const { durationSec } = await probe(audioFile);
-      const dur = durationSec > 0 ? durationSec : 2.5;
-      beats.push({ imageFile: images[i]!, audioFile, durationSec: dur });
-      // Captions show the spoken words, never the audio-tag markup.
-      timing.push({ text: stripAudioTags(beat.text), durationSec: dur });
-    }
-
-    // 3. Captions timed to the measured beats (style + position from the spec),
-    //    then assemble (optional Ken Burns motion).
-    const segments = planCaptionTiming(timing);
-    const totalDur = timing.reduce((s, t) => s + t.durationSec, 0);
+    // 3. Time images + captions against the ONE narration (exact word timings
+    //    from ElevenLabs, else proportional), then assemble.
+    await setProgress("Putting it together", 90);
+    const captionBeats = story.beats.map((b) => ({ text: stripAudioTags(b.text) }));
+    const { slideDurations, captionSegments } = planStoryTiming(captionBeats, totalDur, voice.words);
+    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: slideDurations[i]! }));
     const assName = `${sourceVideoId}.ass`;
-    const ass = buildAss(segments, 0, totalDur, spec.captionStyle ?? video.captionStyle, 3, spec.captionPosition);
+    const ass = buildAss(captionSegments, 0, totalDur, spec.captionStyle ?? video.captionStyle, 3, spec.captionPosition);
     if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
 
     let outPath = join(workDir, "story.mp4");
     await assembleSlideshow({
-      beats,
+      slides,
+      audioFile,
       captionsFileName: ass.trim() ? assName : undefined,
-      motion: spec.motion === true,
       outPath,
       workDir,
     });
@@ -967,8 +975,14 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       model: "story",
     });
 
-    await ctx.repos.sourceVideos.update(sourceVideoId, { status: SourceVideoStatus.PROCESSED });
-    ctx.logger.info({ sourceVideoId, beats: beats.length, durationSec: Number(totalDur.toFixed(1)) }, "story video generated");
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      status: SourceVideoStatus.PROCESSED,
+      storySpec: { ...spec, script: story.script, beats: story.beats, progress: { stage: "Done", pct: 100 } } as never,
+    });
+    ctx.logger.info(
+      { sourceVideoId, beats: story.beats.length, durationSec: Number(totalDur.toFixed(1)) },
+      "story video generated",
+    );
   } catch (err) {
     await failVideo(ctx, sourceVideoId, err);
     throw err;

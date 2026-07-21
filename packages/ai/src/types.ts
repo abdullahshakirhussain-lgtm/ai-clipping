@@ -147,6 +147,8 @@ export interface WriteStoryInput {
   style: string;
   /** How many beats/images to produce. */
   targetBeats: number;
+  /** Rough spoken word budget — paces the script to the chosen length. */
+  targetWords: number;
   /** Narrator persona key — shapes the emotional arc the writer directs. */
   narrator?: string;
   /** When true, embed ElevenLabs-v3 audio tags inline in the beat text. */
@@ -253,6 +255,25 @@ export function planVisionBatches<T>(frames: T[], batchSize = 3): T[][] {
  * ("dry, unimpressed, slightly rushed") — the main lever against a read that
  * sounds like a narrator bot. Honoured by OpenAI; ignored by ElevenLabs.
  */
+/** Word-level timing from a TTS that supports it (ElevenLabs). Seconds. */
+export interface TtsWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+export interface TtsResult {
+  audio: Buffer;
+  /** Container so the caller can write a file ffmpeg will read. */
+  ext: "mp3" | "wav";
+  /**
+   * Exact spoken-word timings when the provider returns them (ElevenLabs
+   * with-timestamps). Absent for OpenAI/mock — callers fall back to proportional
+   * timing. Tags are excluded; only real spoken words appear.
+   */
+  words?: TtsWord[];
+}
+
 export interface TtsProvider {
   /**
    * True when the provider PERFORMS inline "[tag]"s (ElevenLabs v3 audio tags)
@@ -260,12 +281,7 @@ export interface TtsProvider {
    * to a provider without this.
    */
   readonly speaksTags?: boolean;
-  /** `ext` names the container so the caller can write a file ffmpeg will read. */
-  synthesize(input: {
-    text: string;
-    voice?: string;
-    instructions?: string;
-  }): Promise<{ audio: Buffer; ext: "mp3" | "wav" }>;
+  synthesize(input: { text: string; voice?: string; instructions?: string }): Promise<TtsResult>;
 }
 
 /** LLM reasoning tasks (Claude in production). */

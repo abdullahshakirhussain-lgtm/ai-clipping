@@ -6,7 +6,6 @@ import { useOverview } from "@/lib/api";
 
 const NAV: Array<{ href: string; label: string; badge?: "review" }> = [
   { href: "/", label: "Overview" },
-  { href: "/finder", label: "Finder" },
   { href: "/create", label: "Create" },
   { href: "/upload", label: "Upload" },
   { href: "/videos", label: "Video Queue" },

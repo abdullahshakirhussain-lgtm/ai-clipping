@@ -68,6 +68,10 @@ export function toSourceVideoDto(v: VideoListRow): SourceVideoDto {
     commentaryMode: v.commentaryMode,
     context: v.context ?? null,
     autoContext: v.autoContext ?? null,
+    kind: v.kind,
+    storyProgress:
+      (v.storySpec as { progress?: { stage: string; pct: number } } | null)?.progress ?? null,
+    storyScript: (v.storySpec as { script?: string } | null)?.script ?? null,
   };
 }
 

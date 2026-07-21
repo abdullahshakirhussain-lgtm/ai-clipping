@@ -74,6 +74,12 @@ export const SourceVideoDtoSchema = z.object({
   context: z.string().nullable(),
   /** Vision-derived context read from on-screen text. */
   autoContext: z.string().nullable(),
+  /** "clip" | "story" (AI-generated slideshow). */
+  kind: z.string(),
+  /** Story generation progress while kind=story is processing. */
+  storyProgress: z.object({ stage: z.string(), pct: z.number() }).nullable(),
+  /** The generated narration script (kind=story), once written. */
+  storyScript: z.string().nullable(),
 });
 export type SourceVideoDto = z.infer<typeof SourceVideoDtoSchema>;
 

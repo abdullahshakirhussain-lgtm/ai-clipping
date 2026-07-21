@@ -60,9 +60,22 @@ export default function VideosPage() {
             <tbody>
               {data.map((v) => (
                 <tr key={v.id} className="border-t align-top" style={{ borderColor: "var(--border)" }}>
-                  <td className="p-4 max-w-[16rem] truncate">
-                    {v.title ?? v.originalUrl}
+                  <td className="p-4 max-w-[16rem]">
+                    <div className="truncate">{v.title ?? v.originalUrl}</div>
                     <div className="text-xs" style={{ color: "var(--muted)" }}>{v.campaignName}</div>
+                    {v.kind === "story" && v.storyScript && (
+                      <details className="mt-1">
+                        <summary className="text-[11px] cursor-pointer" style={{ color: "var(--primary)" }}>
+                          View script
+                        </summary>
+                        <div
+                          className="text-[11px] mt-1 p-2 rounded surface-2 whitespace-pre-wrap max-h-52 overflow-auto"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          {v.storyScript}
+                        </div>
+                      </details>
+                    )}
                   </td>
                   <td className="p-4">
                     <div className="flex flex-wrap gap-1 max-w-sm">
@@ -91,6 +104,16 @@ export default function VideosPage() {
                   <td className="p-4">
                     <StatusBadge status={v.status} />
                     {v.error && <div className="text-xs mt-1" style={{ color: "var(--danger)" }}>{v.error}</div>}
+                    {v.kind === "story" && v.storyProgress && v.status !== "PROCESSED" && v.status !== "FAILED" && (
+                      <div className="mt-1.5 w-36">
+                        <div className="text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>
+                          {v.storyProgress.stage} · {v.storyProgress.pct}%
+                        </div>
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
+                          <div className="h-full transition-all" style={{ width: `${v.storyProgress.pct}%`, background: "var(--primary)" }} />
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td className="p-4 text-xs" style={{ color: "var(--muted)" }}>{timeAgo(v.createdAt)}</td>
                 </tr>

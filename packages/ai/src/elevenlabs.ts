@@ -1,4 +1,4 @@
-import type { TtsProvider } from "./types.js";
+import type { TtsProvider, TtsResult, TtsWord } from "./types.js";
 
 export interface ElevenLabsTtsOptions {
   apiKey: string;
@@ -7,16 +7,48 @@ export interface ElevenLabsTtsOptions {
   model?: string;
 }
 
+/** ElevenLabs character-alignment payload (from the with-timestamps endpoint). */
+export interface CharAlignment {
+  characters: string[];
+  character_start_times_seconds: number[];
+  character_end_times_seconds: number[];
+}
+
 /**
- * ElevenLabs text-to-speech, defaulting to `eleven_v3` — the expressive model.
- * v3 is driven by audio tags inline in the text ("[scoffs] Five... [shouting]
- * THE JELLY."), which it performs rather than reads; `speaksTags` tells the
- * pipeline to leave them in. Stability 0.0 ("Creative") maximizes pitch and
- * emotional range; v3 ignores similarity/style/speed.
- *
- * Cost reality at our volume (~200 chars of commentary per clip): Starter
- * $6/mo ≈ 150 clips, Creator $22/mo ≈ 600 — not the old 300-clips/day scare
- * estimate. Delivery `instructions` are ignored; the writing carries the tags.
+ * Fold ElevenLabs' per-character alignment into spoken-word timings: a word runs
+ * from its first character's start to its last character's end, split on
+ * whitespace. Bracketed audio tags ("[excited]") are dropped — they aren't
+ * spoken, so captions must not show or time to them. Pure, so it's unit-tested.
+ */
+export function alignmentToWords(a: CharAlignment): TtsWord[] {
+  const words: TtsWord[] = [];
+  let cur = "";
+  let start = 0;
+  let end = 0;
+  let inTag = false;
+  const flush = () => {
+    if (cur.trim()) words.push({ word: cur, start, end });
+    cur = "";
+  };
+  for (let i = 0; i < a.characters.length; i++) {
+    const ch = a.characters[i]!;
+    if (ch === "[") { inTag = true; flush(); continue; }
+    if (ch === "]") { inTag = false; continue; }
+    if (inTag) continue;
+    if (/\s/.test(ch)) { flush(); continue; }
+    if (!cur) start = a.character_start_times_seconds[i] ?? end;
+    cur += ch;
+    end = a.character_end_times_seconds[i] ?? start;
+  }
+  flush();
+  return words;
+}
+
+/**
+ * ElevenLabs text-to-speech, defaulting to `eleven_v3`. Uses the with-timestamps
+ * endpoint so captions can sync exactly to the spoken words (v3's inline audio
+ * tags otherwise make proportional caption timing drift). Stability 0.0
+ * ("Creative") maximizes range for tagged reads.
  */
 export class ElevenLabsTtsProvider implements TtsProvider {
   private readonly model: string;
@@ -24,24 +56,22 @@ export class ElevenLabsTtsProvider implements TtsProvider {
 
   constructor(private readonly opts: ElevenLabsTtsOptions) {
     this.model = opts.model || "eleven_v3";
-    // Only v3 interprets audio tags; older models would read "[shouts]" aloud.
     this.speaksTags = this.model.startsWith("eleven_v3");
   }
 
-  async synthesize(input: { text: string; voice?: string }): Promise<{ audio: Buffer; ext: "mp3" }> {
+  async synthesize(input: { text: string; voice?: string }): Promise<TtsResult> {
     const voice = input.voice || this.opts.voiceId;
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}/with-timestamps`, {
       method: "POST",
       headers: {
         "xi-api-key": this.opts.apiKey,
         "Content-Type": "application/json",
-        Accept: "audio/mpeg",
       },
       body: JSON.stringify({
         text: input.text,
         model_id: this.model,
         voice_settings: this.speaksTags
-          ? { stability: 0.0 } // Creative: widest emotional range for tagged reads
+          ? { stability: 0.0 }
           : { stability: 0.4, similarity_boost: 0.75, style: 0.35 },
       }),
     });
@@ -49,6 +79,9 @@ export class ElevenLabsTtsProvider implements TtsProvider {
       const detail = await res.text().catch(() => "");
       throw new Error(`ElevenLabs TTS failed (${res.status}): ${detail.slice(0, 200)}`);
     }
-    return { audio: Buffer.from(await res.arrayBuffer()), ext: "mp3" };
+    const json = (await res.json()) as { audio_base64?: string; alignment?: CharAlignment };
+    if (!json.audio_base64) throw new Error("ElevenLabs returned no audio");
+    const words = json.alignment ? alignmentToWords(json.alignment) : undefined;
+    return { audio: Buffer.from(json.audio_base64, "base64"), ext: "mp3", words };
   }
 }

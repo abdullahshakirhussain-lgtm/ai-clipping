@@ -32,6 +32,11 @@ const MUSIC = [
   { value: "upbeat", label: "Upbeat" },
   { value: "epic", label: "Epic" },
 ];
+const LENGTHS = [
+  { value: "short", label: "Short (~40s)" },
+  { value: "medium", label: "Medium (~1 min)" },
+  { value: "long", label: "Long (~2 min)" },
+];
 
 export default function CreatePage() {
   const { data: cats } = useCategories();
@@ -41,13 +46,13 @@ export default function CreatePage() {
   const [style, setStyle] = useState("doodle");
   const [narrator, setNarrator] = useState("storyteller");
   const [voiceTier, setVoiceTier] = useState<"standard" | "premium">("standard");
-  const [targetBeats, setTargetBeats] = useState(12);
+  const [length, setLength] = useState("long");
   const [category, setCategory] = useState("");
   const [captionStyle, setCaptionStyle] = useState("bold-center");
   const [captionPosition, setCaptionPosition] = useState("middle");
   const [music, setMusic] = useState("none");
-  const [motion, setMotion] = useState(false);
 
+  const [niche, setNiche] = useState("");
   const [topics, setTopics] = useState<string[]>([]);
   const [suggesting, setSuggesting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -57,8 +62,10 @@ export default function CreatePage() {
     setSuggesting(true);
     setMsg(null);
     try {
+      // A typed niche wins over the category dropdown for tailored ideas.
+      const seed = niche.trim() || category;
       const r = await apiGet<{ topics: string[] }>(
-        `/story/topics${category ? `?category=${encodeURIComponent(category)}` : ""}`,
+        `/story/topics${seed ? `?category=${encodeURIComponent(seed)}` : ""}`,
       );
       setTopics(r.topics);
     } catch (e) {
@@ -78,12 +85,11 @@ export default function CreatePage() {
         style,
         narrator,
         voiceTier,
-        targetBeats,
+        length,
         category: category || undefined,
         captionStyle,
         captionPosition,
         music,
-        motion,
       });
       setMsg("Generating… it'll appear in the Library when done. Track progress in the Video Queue.");
       setTopic("");
@@ -117,12 +123,17 @@ export default function CreatePage() {
         </label>
 
         <div className="flex items-center gap-2 mb-4">
+          <input
+            value={niche}
+            onChange={(e) => setNiche(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void suggest(); } }}
+            placeholder="niche for ideas — e.g. cursed history, space, sports scandals"
+            className="flex-1 px-3 py-2 rounded-lg surface-2 border outline-none text-sm"
+            style={{ borderColor: "var(--border)" }}
+          />
           <Button onClick={suggest} disabled={suggesting} variant="secondary">
-            {suggesting ? "Thinking…" : "💡 Suggest topics"}
+            {suggesting ? "Thinking…" : "💡 Suggest"}
           </Button>
-          <span className="text-xs" style={{ color: "var(--muted)" }}>
-            {category ? `for "${category}"` : "pick a category below for tailored ideas"}
-          </span>
         </div>
         {topics.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-4">
@@ -192,15 +203,13 @@ export default function CreatePage() {
             </select>
           </label>
           <label className="block">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Length: {targetBeats} images</span>
-            <input type="range" min={6} max={15} value={targetBeats}
-              onChange={(e) => setTargetBeats(Number(e.target.value))} className="w-full mt-2" />
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Length</span>
+            <select value={length} onChange={(e) => setLength(e.target.value)}
+              className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
+              {LENGTHS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
           </label>
         </div>
-        <label className="flex items-center gap-2 mb-4 text-sm" style={{ color: "var(--muted)" }}>
-          <input type="checkbox" checked={motion} onChange={(e) => setMotion(e.target.checked)} />
-          Add motion (slow zoom + soft transitions)
-        </label>
 
         <div className="flex items-center gap-3">
           <Button onClick={generate} disabled={busy || topic.trim().length < 3}>

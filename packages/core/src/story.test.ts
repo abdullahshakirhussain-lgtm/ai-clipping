@@ -1,4 +1,5 @@
 import {
+  alignmentToWords,
   MockImageProvider,
   MockLlmProvider,
   narratorInstruction,
@@ -8,6 +9,7 @@ import {
 } from "@clipfactory/ai";
 import { buildAss, planCaptionTiming } from "@clipfactory/media";
 import { describe, expect, it } from "vitest";
+import { planStoryTiming } from "./story-timing.js";
 
 describe("planCaptionTiming", () => {
   it("spreads each beat's words across its duration, contiguous and non-overlapping", () => {
@@ -82,10 +84,46 @@ describe("buildAss caption position override", () => {
   });
 });
 
+describe("continuous-narration timing (v3)", () => {
+  const beats = [{ text: "one two" }, { text: "three four five six" }]; // 2 + 4 words
+
+  it("proportional: slide durations split by word share of the real duration", () => {
+    const { slideDurations, captionSegments } = planStoryTiming(beats, 12);
+    // 2/6 and 4/6 of 12s.
+    expect(slideDurations[0]).toBeCloseTo(4, 5);
+    expect(slideDurations[1]).toBeCloseTo(8, 5);
+    expect(captionSegments.length).toBeGreaterThan(0);
+  });
+
+  it("exact word timings snap image cuts to word boundaries and sum to total", () => {
+    // 6 words at 1s each, total 6s. Beat 1 ends after word 2 (start=2s).
+    const words = Array.from({ length: 6 }, (_, i) => ({ word: `w${i}`, start: i, end: i + 1 }));
+    const { slideDurations, captionSegments } = planStoryTiming(beats, 6, words);
+    expect(slideDurations[0]).toBeCloseTo(2, 5); // words 0-1
+    expect(slideDurations[0]! + slideDurations[1]!).toBeCloseTo(6, 5);
+    // Captions come straight from the exact words.
+    expect(captionSegments[0]!.words).toHaveLength(6);
+  });
+});
+
+describe("ElevenLabs alignment → words", () => {
+  it("folds characters into words by whitespace and drops audio tags", () => {
+    // "hi [x] yo" → words "hi","yo"; the [x] tag is excluded.
+    const chars = "hi [x] yo".split("");
+    const words = alignmentToWords({
+      characters: chars,
+      character_start_times_seconds: chars.map((_, i) => i * 0.1),
+      character_end_times_seconds: chars.map((_, i) => i * 0.1 + 0.1),
+    });
+    expect(words.map((w) => w.word)).toEqual(["hi", "yo"]);
+    expect(words[0]!.start).toBeCloseTo(0, 5);
+  });
+});
+
 describe("mock providers for keyless story runs", () => {
   it("writeStory returns beats with prompts + per-beat delivery", async () => {
     const llm = new MockLlmProvider();
-    const story = await llm.writeStory({ topic: "the Eiffel Tower scam", style: "doodle", targetBeats: 8 });
+    const story = await llm.writeStory({ topic: "the Eiffel Tower scam", style: "doodle", targetBeats: 8, targetWords: 180 });
     expect(story.beats).toHaveLength(8);
     for (const b of story.beats) {
       expect(b.text.length).toBeGreaterThan(0);
@@ -97,8 +135,8 @@ describe("mock providers for keyless story runs", () => {
 
   it("embeds audio tags only when the provider speaks them", async () => {
     const llm = new MockLlmProvider();
-    const tagged = await llm.writeStory({ topic: "x", style: "doodle", targetBeats: 4, voiceTags: true });
-    const clean = await llm.writeStory({ topic: "x", style: "doodle", targetBeats: 4, voiceTags: false });
+    const tagged = await llm.writeStory({ topic: "x", style: "doodle", targetBeats: 4, targetWords: 90, voiceTags: true });
+    const clean = await llm.writeStory({ topic: "x", style: "doodle", targetBeats: 4, targetWords: 90, voiceTags: false });
     expect(tagged.beats.some((b) => /\[[^\]]+\]/.test(b.text))).toBe(true);
     expect(clean.beats.some((b) => /\[[^\]]+\]/.test(b.text))).toBe(false);
   });

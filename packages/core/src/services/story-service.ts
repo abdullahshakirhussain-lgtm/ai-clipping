@@ -1,7 +1,7 @@
 import type { Repositories } from "@clipfactory/db";
 import type { LlmProvider } from "@clipfactory/ai";
 import type { Dispatcher } from "@clipfactory/queue";
-import type { CreateStoryInput } from "../contracts/story.js";
+import { LENGTH_TARGETS, type CreateStoryInput } from "../contracts/story.js";
 
 /** Story spec persisted on the SourceVideo (kind=story) and read by the generator. */
 export interface StorySpec {
@@ -10,11 +10,11 @@ export interface StorySpec {
   voiceTier: string;
   narrator: string;
   targetBeats: number;
+  targetWords: number;
   category?: string;
   captionStyle: string;
   captionPosition: "top" | "middle" | "bottom";
   music: string;
-  motion: boolean;
 }
 
 /**
@@ -36,17 +36,18 @@ export class StoryService {
 
   async create(input: CreateStoryInput): Promise<{ sourceVideoId: string }> {
     const campaignId = await this.getOrCreateStoryCampaignId();
+    const target = LENGTH_TARGETS[input.length];
     const spec: StorySpec = {
       topic: input.topic.trim(),
       style: input.style,
       voiceTier: input.voiceTier,
       narrator: input.narrator,
-      targetBeats: Math.min(input.targetBeats, this.maxBeats),
+      targetBeats: Math.min(target.beats, this.maxBeats),
+      targetWords: target.words,
       category: input.category?.trim() || undefined,
       captionStyle: input.captionStyle,
       captionPosition: input.captionPosition,
       music: input.music,
-      motion: input.motion,
     };
     const video = await this.repos.sourceVideos.create({
       campaignId,
