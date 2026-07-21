@@ -944,7 +944,10 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         campaignId: video.campaignId,
         startSec: 0,
         endSec: totalDur,
-        status: ClipStatus.READY_FOR_REVIEW,
+        // APPROVED, not READY_FOR_REVIEW: generated stories are the user's own
+        // content (nothing to vet), and distribution only routes APPROVED clips —
+        // a review status here made story clips silently un-queueable.
+        status: ClipStatus.APPROVED,
         detectionReason: story.title,
         detectionSource: "story",
         captionStyle: video.captionStyle,

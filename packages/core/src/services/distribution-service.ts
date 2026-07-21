@@ -29,6 +29,11 @@ export class DistributionService {
 
   /** Create scheduled post-tasks for every distributable clip × its category accounts. */
   async distribute(clipIds?: string[]): Promise<DistributeResult> {
+    // Explicitly queueing specific clips is an approval act: clips still in
+    // READY_FOR_REVIEW (e.g. generated stories from before they auto-approved)
+    // would otherwise be invisible to `distributable` and the button would
+    // silently do nothing forever.
+    if (clipIds?.length) await this.repos.clips.approveReady(clipIds);
     const [clips, accounts] = await Promise.all([
       this.repos.clips.distributable(clipIds),
       this.repos.socialAccounts.list(),
@@ -42,7 +47,15 @@ export class DistributionService {
 
     // Which new (clip → account) pairs need creating, grouped per account, plus
     // why any clip produced no jobs so the UI can explain the outcome.
-    const skipped = { noCategory: 0, noMatchingAccount: 0, alreadyDistributed: 0 };
+    // notEligible: explicitly requested ids that aren't kept+APPROVED (discarded,
+    // still rendering, failed) — before this was counted, the button could do
+    // nothing with no explanation at all.
+    const skipped = {
+      noCategory: 0,
+      noMatchingAccount: 0,
+      alreadyDistributed: 0,
+      notEligible: clipIds?.length ? new Set(clipIds).size - clips.length : 0,
+    };
     const perAccount = new Map<string, string[]>();
     for (const clip of clips) {
       if (!clip.category) {

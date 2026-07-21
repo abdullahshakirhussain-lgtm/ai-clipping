@@ -155,10 +155,13 @@ export function summarizeDistribute(r: DistributeResult): string {
     ? `Queued ${r.jobsCreated} post${r.jobsCreated === 1 ? "" : "s"}`
     : "No new posts queued";
   const reasons: string[] = [];
-  if (r.skipped.noCategory) reasons.push(`${r.skipped.noCategory} no category`);
-  if (r.skipped.noMatchingAccount) reasons.push(`${r.skipped.noMatchingAccount} no matching account`);
+  if (r.skipped.noCategory) reasons.push(`${r.skipped.noCategory} no category — set one via ⋯ on the clip`);
+  if (r.skipped.noMatchingAccount) reasons.push(`${r.skipped.noMatchingAccount} no account with the same category`);
   if (r.skipped.alreadyDistributed) reasons.push(`${r.skipped.alreadyDistributed} already queued`);
-  const skippedTotal = reasons.length ? ` · skipped ${r.skipped.noCategory + r.skipped.noMatchingAccount + r.skipped.alreadyDistributed}: ${reasons.join(", ")}` : "";
+  if (r.skipped.notEligible) reasons.push(`${r.skipped.notEligible} not ready (discarded/rendering/failed)`);
+  const total =
+    r.skipped.noCategory + r.skipped.noMatchingAccount + r.skipped.alreadyDistributed + r.skipped.notEligible;
+  const skippedTotal = reasons.length ? ` · skipped ${total}: ${reasons.join(", ")}` : "";
   return `${head} from ${r.clipsConsidered} clip${r.clipsConsidered === 1 ? "" : "s"}${skippedTotal}.`;
 }
 

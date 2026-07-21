@@ -17,6 +17,8 @@ export const DistributeResultSchema = z.object({
     noCategory: z.number().int(),
     noMatchingAccount: z.number().int(),
     alreadyDistributed: z.number().int(),
+    /** Requested ids that aren't kept+APPROVED (discarded / rendering / failed). */
+    notEligible: z.number().int(),
   }),
 });
 export type DistributeResult = z.infer<typeof DistributeResultSchema>;

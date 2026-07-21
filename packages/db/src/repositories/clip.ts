@@ -81,6 +81,18 @@ export class ClipRepository {
    * accounts. Category may be null here so the caller can report "no category"
    * as a skip reason. Optionally scoped to specific clip ids (Library action).
    */
+  /**
+   * Explicitly queuing a clip IS approving it: flip kept clips still sitting in
+   * READY_FOR_REVIEW to APPROVED so distribution can pick them up. Only used on
+   * the explicit-ids path — bulk distribute never silently approves.
+   */
+  approveReady(ids: string[]) {
+    return this.prisma.clip.updateMany({
+      where: { id: { in: ids }, status: "READY_FOR_REVIEW", kept: true },
+      data: { status: "APPROVED" },
+    });
+  }
+
   distributable(clipIds?: string[]) {
     return this.prisma.clip.findMany({
       where: {
