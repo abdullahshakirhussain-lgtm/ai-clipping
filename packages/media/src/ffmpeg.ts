@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -698,41 +698,58 @@ export async function assembleSlideshow(input: {
   outPath: string;
   workDir: string;
 }): Promise<void> {
-  const { slides } = input;
+  const { slides, workDir } = input;
   if (slides.length === 0) throw new Error("assembleSlideshow: no slides");
 
-  const args: string[] = ["-y"];
-  for (const s of slides) args.push("-loop", "1", "-t", s.durationSec.toFixed(3), "-i", s.imageFile);
-  const audioIdx = slides.length;
-  args.push("-i", input.audioFile);
-
-  const chains: string[] = [];
-  const concatIn: string[] = [];
-  slides.forEach((_, i) => {
-    // Fit the image inside 9:16 on a white card (art shouldn't be cropped).
-    chains.push(
-      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
-        `pad=1080:1920:-1:-1:color=white,setsar=1,fps=30,format=yuv420p[v${i}]`,
-    );
-    concatIn.push(`[v${i}]`);
-  });
-  // Video-only concat — the audio is one uninterrupted file, mapped straight in.
-  chains.push(`${concatIn.join("")}concat=n=${slides.length}:v=1:a=0[cv]`);
-  let vLabel = "[cv]";
-  if (input.captionsFileName) {
-    chains.push(`[cv]subtitles=${input.captionsFileName}[outv]`);
-    vLabel = "[outv]";
-  }
-
-  args.push(
-    "-filter_complex", chains.join(";"),
-    "-map", vLabel, "-map", `${audioIdx}:a`,
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "160k",
-    "-shortest",
-    "-movflags", "+faststart",
-    input.outPath,
+  // 1. Scale each image to a uniform 1080x1920 card ONCE. Doing the scale here —
+  //    not per output frame across a 1-2 minute video — is the bulk of the cost;
+  //    uniform sizes then let us use the lightweight concat demuxer (one input,
+  //    no N parallel looped decoders) instead of a heavy filter_complex.
+  const scaled = await Promise.all(
+    slides.map(async (s, i) => {
+      const out = join(workDir, `slide-${i}.png`);
+      await run(
+        bin("ffmpeg"),
+        [
+          "-y", "-i", s.imageFile,
+          "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=white,setsar=1",
+          "-frames:v", "1", out,
+        ],
+        { cwd: workDir, timeoutMs: 60 * 1000 },
+      );
+      return `slide-${i}.png`;
+    }),
   );
 
-  await run(bin("ffmpeg"), args, { cwd: input.workDir, timeoutMs: 8 * 60 * 1000 });
+  // 2. concat-demuxer playlist with per-slide durations. The last file is
+  //    repeated because the demuxer only honours a duration when another entry
+  //    follows it.
+  const lines = ["ffconcat version 1.0"];
+  scaled.forEach((f, i) => {
+    lines.push(`file '${f}'`, `duration ${slides[i]!.durationSec.toFixed(3)}`);
+  });
+  lines.push(`file '${scaled[scaled.length - 1]!}'`);
+  const listName = "slides.txt";
+  await writeFile(join(workDir, listName), lines.join("\n"), "utf8");
+
+  // 3. One encode: stills → constant fps → burned captions + the single audio.
+  //    ultrafast + tune stillimage is ideal for a slideshow and far quicker than
+  //    veryfast on limited CPU; static frames still compress tiny.
+  const vf = ["fps=25", "format=yuv420p"];
+  if (input.captionsFileName) vf.push(`subtitles=${input.captionsFileName}`);
+  await run(
+    bin("ffmpeg"),
+    [
+      "-y",
+      "-f", "concat", "-safe", "0", "-i", listName,
+      "-i", input.audioFile,
+      "-filter_complex", `[0:v]${vf.join(",")}[vo]`,
+      "-map", "[vo]", "-map", "1:a",
+      "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-crf", "23", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k",
+      "-shortest", "-movflags", "+faststart",
+      input.outPath,
+    ],
+    { cwd: workDir, timeoutMs: 8 * 60 * 1000 },
+  );
 }

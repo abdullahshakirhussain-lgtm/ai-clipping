@@ -35,7 +35,8 @@ const MUSIC = [
 const LENGTHS = [
   { value: "short", label: "Short (~40s)" },
   { value: "medium", label: "Medium (~1 min)" },
-  { value: "long", label: "Long (~2 min)" },
+  { value: "long", label: "Long (~1.5 min)" },
+  { value: "xlong", label: "Extra long (~2 min)" },
 ];
 
 export default function CreatePage() {
@@ -46,7 +47,7 @@ export default function CreatePage() {
   const [style, setStyle] = useState("doodle");
   const [narrator, setNarrator] = useState("storyteller");
   const [voiceTier, setVoiceTier] = useState<"standard" | "premium">("standard");
-  const [length, setLength] = useState("long");
+  const [length, setLength] = useState("xlong");
   const [category, setCategory] = useState("");
   const [captionStyle, setCaptionStyle] = useState("bold-center");
   const [captionPosition, setCaptionPosition] = useState("middle");

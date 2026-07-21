@@ -52,7 +52,7 @@ const EnvSchema = z.object({
   // OPENAI_API_KEY as TTS); "mock" draws solid cards so the pipeline runs keyless.
   IMAGE_PROVIDER: z.enum(["mock", "openai"]).default("mock"),
   OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1"),
-  STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(15),
+  STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(16),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),
