@@ -5,6 +5,8 @@
  * better than photoreal). Keys are the only values the API accepts.
  */
 export const STYLE_PRESETS: Record<string, string> = {
+  "stick-scene":
+    "Characters are strictly simple black stick figures — plain thin lines, circle heads, dot eyes, simple expressive poses; NEVER detailed, painted, or cartoon-rendered. The life comes from the SCENE around them: multiple stick figures interacting, simple background objects and props (buildings, furniture, vehicles, signs as simple line drawings), and soft colored background washes and light color shading to set mood and place. Minimal foreground, colorful lively backdrop. Consistent stick-figure scene style.",
   doodle:
     "Bright, colorful hand-drawn cartoon doodle. Expressive stick figures with clear, exaggerated facial expressions and emotions (big eyes, open mouths, eyebrows). Bold cheerful colors, thick colorful outlines, playful and lively, simple flat shapes on a soft light background. Consistent fun doodle style.",
   whiteboard:

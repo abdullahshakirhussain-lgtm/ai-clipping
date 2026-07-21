@@ -4,6 +4,7 @@ import { apiGet, apiSend, revalidateAll, useCategories } from "@/lib/api";
 import { Button, Card, PageHeader } from "@/components/ui";
 
 const STYLES = [
+  { value: "stick-scene", label: "Stick figures + colorful scenes" },
   { value: "doodle", label: "Doodle (stick figures)" },
   { value: "whiteboard", label: "Whiteboard" },
   { value: "flat-vector", label: "Flat vector" },
