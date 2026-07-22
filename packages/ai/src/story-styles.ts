@@ -6,15 +6,15 @@
  */
 export const STYLE_PRESETS: Record<string, string> = {
   "stick-scene":
-    "Characters are strictly simple black stick figures — plain thin lines, circle heads, dot eyes, simple expressive poses; NEVER detailed, painted, or cartoon-rendered. The life comes from the SCENE around them: multiple stick figures interacting, simple background objects and props (buildings, furniture, vehicles, signs as simple line drawings), and soft colored background washes and light color shading to set mood and place. Minimal foreground, colorful lively backdrop. Consistent stick-figure scene style.",
+    "simple black stick figures — thin lines, circle heads, dot eyes, expressive poses — in a lively colored scene; several figures interacting, simple line-drawn props (buildings, furniture, vehicles, signs), soft colored background washes, minimal foreground, colorful backdrop",
   doodle:
-    "Bright, colorful hand-drawn cartoon doodle. Expressive stick figures with clear, exaggerated facial expressions and emotions (big eyes, open mouths, eyebrows). Bold cheerful colors, thick colorful outlines, playful and lively, simple flat shapes on a soft light background. Consistent fun doodle style.",
+    "bright colorful hand-drawn cartoon doodle; expressive stick figures with big emotive faces (large eyes, open mouths, eyebrows), thick bold outlines, cheerful colors, simple flat shapes, soft light background",
   whiteboard:
-    "Colorful whiteboard explainer drawing. Expressive stick figures and simple objects in bright marker colors (red, blue, green, orange), clear facial expressions and emotion, energetic and friendly, clean white background. Consistent colorful whiteboard style.",
+    "colorful whiteboard marker drawing; expressive stick figures and simple objects in bright markers (red, blue, green, orange), clear emotions, energetic, clean white background",
   "flat-vector":
-    "Vibrant flat vector illustration. Bold simple shapes, bright saturated palette, thick clean outlines, expressive characters with clear emotions, modern lively infographic look, no gradients. Consistent colorful flat-vector style.",
+    "vibrant flat vector illustration; bold simple shapes, bright saturated colors, thick clean outlines, expressive emotive characters, modern infographic look",
   "notebook-sketch":
-    "Colorful pen-and-marker sketch on notebook paper. Loose hand-drawn cartoon doodles and expressive stick figures with visible emotions, pops of bright color over blue-ink linework, energetic and charming. Consistent colorful sketch style.",
+    "colorful pen-and-marker sketch on notebook paper; loose hand-drawn doodles and expressive stick figures, bright color over blue-ink linework, energetic and charming",
 };
 
 export const DEFAULT_STYLE = "doodle";
@@ -26,5 +26,5 @@ export function styleAnchor(style: string): string {
 
 /** Compose a beat's image prompt with the locked style anchor. */
 export function styledImagePrompt(imagePrompt: string, style: string): string {
-  return `${imagePrompt.trim()}\n\nStyle: ${styleAnchor(style)}\nVertical 9:16 composition, subject centered, no text or words in the image.`;
+  return `${imagePrompt.trim()}. Style: ${styleAnchor(style)}. Vertical 9:16, subject centered, no text.`;
 }

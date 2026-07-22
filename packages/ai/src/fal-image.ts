@@ -28,7 +28,13 @@ export class FalImageProvider implements ImageProvider {
       },
       body: JSON.stringify({
         prompt: input.prompt,
-        image_size: "portrait_16_9", // 9:16; the assembler pads to 1080x1920
+        // 720x1280 = 0.92 MP, a clean 9:16. fal bills FLUX.1 [schnell] at
+        // $0.003/megapixel ROUNDED UP to the next whole MP, so anything <=1 MP
+        // costs a flat $0.003/image. Staying under 1 MP (vs the ~2 MP
+        // portrait_16_9 preset) halves the bill and keeps a 15-image story at
+        // ~$0.045. The assembler upscales this to 1080x1920 (same aspect, no
+        // letterbox), which is fine for the flat doodle/sketch styles.
+        image_size: { width: 720, height: 1280 },
         num_images: 1,
         output_format: "png",
       }),

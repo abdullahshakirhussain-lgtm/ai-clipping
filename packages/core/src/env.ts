@@ -55,7 +55,9 @@ const EnvSchema = z.object({
   OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1"),
   FAL_KEY: z.string().optional().default(""),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/schnell"),
-  STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(16),
+  // Ceiling on beats == images per story. At 15, a fal FLUX.1 [schnell] run
+  // (720x1280, $0.003/img) tops out at ~$0.045/video — under the $0.05 target.
+  STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(15),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),
