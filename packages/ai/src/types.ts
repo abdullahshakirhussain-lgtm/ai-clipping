@@ -161,6 +161,15 @@ export interface StoryScript {
   script: string;
   description: string;
   hashtags: string[];
+  /**
+   * The story's locked VISUAL WORLD — a compact, concrete description of the
+   * place, era and recurring character/motifs this story lives in (e.g. "snowy
+   * Moscow, red Kremlin walls, Cyrillic signs, ushanka hats, grey Soviet
+   * blocks; recurring man in a brown coat"). Threaded into EVERY beat's image
+   * prompt so frames read as one coherent, unmistakably on-topic world instead
+   * of context-free figures. May be empty if the writer omitted it.
+   */
+  setting: string;
   beats: StoryBeat[];
 }
 

@@ -201,7 +201,7 @@ export class MockLlmProvider implements LlmProvider {
       text: input.voiceTags
         ? `[curious] Beat ${i + 1} of the story about ${input.topic}. [pause] Something surprising happens.`
         : `Beat ${i + 1} of the story about ${input.topic}. Something surprising happens here.`,
-      imagePrompt: `A simple scene for beat ${i + 1}: a stick figure reacting to ${input.topic}.`,
+      imagePrompt: `Beat ${i + 1}: our recurring character reacting to ${input.topic} within the scene.`,
       delivery: i === 0 ? "Open with curiosity, slow and inviting." : `Build tension, beat ${i + 1}.`,
     }));
     return {
@@ -209,6 +209,7 @@ export class MockLlmProvider implements LlmProvider {
       script: beats.map((b) => b.text).join(" "),
       description: `A quick story about ${input.topic}. Follow for more.`,
       hashtags: ["#story", "#didyouknow", "#fyp", "#shorts"],
+      setting: `The concrete world of ${input.topic}: its real place, era, objects and a recurring main character.`,
       beats,
     };
   }

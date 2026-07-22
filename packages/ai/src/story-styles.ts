@@ -24,7 +24,13 @@ export function styleAnchor(style: string): string {
   return STYLE_PRESETS[style] ?? STYLE_PRESETS[DEFAULT_STYLE]!;
 }
 
-/** Compose a beat's image prompt with the locked style anchor. */
-export function styledImagePrompt(imagePrompt: string, style: string): string {
-  return `${imagePrompt.trim()}. Style: ${styleAnchor(style)}. Vertical 9:16, subject centered, no text.`;
+/**
+ * Compose a beat's image prompt: the beat's action first, then the story's
+ * shared visual world (so every frame stays on-topic and coherent), then the
+ * locked style anchor and composition. `setting` is the per-story world bible
+ * from the writer; empty is fine (the beat prompt still stands on its own).
+ */
+export function styledImagePrompt(imagePrompt: string, style: string, setting?: string): string {
+  const world = setting && setting.trim() ? ` Setting: ${setting.trim()}.` : "";
+  return `${imagePrompt.trim()}.${world} Style: ${styleAnchor(style)}. Vertical 9:16, subject centered, no text.`;
 }

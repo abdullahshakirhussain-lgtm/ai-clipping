@@ -898,7 +898,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     const images = await mapWithConcurrency(story.beats, 3, async (beat, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
-        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(beat.imagePrompt, spec.style) });
+        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(beat.imagePrompt, spec.style, story.setting) });
         await fs.writeFile(imgFile, image);
       } catch (err) {
         ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err) }, "image gen failed; using plain card");

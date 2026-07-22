@@ -648,6 +648,7 @@ Call submit_metadata with optimized fields.`,
       script?: string;
       description?: string;
       hashtags?: string[];
+      setting?: string;
       beats?: Array<{ text?: string; imagePrompt?: string; delivery?: string }>;
     }>(
       `Write a narrated STORY about: "${input.topic}".
@@ -661,13 +662,15 @@ LENGTH — the story decides, with one cap: keep the spoken narration UNDER 2 mi
 
 Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone. Narrator persona: "${narrator}" — write the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat.
 
+FIRST lock the story's VISUAL WORLD — "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS topic, so every frame reads as one coherent place a viewer can picture themselves in. Name the real place, era, architecture, objects, clothing, weather, palette — the specific stuff (for Russia: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, people in fur ushanka hats and heavy coats, overcast winter sky"). If the story has a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka") so they stay the SAME person every frame. Never generic — this is the anchor that makes the whole video feel on-topic.
+
 Break it into beats — one image on screen while its lines are read. Use as MANY beats as the story needs (roughly one image per 1-2 sentences), minimum 5, maximum ${maxBeats}. Don't stretch or cram to hit a number. Each beat:
 - "text": the spoken narration for this beat (1-2 sentences).${
         input.voiceTags
           ? ` Embed 1-2 ElevenLabs audio tags inline where the read shifts (acted, not spoken): [pause], [whispers], [excited], [sighs], [laughs], [curious].`
           : ""
       }
-- "imagePrompt": a SIMPLE concrete scene for this moment AND the character's EMOTION/expression (e.g. "a stick figure looking SHOCKED, hands on head" / "grinning proudly" / "crying"). One clear subject/action, no text in the image.
+- "imagePrompt": a concrete scene for THIS moment that LIVES INSIDE the setting above — show WHERE we are with specific environmental detail (the place, props, architecture, objects from the setting), not a figure in a blank void. Reuse the SAME recurring character (describe them consistently). Capture their EMOTION/expression AND the action, e.g. "our young man in his grey ushanka, hands on his head in shock, on a snowy Moscow street with the Kremlin wall behind him". One clear subject, but ALWAYS anchored in the world. No text/letters in the image.
 - "delivery": 1-2 sentences on the emotion of this beat (feeds the read's arc).
 
 Also give a title, a 1-2 sentence description with a soft CTA, and up to 6 hashtags.
@@ -682,6 +685,11 @@ Call submit_story.`,
             script: { type: "string", description: "the full narration, all beats joined" },
             description: { type: "string" },
             hashtags: { type: "array", items: { type: "string" } },
+            setting: {
+              type: "string",
+              description:
+                "the story's visual world: one compact line of concrete, on-topic place/era/character markers, threaded into every beat image",
+            },
             beats: {
               type: "array",
               items: {
@@ -695,7 +703,7 @@ Call submit_story.`,
               },
             },
           },
-          required: ["title", "script", "description", "hashtags", "beats"],
+          required: ["title", "script", "description", "hashtags", "setting", "beats"],
         },
       },
       3072,
@@ -714,6 +722,7 @@ Call submit_story.`,
       script: String(result.script ?? cleanBeats.map((b) => b.text).join(" ")),
       description: String(result.description ?? ""),
       hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
+      setting: String(result.setting ?? "").trim(),
       beats: cleanBeats,
     };
   }
