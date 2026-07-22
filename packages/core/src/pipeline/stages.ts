@@ -902,8 +902,24 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         const { image } = await ctx.images.generate({ prompt: styledImagePrompt(beat.imagePrompt, spec.style, story.setting) });
         await fs.writeFile(imgFile, image);
       } catch (err) {
-        ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err) }, "image gen failed; using plain card");
-        await fs.writeFile(imgFile, plainCardPng());
+        // Grim beat prompts (corpses, dictators, plagues — normal for the
+        // history/true-crime niches) can trip the provider's moderation. Second
+        // chance: an empty establishing shot of the story's WORLD — no people,
+        // no beat specifics — still on-topic via the setting, instead of a
+        // jarring blank card.
+        ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err) }, "image gen failed; retrying with a neutral scene");
+        try {
+          const neutral = styledImagePrompt(
+            "a wide establishing scene of the story's world, no people",
+            spec.style,
+            story.setting,
+          );
+          const { image } = await ctx.images.generate({ prompt: neutral });
+          await fs.writeFile(imgFile, image);
+        } catch (err2) {
+          ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err2) }, "image gen failed twice; using plain card");
+          await fs.writeFile(imgFile, plainCardPng());
+        }
       }
       done++;
       await setProgress(`Drawing the images (${done}/${story.beats.length})`, 30 + Math.round((done / story.beats.length) * 55));

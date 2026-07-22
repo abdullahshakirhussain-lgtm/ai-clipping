@@ -36,28 +36,56 @@ export class OpenAiImageProvider implements ImageProvider {
     this.quality = opts.quality || "low";
   }
 
+  /**
+   * Generate with retries: 429s (rate limits from our 3-way concurrency) and
+   * 5xx/network blips are transient and MUST NOT surface as a blank card in a
+   * finished video — back off (honouring Retry-After) and try again. Other 4xx
+   * (moderation blocks, bad params) are deterministic; fail fast so the caller
+   * can fall back differently.
+   */
   async generate(input: { prompt: string; size?: string }): Promise<{ image: Buffer; ext: "png" }> {
-    const res = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.opts.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        prompt: input.prompt,
-        size: input.size || "1024x1536",
-        quality: this.quality,
-        n: 1,
-      }),
-    });
-    if (!res.ok) {
+    const MAX_ATTEMPTS = 3;
+    let lastErr: unknown = new Error("OpenAI image: no attempts made");
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch("https://api.openai.com/v1/images/generations", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.opts.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: this.model,
+            prompt: input.prompt,
+            size: input.size || "1024x1536",
+            quality: this.quality,
+            n: 1,
+          }),
+        });
+      } catch (err) {
+        lastErr = err; // network blip — retry
+        if (attempt < MAX_ATTEMPTS) await sleep(1500 * attempt);
+        continue;
+      }
+      if (res.ok) {
+        const json = (await res.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
+        const b64 = json.data?.[0]?.b64_json;
+        if (!b64) throw new Error("OpenAI image returned no b64_json");
+        return { image: Buffer.from(b64, "base64"), ext: "png" };
+      }
       const detail = await res.text().catch(() => "");
-      throw new Error(`OpenAI image failed (${res.status}): ${detail.slice(0, 200)}`);
+      lastErr = new Error(`OpenAI image failed (${res.status}): ${detail.slice(0, 200)}`);
+      if (res.status !== 429 && res.status < 500) throw lastErr; // deterministic 4xx
+      if (attempt < MAX_ATTEMPTS) {
+        const retryAfterSec = Number(res.headers.get("retry-after"));
+        await sleep(Math.max(Number.isFinite(retryAfterSec) ? retryAfterSec * 1000 : 0, 1500 * attempt));
+      }
     }
-    const json = (await res.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
-    const b64 = json.data?.[0]?.b64_json;
-    if (!b64) throw new Error("OpenAI image returned no b64_json");
-    return { image: Buffer.from(b64, "base64"), ext: "png" };
+    throw lastErr;
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
