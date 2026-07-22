@@ -665,13 +665,14 @@ Work only from what you actually know: real names, dates, places, numbers, the t
 
 Output:
 
-1. "hookOptions": exactly 3 candidate opening lines — and ALL 3 are COLD OPENS that drop the viewer INSIDE the scene, mid-moment, present tense. Use these three shapes:
-   - a precise date/time: "It's August 10th, 1998, and [a person] is [mid-action, about to hit the story]…"
-   - a place: "In a small town in [region], [a person does one concrete thing]…"
-   - second person: "Imagine [being in this exact situation]…"
-   The opener NEVER announces or summarizes the story. BANNED: "This is the story of…", "Did you know…", "The most X in history…", "Today…", or ANY first line that gives away the premise. The scene itself raises the question — the viewer should feel they walked in on something already happening.
+1. "hookOptions": exactly 3 candidate opening lines. HARD RULE — every option MUST literally begin with one of these fixed stems (fill the brackets; the stem's opening words stay exactly as written):
+   - "It's [date/year]. [A person] is [mid-action]…"  (e.g. "It's August 10th, 1998. A night guard in Stockholm is starting his last round.")
+   - "In a small town in [country/region], [a person does one concrete thing]…"  (also fine: "In [year], in [place], …")
+   - "Imagine [being in this exact situation]…"
+   Openers sounding the same video to video is FINE — this is the format, consistency is a feature. Present tense, mid-scene, concrete.
+   The first line NEVER announces or summarizes the story. BANNED first lines: "This is the story of…", "Did you know…", "The most X in history…", "Today…", introducing/naming the topic, or ANY line that gives away the premise. The viewer walks in on something already happening; the scene raises the question by itself.
 
-2. "hook": the single STRONGEST of your 3 cold opens — the scene hardest to scroll away from, and one this true story can actually pay off.
+2. "hook": the single STRONGEST of your 3 cold opens — the scene hardest to scroll away from, and one this true story can actually pay off. It MUST start with one of the stems above.
 
 3. "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS story — real place, era, architecture, objects, clothing, weather, palette (for a Moscow story: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, fur ushanka hats and heavy coats, overcast winter sky"). If there's a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka"). Never generic — this anchors every frame.
 
@@ -751,7 +752,7 @@ Call submit_outline.`,
     }>(
       `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.
 
-OPENING HOOK (use this as beat 1, verbatim or barely reworded — do NOT soften or bury it): ${planHook || "cold-open inside the scene: a date, a place, a person mid-moment — never announce what the story is about"}
+OPENING HOOK — beat 1's "text" MUST START with these exact words, and NOTHING may come before them (no topic introduction, no setup sentence, no title read-out): ${planHook || 'cold-open inside the scene, starting literally with "It\'s [date]…", "In a small town in…" or "Imagine…" — never announce what the story is about'}
 VISUAL WORLD (setting): ${planSetting || "(derive a concrete, on-topic world)"}
 STORY SPINE — follow this order, one beat each:
 ${spineText}
@@ -763,7 +764,7 @@ HOW TO WRITE IT:
 - Keep the WHOLE spoken narration UNDER 2 minutes (~${maxWords} words absolute maximum, ~150 words/min). SHORTER is better when the story is best told tight — never pad.
 
 RETENTION MECHANICS (this is the job):
-- COLD OPEN: beat 1 IS the opening hook above — the viewer lands mid-scene (a date, a place, a person in motion), present tense. NEVER announce or summarize what the video is about ("This is the story of…" is banned); the scene raises the question by itself.
+- COLD OPEN: the very FIRST WORDS of the whole narration are the opening hook above — starting "It's…", "In…" or "Imagine…". The viewer lands mid-scene (a date, a place, a person in motion), present tense. NEVER announce, name or summarize what the video is about before or after the hook's first line ("This is the story of…" is banned); the scene raises the question by itself.
 - REHOOK: around the 2nd-3rd beat, open a SECOND smaller loop ("but that's not the strange part…") to catch anyone about to scroll before the curiosity dips.
 - ESCALATE every beat — stakes, tension or weirdness rise, each beat pulling into the next; NO flat middle. Land one concrete detail (a name, a number, a sensory image) per beat.
 

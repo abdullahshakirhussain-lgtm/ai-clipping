@@ -705,6 +705,11 @@ export async function assembleSlideshow(input: {
   //    not per output frame across a 1-2 minute video — is the bulk of the cost;
   //    uniform sizes then let us use the lightweight concat demuxer (one input,
   //    no N parallel looped decoders) instead of a heavy filter_complex.
+  //    COVER + CENTER-CROP (not pad): image models return 2:3 portraits
+  //    (e.g. gpt's 1024x1536), and padding to 9:16 leaves white bars top and
+  //    bottom. Scaling to cover and cropping the ~8% overflow off each side
+  //    gives true full-bleed frames; prompts keep the subject centered so the
+  //    crop is safe. Exact-9:16 sources (fal 720x1280) crop nothing.
   //    SEQUENTIAL + single-threaded: firing all N scales at once, each spawning
   //    PNG encoder threads, exhausts thread/PID limits on constrained containers
   //    (EAGAIN / ff_frame_thread_encoder_init failed). Each scale is a single
@@ -715,7 +720,7 @@ export async function assembleSlideshow(input: {
       bin("ffmpeg"),
       [
         "-y", "-threads", "1", "-i", slides[i]!.imageFile,
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=white,setsar=1",
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1",
         "-frames:v", "1", "-threads", "1", join(workDir, `slide-${i}.png`),
       ],
       { cwd: workDir, timeoutMs: 60 * 1000 },

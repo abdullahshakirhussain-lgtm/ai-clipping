@@ -16,8 +16,9 @@ export interface OpenAiImageOptions {
 
 /**
  * OpenAI image generation for Story Studio frames. Uses the same API key as the
- * TTS provider. Returns base64 PNG; portrait size is closest to 9:16 (the
- * assembler pads to 1080x1920). gpt-image-1-mini is the default model — an
+ * TTS provider. Returns base64 PNG; portrait 1024x1536 (2:3) is the closest
+ * size to 9:16 — the assembler scales to cover 1080x1920 and center-crops the
+ * ~8% side overflow for full-bleed frames (prompts keep subjects centered). gpt-image-1-mini is the default model — an
  * instruction-following model that honours "simple stick figures + colorful
  * background" (which pure diffusion models like FLUX will not), at a fraction of
  * gpt-image-1's cost.
