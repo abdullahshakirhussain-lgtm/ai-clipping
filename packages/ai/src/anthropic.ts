@@ -665,23 +665,22 @@ Work only from what you actually know: real names, dates, places, numbers, the t
 
 Output:
 
-1. "hookOptions": exactly 3 candidate opening lines, each a DIFFERENT hook type, each opening a curiosity loop the viewer can't leave unclosed:
-   - curiosity gap (a fact that demands its own explanation),
-   - contradiction / pattern-break (violates an expectation),
-   - cold stakes (money/lives/consequences stated flat up front),
-   - or a single strange specific detail.
-   A hook PROVOKES, it never describes ("Today we'll look at…" is banned). Specific and concrete beats vague grandiosity ("the craziest story ever" is banned).
+1. "hookOptions": exactly 3 candidate opening lines — and ALL 3 are COLD OPENS that drop the viewer INSIDE the scene, mid-moment, present tense. Use these three shapes:
+   - a precise date/time: "It's August 10th, 1998, and [a person] is [mid-action, about to hit the story]…"
+   - a place: "In a small town in [region], [a person does one concrete thing]…"
+   - second person: "Imagine [being in this exact situation]…"
+   The opener NEVER announces or summarizes the story. BANNED: "This is the story of…", "Did you know…", "The most X in history…", "Today…", or ANY first line that gives away the premise. The scene itself raises the question — the viewer should feel they walked in on something already happening.
 
-2. "hook": the single STRONGEST of your 3 options — the one that most makes a scroll impossible AND that this true story can actually pay off.
+2. "hook": the single STRONGEST of your 3 cold opens — the scene hardest to scroll away from, and one this true story can actually pay off.
 
 3. "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS story — real place, era, architecture, objects, clothing, weather, palette (for a Moscow story: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, fur ushanka hats and heavy coats, overcast winter sky"). If there's a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka"). Never generic — this anchors every frame.
 
-4. "ending": the story's REAL, satisfying payoff — the actual final fact, consequence or twist it lands on, and it should pay off the hook (ideally calling back to a detail from it). NOT a moral, NOT a call-to-action, NOT a rhetorical question.
+4. "ending": the story's REAL final fact or consequence — the last thing that actually happened, stated as plain fact. It must resolve the question the cold open raised, but it is NOT a punchline: no moral, no call-to-action, no rhetorical question, no crafted closing line.
 
 5. "spine": the ordered beats (minimum 5, up to ${maxBeats}), one per key story moment. Each beat has:
-   - "role": its job in the arc — hook / rehook / setup / rising / turn / payoff / resolution.
+   - "role": its job in the arc — hook / rehook / setup / rising / turn / payoff.
    - "fact": the concrete real thing that happens in this beat (the event + the specific detail), one line.
-   Structure it for retention: beat 1 = "hook" (delivers the hook above); an early "rehook" (~beat 2-3) that opens a second loop before curiosity dips; the stakes/tension RISE every beat with no flat middle; a clear "turn" around 60-70%; then "payoff" (lands the ending, calls back to the hook) and a short "resolution". Use only as many beats as the true story needs — don't pad.
+   Structure it for retention: beat 1 = "hook" (the cold open above); an early "rehook" (~beat 2-3) that opens a second loop before curiosity dips; the stakes/tension RISE every beat with no flat middle; a clear "turn" around 60-70%; the LAST beat is "payoff" — the story's final real event, where the narration simply stops. NO wrap-up or resolution beat after it. Use only as many beats as the true story needs — don't pad.
 
 Call submit_outline.`,
       {
@@ -694,11 +693,12 @@ Call submit_outline.`,
             hookOptions: {
               type: "array",
               items: { type: "string" },
-              description: "exactly 3 candidate opening lines, each a different hook type, each provoking not describing",
+              description:
+                "exactly 3 cold-open first lines (date / place / imagine), in-scene and present tense, never announcing the story",
             },
             hook: {
               type: "string",
-              description: "the single strongest opening line — a curiosity loop this true story can actually pay off",
+              description: "the strongest cold open — drops the viewer mid-scene; never summarizes the premise",
             },
             setting: {
               type: "string",
@@ -706,7 +706,7 @@ Call submit_outline.`,
             },
             ending: {
               type: "string",
-              description: "the real factual payoff that pays off the hook — no moral, CTA or question",
+              description: "the story's final fact, stated plainly — no moral, CTA, question, or punchline",
             },
             spine: {
               type: "array",
@@ -715,7 +715,7 @@ Call submit_outline.`,
                 properties: {
                   role: {
                     type: "string",
-                    description: "hook | rehook | setup | rising | turn | payoff | resolution",
+                    description: "hook | rehook | setup | rising | turn | payoff",
                   },
                   fact: { type: "string", description: "the concrete real event + specific detail for this beat" },
                 },
@@ -751,7 +751,7 @@ Call submit_outline.`,
     }>(
       `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.
 
-OPENING HOOK (use this as beat 1, verbatim or barely reworded — do NOT soften or bury it): ${planHook || "open with the single most scroll-stopping true detail of this story"}
+OPENING HOOK (use this as beat 1, verbatim or barely reworded — do NOT soften or bury it): ${planHook || "cold-open inside the scene: a date, a place, a person mid-moment — never announce what the story is about"}
 VISUAL WORLD (setting): ${planSetting || "(derive a concrete, on-topic world)"}
 STORY SPINE — follow this order, one beat each:
 ${spineText}
@@ -763,14 +763,14 @@ HOW TO WRITE IT:
 - Keep the WHOLE spoken narration UNDER 2 minutes (~${maxWords} words absolute maximum, ~150 words/min). SHORTER is better when the story is best told tight — never pad.
 
 RETENTION MECHANICS (this is the job):
-- HOOK: beat 1 opens the curiosity loop in the first sentence and provokes, never describes. Earn the first 3 seconds or nothing else matters.
+- COLD OPEN: beat 1 IS the opening hook above — the viewer lands mid-scene (a date, a place, a person in motion), present tense. NEVER announce or summarize what the video is about ("This is the story of…" is banned); the scene raises the question by itself.
 - REHOOK: around the 2nd-3rd beat, open a SECOND smaller loop ("but that's not the strange part…") to catch anyone about to scroll before the curiosity dips.
 - ESCALATE every beat — stakes, tension or weirdness rise, each beat pulling into the next; NO flat middle. Land one concrete detail (a name, a number, a sensory image) per beat.
-- CALLBACK: at the payoff, pay off the exact promise/detail from the hook so the ending clicks shut like a lid.
 
 ENDING RULES (critical — this is what's been going wrong):
-- End ON the story's real final fact/consequence (the "ending" above), stated plainly, then STOP.
-- BANNED closers — NEVER end the narration with any of these: a call-to-action or "follow for more"/hashtag-speak; a tacked-on moral or life lesson; "let that sink in", "makes you wonder", "and the rest is history", "and that's the story of…", "mind = blown", "little did they know"; or a rhetorical question. No cringe. The last line is part of the STORY, not a comment on it.
+- The narration ends ON the story's final fact (the "ending" above): the LAST SENTENCE is simply the last thing that happened, stated plainly. Then it STOPS.
+- NO END PUNCH of any kind: no punchline, kicker, button, callback line, clever flourish, or summary sentence. Do NOT "craft" a closing line at all — the final event IS the closing line. If it feels abrupt, that is correct.
+- BANNED closers — NEVER end the narration with any of these: a call-to-action or "follow for more"/hashtag-speak; a tacked-on moral or life lesson; "let that sink in", "makes you wonder", "and the rest is history", "and that's the story of…", "mind = blown", "little did they know"; or a rhetorical question. The last line is part of the STORY, not a comment on it.
 
 For EACH beat give:
 - "text": the spoken narration (1-2 sentences).${
