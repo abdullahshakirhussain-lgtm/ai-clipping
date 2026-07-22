@@ -643,6 +643,76 @@ Call submit_metadata with optimized fields.`,
     const maxBeats = Math.max(5, Math.min(20, input.maxBeats));
     const maxWords = Math.max(120, Math.min(400, input.maxWords));
     const narrator = input.narrator ?? "storyteller";
+
+    // ── Pass 1: architect the TRUE story spine (real facts + arc + a factual
+    // ending). Planning the backbone up front is what makes the finished
+    // narration feel complete and detailed instead of improvised — and it pins
+    // the ending to a real payoff so the writer stops on a story beat, not a
+    // tacked-on cringe closer.
+    const outline = await this.callTool<{
+      title?: string;
+      setting?: string;
+      ending?: string;
+      spine?: Array<{ role?: string; fact?: string }>;
+    }>(
+      `You are the STORY ARCHITECT. Plan a genuinely interesting, TRUE-to-the-topic short-form story about: "${input.topic}".
+
+Recall what you actually know, then output the spine a narrator will flesh out. Ground everything in concrete specifics: real names, dates, places, numbers, the telling human detail. No vague filler, no "some say", no invented facts.
+
+1. "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS topic — real place, era, architecture, objects, clothing, weather, palette (for Russia: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, fur ushanka hats and heavy coats, overcast winter sky"). If there's a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka"). This is the visual anchor for every frame — never generic.
+
+2. "ending": the story's REAL, satisfying payoff — the actual final fact, consequence or twist it lands on. NOT a moral, NOT a call-to-action, NOT a rhetorical question. This is where the narration will stop.
+
+3. "spine": the ordered beats (minimum 5, up to ${maxBeats}), one per key story moment. Each beat has:
+   - "role": its job in the arc — hook / setup / rising / turn / payoff / resolution.
+   - "fact": the concrete real thing that happens in this beat (the event + the specific detail), one line.
+   The FIRST beat's role is "hook" — the single most surprising, scroll-stopping way in. The LAST beat delivers the "ending" above.
+
+Use only as many beats as the true story needs — don't pad. Call submit_outline.`,
+      {
+        name: "submit_outline",
+        description: "Submit the researched story spine.",
+        input_schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            setting: {
+              type: "string",
+              description: "one compact line of concrete on-topic visual markers + recurring character look",
+            },
+            ending: {
+              type: "string",
+              description: "the real factual payoff the story lands on — no moral, CTA or question",
+            },
+            spine: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  role: { type: "string", description: "hook | setup | rising | turn | payoff | resolution" },
+                  fact: { type: "string", description: "the concrete real event + specific detail for this beat" },
+                },
+                required: ["role", "fact"],
+              },
+            },
+          },
+          required: ["title", "setting", "ending", "spine"],
+        },
+      },
+      1536,
+      { model: this.commentaryModel, temperature: 0.8 },
+    );
+
+    const spine = (outline.spine ?? [])
+      .map((s) => ({ role: String(s.role ?? "").trim(), fact: String(s.fact ?? "").trim() }))
+      .filter((s) => s.fact);
+    const planSetting = String(outline.setting ?? "").trim();
+    const planEnding = String(outline.ending ?? "").trim();
+    const spineText = spine.length
+      ? spine.map((s, i) => `${i + 1}. [${s.role || "beat"}] ${s.fact}`).join("\n")
+      : `(no spine returned — build a complete, factual arc about ${input.topic} yourself)`;
+
+    // ── Pass 2: narrate the spine into the finished, spoken story.
     const result = await this.callTool<{
       title?: string;
       script?: string;
@@ -651,29 +721,33 @@ Call submit_metadata with optimized fields.`,
       setting?: string;
       beats?: Array<{ text?: string; imagePrompt?: string; delivery?: string }>;
     }>(
-      `Write a narrated STORY about: "${input.topic}".
+      `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.
 
-YOUR #1 JOB: a COMPLETE, genuinely interesting story that makes someone watch to the very END. A full arc that lands — completeness and intrigue beat everything else. Read aloud as one continuous narration:
-- HOOK (first 1-2 lines): the single most surprising, scroll-stopping opener — a shocking fact, a "wait, what?", a question. Earn the first 3 seconds or nothing else matters.
-- BODY: actually TELL the story — real specifics (names, numbers, places, the telling detail), rising stakes, each beat pulling to the next.
-- ENDING: a clean, satisfying resolution — the payoff/twist lands, then ONE closing line that feels finished (not an abrupt stop, not a hard sell).
+VISUAL WORLD (setting): ${planSetting || "(derive a concrete, on-topic world)"}
+STORY SPINE — follow this order, one beat each:
+${spineText}
+ENDING TO LAND ON: ${planEnding || "the story's real final consequence"}
 
-LENGTH — the story decides, with one cap: keep the spoken narration UNDER 2 minutes (~${maxWords} words absolute maximum, ~150 words/minute). SHORTER is better whenever the story is best told tight — never pad to fill time, and never rush or cut the arc to save it. If a topic genuinely can't be told well under 2 minutes, tell the most complete TIGHTER version instead of a truncated long one.
+HOW TO WRITE IT:
+- Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone.
+- Narrator persona: "${narrator}" — shape the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat.
+- Keep the WHOLE spoken narration UNDER 2 minutes (~${maxWords} words absolute maximum, ~150 words/min). SHORTER is better when the story is best told tight — never pad.
+- The HOOK (first beat) must earn the first 3 seconds. Every body beat pulls into the next with real specifics.
 
-Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone. Narrator persona: "${narrator}" — write the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat.
+ENDING RULES (critical — this is what's been going wrong):
+- End ON the story's real final fact/consequence (the "ending" above), stated plainly, then STOP.
+- BANNED closers — NEVER end the narration with any of these: a call-to-action or "follow for more"/hashtag-speak; a tacked-on moral or life lesson; "let that sink in", "makes you wonder", "and the rest is history", "and that's the story of…", "mind = blown", "little did they know"; or a rhetorical question. No cringe. The last line is part of the STORY, not a comment on it.
 
-FIRST lock the story's VISUAL WORLD — "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS topic, so every frame reads as one coherent place a viewer can picture themselves in. Name the real place, era, architecture, objects, clothing, weather, palette — the specific stuff (for Russia: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, people in fur ushanka hats and heavy coats, overcast winter sky"). If the story has a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka") so they stay the SAME person every frame. Never generic — this is the anchor that makes the whole video feel on-topic.
-
-Break it into beats — one image on screen while its lines are read. Use as MANY beats as the story needs (roughly one image per 1-2 sentences), minimum 5, maximum ${maxBeats}. Don't stretch or cram to hit a number. Each beat:
-- "text": the spoken narration for this beat (1-2 sentences).${
+For EACH beat give:
+- "text": the spoken narration (1-2 sentences).${
         input.voiceTags
           ? ` Embed 1-2 ElevenLabs audio tags inline where the read shifts (acted, not spoken): [pause], [whispers], [excited], [sighs], [laughs], [curious].`
           : ""
       }
-- "imagePrompt": a concrete scene for THIS moment that LIVES INSIDE the setting above — show WHERE we are with specific environmental detail (the place, props, architecture, objects from the setting), not a figure in a blank void. Reuse the SAME recurring character (describe them consistently). Capture their EMOTION/expression AND the action, e.g. "our young man in his grey ushanka, hands on his head in shock, on a snowy Moscow street with the Kremlin wall behind him". One clear subject, but ALWAYS anchored in the world. No text/letters in the image.
+- "imagePrompt": a concrete scene for THIS moment that LIVES INSIDE the setting — show WHERE we are with specific props/architecture/objects from the setting, never a figure in a blank void. The character is a SIMPLE STICK FIGURE, the SAME one every beat; capture their emotion/expression AND the action, e.g. "our stick figure with hands on his head in shock, on a snowy Moscow street with the Kremlin wall behind him". No text/letters in the image.
 - "delivery": 1-2 sentences on the emotion of this beat (feeds the read's arc).
 
-Also give a title, a 1-2 sentence description with a soft CTA, and up to 6 hashtags.
+Also give: "title"; "setting" (echo/refine the visual-world line above); "description" (1-2 sentences — a soft CTA is fine HERE in the description only, NEVER in the narration); up to 6 "hashtags".
 Call submit_story.`,
       {
         name: "submit_story",
@@ -696,7 +770,7 @@ Call submit_story.`,
                 type: "object",
                 properties: {
                   text: { type: "string", description: "spoken narration for this beat" },
-                  imagePrompt: { type: "string", description: "simple scene to draw for this beat" },
+                  imagePrompt: { type: "string", description: "simple stick-figure scene to draw for this beat" },
                   delivery: { type: "string", description: "how to read this beat: pace, pitch, emotion" },
                 },
                 required: ["text", "imagePrompt", "delivery"],
@@ -718,11 +792,11 @@ Call submit_story.`,
         ...(String(b.delivery ?? "").trim() ? { delivery: String(b.delivery).trim() } : {}),
       }));
     return {
-      title: String(result.title ?? input.topic).slice(0, 120),
+      title: String(result.title ?? outline.title ?? input.topic).slice(0, 120),
       script: String(result.script ?? cleanBeats.map((b) => b.text).join(" ")),
       description: String(result.description ?? ""),
       hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
-      setting: String(result.setting ?? "").trim(),
+      setting: String(result.setting ?? "").trim() || planSetting,
       beats: cleanBeats,
     };
   }

@@ -6,9 +6,9 @@
  */
 export const STYLE_PRESETS: Record<string, string> = {
   "stick-scene":
-    "simple black stick figures — thin lines, circle heads, dot eyes, expressive poses — in a lively colored scene; several figures interacting, simple line-drawn props (buildings, furniture, vehicles, signs), soft colored background washes, minimal foreground, colorful backdrop",
+    "The characters are TRUE simple stick figures — plain black thin-line bodies, circle heads, dot eyes, simple expressive poses. NEVER detailed people, NEVER realistic or fully rendered cartoon characters. Keep the SAME simple stick-figure look for every character across every frame. All the life and immersion comes from the SCENE around them: a colorful, richly detailed background with the real setting's props — buildings, streets, vehicles, furniture, signs, landscape, weather — drawn in bright flat colors with soft shading so the place is instantly recognizable. Simple stick figures inside a vivid, unmistakable colorful world.",
   doodle:
-    "bright colorful hand-drawn cartoon doodle; expressive stick figures with big emotive faces (large eyes, open mouths, eyebrows), thick bold outlines, cheerful colors, simple flat shapes, soft light background",
+    "bright colorful hand-drawn cartoon doodle; characters are simple expressive stick figures (NOT detailed people) with big emotive faces — large eyes, open mouths, eyebrows; thick bold outlines, cheerful colors, simple flat shapes, colorful background that shows the setting",
   whiteboard:
     "colorful whiteboard marker drawing; expressive stick figures and simple objects in bright markers (red, blue, green, orange), clear emotions, energetic, clean white background",
   "flat-vector":
@@ -17,7 +17,7 @@ export const STYLE_PRESETS: Record<string, string> = {
     "colorful pen-and-marker sketch on notebook paper; loose hand-drawn doodles and expressive stick figures, bright color over blue-ink linework, energetic and charming",
 };
 
-export const DEFAULT_STYLE = "doodle";
+export const DEFAULT_STYLE = "stick-scene";
 
 /** Resolve a style key to its anchor, falling back to the default. */
 export function styleAnchor(style: string): string {

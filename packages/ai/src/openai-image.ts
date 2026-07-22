@@ -1,25 +1,38 @@
 import type { ImageProvider } from "./types.js";
 
+export type OpenAiImageQuality = "auto" | "low" | "medium" | "high";
+
 export interface OpenAiImageOptions {
   apiKey: string;
-  /** gpt-image-1 (default). */
+  /** gpt-image-1-mini (default) — same style-understanding as gpt-image-1 at ~10x lower cost. */
   model?: string;
+  /**
+   * Quality tier (gpt-image-1 / gpt-image-1-mini). "low" is the default: on
+   * gpt-image-1-mini that's ~$0.006/image (~$0.09 for a 15-beat story) while
+   * still rendering the stick-figure + colorful-scene style faithfully.
+   */
+  quality?: OpenAiImageQuality;
 }
 
 /**
  * OpenAI image generation for Story Studio frames. Uses the same API key as the
- * TTS provider. gpt-image-1 returns base64 PNG; portrait size is closest to 9:16
- * (the assembler pads to 1080x1920).
+ * TTS provider. Returns base64 PNG; portrait size is closest to 9:16 (the
+ * assembler pads to 1080x1920). gpt-image-1-mini is the default model — an
+ * instruction-following model that honours "simple stick figures + colorful
+ * background" (which pure diffusion models like FLUX will not), at a fraction of
+ * gpt-image-1's cost.
  *
- * Note: gpt-image-1 requires organization verification on some accounts — a 403
- * here is handled upstream by falling back to a plain card, so one unverified
- * account never sinks the pipeline.
+ * Note: gpt-image models require organization verification on some accounts — a
+ * 403 here is handled upstream by falling back to a plain card, so one
+ * unverified account never sinks the pipeline.
  */
 export class OpenAiImageProvider implements ImageProvider {
   private readonly model: string;
+  private readonly quality: OpenAiImageQuality;
 
   constructor(private readonly opts: OpenAiImageOptions) {
-    this.model = opts.model || "gpt-image-1";
+    this.model = opts.model || "gpt-image-1-mini";
+    this.quality = opts.quality || "low";
   }
 
   async generate(input: { prompt: string; size?: string }): Promise<{ image: Buffer; ext: "png" }> {
@@ -33,6 +46,7 @@ export class OpenAiImageProvider implements ImageProvider {
         model: this.model,
         prompt: input.prompt,
         size: input.size || "1024x1536",
+        quality: this.quality,
         n: 1,
       }),
     });

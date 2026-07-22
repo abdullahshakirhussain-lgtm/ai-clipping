@@ -12,7 +12,7 @@ export const MUSIC_MOODS = ["none", "calm", "tense", "upbeat", "epic"] as const;
  */
 export const CreateStoryInputSchema = z.object({
   topic: z.string().min(3).max(300),
-  style: z.enum(STORY_STYLES).default("doodle"),
+  style: z.enum(STORY_STYLES).default("stick-scene"),
   /** Voice tier: standard (OpenAI) or premium (ElevenLabs). */
   voiceTier: z.enum(["standard", "premium"]).default("standard"),
   narrator: z.enum(STORY_NARRATOR_KEYS).default("storyteller"),

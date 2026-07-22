@@ -214,8 +214,12 @@ function buildImageProvider(env: Env, logger: Logger): ImageProvider {
   }
   if (env.IMAGE_PROVIDER === "openai") {
     if (!env.OPENAI_API_KEY) throw new Error("IMAGE_PROVIDER=openai requires OPENAI_API_KEY");
-    logger.info({ model: env.OPENAI_IMAGE_MODEL }, "using OpenAI image generation");
-    return new OpenAiImageProvider({ apiKey: env.OPENAI_API_KEY, model: env.OPENAI_IMAGE_MODEL });
+    logger.info({ model: env.OPENAI_IMAGE_MODEL, quality: env.OPENAI_IMAGE_QUALITY }, "using OpenAI image generation");
+    return new OpenAiImageProvider({
+      apiKey: env.OPENAI_API_KEY,
+      model: env.OPENAI_IMAGE_MODEL,
+      quality: env.OPENAI_IMAGE_QUALITY,
+    });
   }
   logger.info("using mock image provider (solid cards)");
   return new MockImageProvider();

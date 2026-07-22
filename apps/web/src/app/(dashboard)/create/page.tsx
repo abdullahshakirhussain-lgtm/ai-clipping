@@ -39,7 +39,7 @@ export default function CreatePage() {
   const categories = (cats ?? []).map((c) => c.name);
 
   const [topic, setTopic] = useState("");
-  const [style, setStyle] = useState("doodle");
+  const [style, setStyle] = useState("stick-scene");
   const [narrator, setNarrator] = useState("storyteller");
   const [voiceTier, setVoiceTier] = useState<"standard" | "premium">("standard");
   const [category, setCategory] = useState("");

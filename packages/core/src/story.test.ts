@@ -1,5 +1,6 @@
 import {
   alignmentToWords,
+  DEFAULT_STYLE,
   MockImageProvider,
   MockLlmProvider,
   narratorInstruction,
@@ -52,7 +53,7 @@ describe("story style presets", () => {
 
   it("falls back to the default style for an unknown key", () => {
     const out = styledImagePrompt("x", "nope");
-    expect(out).toContain(STYLE_PRESETS.doodle!.slice(0, 20));
+    expect(out).toContain(STYLE_PRESETS[DEFAULT_STYLE]!.slice(0, 20));
   });
 });
 

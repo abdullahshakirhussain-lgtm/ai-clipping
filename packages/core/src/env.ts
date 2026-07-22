@@ -48,11 +48,16 @@ const EnvSchema = z.object({
   ELEVENLABS_MODEL: z.string().default("eleven_v3"),
 
   // ── Story Studio (generated videos) ────────────────────────────────────────
-  // Image generation for narrated slideshows. "fal" = FLUX.1 schnell via fal.ai
-  // (~50x cheaper than gpt-image-1, needs FAL_KEY); "openai" = gpt-image-1 (uses
-  // OPENAI_API_KEY); "mock" draws solid cards so the pipeline runs keyless.
+  // Image generation for narrated slideshows. "openai" = gpt-image-1-mini
+  // (recommended: an instruction-following model that actually draws stick
+  // figures + colorful scenes; ~$0.006/img at low quality, uses OPENAI_API_KEY);
+  // "fal" = FLUX.1 schnell (cheapest, but won't render true stick figures,
+  // needs FAL_KEY); "mock" draws solid cards so the pipeline runs keyless.
   IMAGE_PROVIDER: z.enum(["mock", "openai", "fal"]).default("mock"),
-  OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1"),
+  OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1-mini"),
+  // Quality tier for the OpenAI image model. "low" keeps a 15-beat story at
+  // ~$0.09; "medium" (~$0.22) is sharper; "high"/"auto" cost far more.
+  OPENAI_IMAGE_QUALITY: z.enum(["auto", "low", "medium", "high"]).default("low"),
   FAL_KEY: z.string().optional().default(""),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/schnell"),
   // Ceiling on beats == images per story. At 15, a fal FLUX.1 [schnell] run
