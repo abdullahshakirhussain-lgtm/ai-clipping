@@ -195,7 +195,8 @@ export class MockLlmProvider implements LlmProvider {
   }
 
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
-    const n = Math.max(4, Math.min(20, input.targetBeats));
+    // Offline stub: pick a mid count within the cap (the writer floats this live).
+    const n = Math.max(5, Math.min(input.maxBeats, 8));
     const beats = Array.from({ length: n }, (_, i) => ({
       text: input.voiceTags
         ? `[curious] Beat ${i + 1} of the story about ${input.topic}. [pause] Something surprising happens.`

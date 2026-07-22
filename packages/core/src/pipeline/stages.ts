@@ -812,8 +812,8 @@ interface StorySpec {
   style: string;
   voiceTier: string;
   narrator?: string;
-  targetBeats: number;
-  targetWords?: number;
+  maxBeats: number;
+  maxWords?: number;
   category?: string;
   captionStyle?: string;
   captionPosition?: "top" | "middle" | "bottom";
@@ -859,8 +859,8 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     const story = await ctx.llm.writeStory({
       topic: spec.topic,
       style: spec.style,
-      targetBeats: spec.targetBeats,
-      targetWords: spec.targetWords ?? 320,
+      maxBeats: spec.maxBeats,
+      maxWords: spec.maxWords ?? 280,
       narrator: spec.narrator,
       voiceTags: tts.speaksTags === true,
     });

@@ -33,12 +33,6 @@ const MUSIC = [
   { value: "upbeat", label: "Upbeat" },
   { value: "epic", label: "Epic" },
 ];
-const LENGTHS = [
-  { value: "short", label: "Short (~40s)" },
-  { value: "medium", label: "Medium (~1 min)" },
-  { value: "long", label: "Long (~1.5 min)" },
-  { value: "xlong", label: "Extra long (~2 min)" },
-];
 
 export default function CreatePage() {
   const { data: cats } = useCategories();
@@ -48,7 +42,6 @@ export default function CreatePage() {
   const [style, setStyle] = useState("doodle");
   const [narrator, setNarrator] = useState("storyteller");
   const [voiceTier, setVoiceTier] = useState<"standard" | "premium">("standard");
-  const [length, setLength] = useState("xlong");
   const [category, setCategory] = useState("");
   const [captionStyle, setCaptionStyle] = useState("bold-center");
   const [captionPosition, setCaptionPosition] = useState("middle");
@@ -87,7 +80,6 @@ export default function CreatePage() {
         style,
         narrator,
         voiceTier,
-        length,
         category: category || undefined,
         captionStyle,
         captionPosition,
@@ -204,14 +196,10 @@ export default function CreatePage() {
               {categories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
-          <label className="block">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Length</span>
-            <select value={length} onChange={(e) => setLength(e.target.value)}
-              className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-              {LENGTHS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </label>
         </div>
+        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+          Length is automatic — the story runs as long as it needs to feel complete, capped at ~2 minutes.
+        </p>
 
         <div className="flex items-center gap-3">
           <Button onClick={generate} disabled={busy || topic.trim().length < 3}>

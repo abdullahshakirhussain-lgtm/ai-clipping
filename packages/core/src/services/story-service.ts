@@ -1,7 +1,10 @@
 import type { Repositories } from "@clipfactory/db";
 import type { LlmProvider } from "@clipfactory/ai";
 import type { Dispatcher } from "@clipfactory/queue";
-import { LENGTH_TARGETS, type CreateStoryInput } from "../contracts/story.js";
+import type { CreateStoryInput } from "../contracts/story.js";
+
+/** Spoken-word ceiling ≈ 2 minutes at ~150 wpm, with margin so the read lands under. */
+const MAX_WORDS = 280;
 
 /** Story spec persisted on the SourceVideo (kind=story) and read by the generator. */
 export interface StorySpec {
@@ -9,8 +12,9 @@ export interface StorySpec {
   style: string;
   voiceTier: string;
   narrator: string;
-  targetBeats: number;
-  targetWords: number;
+  /** Ceilings, not targets — the writer uses as much as the story needs. */
+  maxBeats: number;
+  maxWords: number;
   category?: string;
   captionStyle: string;
   captionPosition: "top" | "middle" | "bottom";
@@ -36,14 +40,13 @@ export class StoryService {
 
   async create(input: CreateStoryInput): Promise<{ sourceVideoId: string }> {
     const campaignId = await this.getOrCreateStoryCampaignId();
-    const target = LENGTH_TARGETS[input.length];
     const spec: StorySpec = {
       topic: input.topic.trim(),
       style: input.style,
       voiceTier: input.voiceTier,
       narrator: input.narrator,
-      targetBeats: Math.min(target.beats, this.maxBeats),
-      targetWords: target.words,
+      maxBeats: this.maxBeats,
+      maxWords: MAX_WORDS,
       category: input.category?.trim() || undefined,
       captionStyle: input.captionStyle,
       captionPosition: input.captionPosition,

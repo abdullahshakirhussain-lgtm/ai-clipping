@@ -640,8 +640,8 @@ Call submit_metadata with optimized fields.`,
   }
 
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
-    const beats = Math.max(4, Math.min(20, input.targetBeats));
-    const words = Math.max(60, Math.min(400, input.targetWords));
+    const maxBeats = Math.max(5, Math.min(20, input.maxBeats));
+    const maxWords = Math.max(120, Math.min(400, input.maxWords));
     const narrator = input.narrator ?? "storyteller";
     const result = await this.callTool<{
       title?: string;
@@ -652,15 +652,17 @@ Call submit_metadata with optimized fields.`,
     }>(
       `Write a narrated STORY about: "${input.topic}".
 
-This is the whole product — a genuinely gripping story, not a list of facts. Aim for about ${words} spoken words total (it's read aloud as one continuous narration), structured like a real story:
+YOUR #1 JOB: a COMPLETE, genuinely interesting story that makes someone watch to the very END. A full arc that lands — completeness and intrigue beat everything else. Read aloud as one continuous narration:
 - HOOK (first 1-2 lines): the single most surprising, scroll-stopping opener — a shocking fact, a "wait, what?", a question. Earn the first 3 seconds or nothing else matters.
-- BODY: a DETAILED middle that actually tells the story — real specifics (names, numbers, places, the telling detail), rising stakes, each beat pulling to the next. Don't rush; this is where the ~${words} words go.
+- BODY: actually TELL the story — real specifics (names, numbers, places, the telling detail), rising stakes, each beat pulling to the next.
 - ENDING: a clean, satisfying resolution — the payoff/twist lands, then ONE closing line that feels finished (not an abrupt stop, not a hard sell).
+
+LENGTH — the story decides, with one cap: keep the spoken narration UNDER 2 minutes (~${maxWords} words absolute maximum, ~150 words/minute). SHORTER is better whenever the story is best told tight — never pad to fill time, and never rush or cut the arc to save it. If a topic genuinely can't be told well under 2 minutes, tell the most complete TIGHTER version instead of a truncated long one.
 
 Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone. Narrator persona: "${narrator}" — write the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat.
 
-Break it into EXACTLY ${beats} beats (each beat = one image on screen while its lines are read). Each beat:
-- "text": the spoken narration for this beat (1-3 sentences; together all beats ≈ ${words} words).${
+Break it into beats — one image on screen while its lines are read. Use as MANY beats as the story needs (roughly one image per 1-2 sentences), minimum 5, maximum ${maxBeats}. Don't stretch or cram to hit a number. Each beat:
+- "text": the spoken narration for this beat (1-2 sentences).${
         input.voiceTags
           ? ` Embed 1-2 ElevenLabs audio tags inline where the read shifts (acted, not spoken): [pause], [whispers], [excited], [sighs], [laughs], [curious].`
           : ""

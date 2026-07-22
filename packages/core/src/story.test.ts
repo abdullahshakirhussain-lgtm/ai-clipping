@@ -123,8 +123,9 @@ describe("ElevenLabs alignment → words", () => {
 describe("mock providers for keyless story runs", () => {
   it("writeStory returns beats with prompts + per-beat delivery", async () => {
     const llm = new MockLlmProvider();
-    const story = await llm.writeStory({ topic: "the Eiffel Tower scam", style: "doodle", targetBeats: 8, targetWords: 180 });
-    expect(story.beats).toHaveLength(8);
+    const story = await llm.writeStory({ topic: "the Eiffel Tower scam", style: "doodle", maxBeats: 16, maxWords: 280 });
+    expect(story.beats.length).toBeGreaterThanOrEqual(5);
+    expect(story.beats.length).toBeLessThanOrEqual(16);
     for (const b of story.beats) {
       expect(b.text.length).toBeGreaterThan(0);
       expect(b.imagePrompt.length).toBeGreaterThan(0);
@@ -135,8 +136,8 @@ describe("mock providers for keyless story runs", () => {
 
   it("embeds audio tags only when the provider speaks them", async () => {
     const llm = new MockLlmProvider();
-    const tagged = await llm.writeStory({ topic: "x", style: "doodle", targetBeats: 4, targetWords: 90, voiceTags: true });
-    const clean = await llm.writeStory({ topic: "x", style: "doodle", targetBeats: 4, targetWords: 90, voiceTags: false });
+    const tagged = await llm.writeStory({ topic: "x", style: "doodle", maxBeats: 8, maxWords: 280, voiceTags: true });
+    const clean = await llm.writeStory({ topic: "x", style: "doodle", maxBeats: 8, maxWords: 280, voiceTags: false });
     expect(tagged.beats.some((b) => /\[[^\]]+\]/.test(b.text))).toBe(true);
     expect(clean.beats.some((b) => /\[[^\]]+\]/.test(b.text))).toBe(false);
   });

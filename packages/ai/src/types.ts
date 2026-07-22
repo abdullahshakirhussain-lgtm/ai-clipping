@@ -145,10 +145,10 @@ export interface WriteStoryInput {
   topic: string;
   /** Style preset key (doodle | whiteboard | flat-vector | notebook-sketch). */
   style: string;
-  /** How many beats/images to produce. */
-  targetBeats: number;
-  /** Rough spoken word budget — paces the script to the chosen length. */
-  targetWords: number;
+  /** CEILING on images/beats (cost + cadence cap); the writer uses as many as the story needs. */
+  maxBeats: number;
+  /** CEILING on spoken words (~2-min cap); shorter is fine — length follows the story. */
+  maxWords: number;
   /** Narrator persona key — shapes the emotional arc the writer directs. */
   narrator?: string;
   /** When true, embed ElevenLabs-v3 audio tags inline in the beat text. */
