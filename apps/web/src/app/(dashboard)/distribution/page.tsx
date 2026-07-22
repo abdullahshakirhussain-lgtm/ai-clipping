@@ -51,7 +51,7 @@ export default function DistributionPage() {
       />
       {msg && <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>{msg}</p>}
 
-      <div className="flex items-center gap-2 mb-4 text-sm" style={{ color: "var(--muted)" }}>
+      <div className="flex items-center gap-2 mb-4 text-sm flex-wrap" style={{ color: "var(--muted)" }}>
         <span
           className="inline-block rounded-full"
           style={{ width: 8, height: 8, background: extConnected ? "var(--success)" : "var(--muted)" }}
@@ -59,6 +59,15 @@ export default function DistributionPage() {
         {extConnected
           ? "Poster extension connected — one-click posting enabled on YouTube, TikTok & Facebook clips."
           : "Poster extension not detected — install it to post in one click (manual copy/download still works)."}
+        <a
+          href="/clipfactory-extension.zip"
+          download
+          className="underline font-medium"
+          style={{ color: "var(--primary)" }}
+          title="Unzip, then chrome://extensions → turn on Developer mode → Load unpacked → pick the clipfactory-extension folder"
+        >
+          {extConnected ? "Re-download extension" : "Download poster extension"}
+        </a>
       </div>
 
       {!overview ? (

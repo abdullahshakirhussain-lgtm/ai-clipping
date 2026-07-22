@@ -6,10 +6,12 @@
   "description": "Chrome (MV3) bridge that posts distribution-queue clips to YouTube/TikTok/Facebook from the dashboard.",
   "scripts": {
     "build": "node build.mjs",
+    "build:zip": "node build-zip.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
+    "archiver": "^7.0.1",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.3"
   }

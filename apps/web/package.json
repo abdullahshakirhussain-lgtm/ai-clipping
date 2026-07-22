@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3000",
+    "prebuild": "node ../extension/build-zip.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
