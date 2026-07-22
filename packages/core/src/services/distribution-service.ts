@@ -155,11 +155,12 @@ export class DistributionService {
     };
   }
 
-  async markPosted(jobId: string, url: string): Promise<PostTask> {
+  async markPosted(jobId: string, url?: string): Promise<PostTask> {
     await this.getJob(jobId);
     const updated = await this.repos.publish.update(jobId, {
       status: PublishJobStatus.PUBLISHED,
-      externalUrl: url,
+      // Extension flow reports the captured post URL; a manual mark has none.
+      ...(url ? { externalUrl: url } : {}),
       publishedAt: new Date(),
     });
     return this.toPostTask(updated);

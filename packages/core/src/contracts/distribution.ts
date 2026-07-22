@@ -69,5 +69,7 @@ export const DistributionOverviewSchema = z.object({
 });
 export type DistributionOverview = z.infer<typeof DistributionOverviewSchema>;
 
-export const MarkPostedInputSchema = z.object({ url: z.string().url().max(500) });
+// url is optional: the poster extension reports the real post URL, but a manual
+// "Mark posted" from the dashboard needs no link.
+export const MarkPostedInputSchema = z.object({ url: z.string().url().max(500).optional() });
 export const RescheduleInputSchema = z.object({ scheduledAt: z.string().datetime() });

@@ -65,8 +65,9 @@ export default function AccountsPage() {
                           {a.postsPerDay}/day · {a.activeStartHour}:00–{a.activeEndHour}:00 · {a.timezone}
                         </td>
                         <td className="p-3"><StatusBadge status={a.status} /></td>
-                        <td className="p-3 text-right">
+                        <td className="p-3 text-right whitespace-nowrap">
                           <Button variant="ghost" onClick={() => { setShowForm(false); setEditing(a); }}>Edit</Button>
+                          <RowDelete account={a} />
                         </td>
                       </tr>
                     ))}
@@ -78,6 +79,30 @@ export default function AccountsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Row-level delete so removing an account doesn't require opening Edit first. */
+function RowDelete({ account }: { account: SocialAccountDto }) {
+  const [busy, setBusy] = useState(false);
+
+  async function remove() {
+    if (!confirm(`Delete ${account.handle}? This also removes its queued/posted jobs. This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await apiSend(`/accounts/${account.id}`, "DELETE");
+      await revalidateAll();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete account");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button variant="ghost" className="!text-[var(--danger)]" onClick={remove} disabled={busy}>
+      {busy ? "…" : "Delete"}
+    </Button>
   );
 }
 
@@ -208,15 +233,19 @@ function CategoriesPanel() {
   const { data: categories } = useCategories();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function add() {
     const n = name.trim();
     if (!n) return;
     setBusy(true);
+    setError(null);
     try {
       await apiSend("/categories", "POST", { name: n });
       setName("");
       await revalidateAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add category");
     } finally {
       setBusy(false);
     }
@@ -239,6 +268,7 @@ function CategoriesPanel() {
         />
         <Button onClick={add} disabled={busy || !name.trim()}>Add</Button>
       </div>
+      {error && <p className="text-sm mb-2" style={{ color: "var(--danger)" }}>{error}</p>}
       {categories && categories.length > 0 ? (
         <div className="flex flex-col gap-1">
           {categories.map((c) => <CategoryRow key={c.id} cat={c} />)}
@@ -254,31 +284,37 @@ function CategoryRow({ cat }: { cat: CategoryDto }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(cat.name);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [personaOpen, setPersonaOpen] = useState(false);
   const [persona, setPersona] = useState(cat.persona ?? "");
   const inUse = cat.accountCount + cat.clipCount;
 
-  async function save() {
-    const n = name.trim();
-    if (!n || n === cat.name) { setEditing(false); return; }
+  // Every op catches and shows its failure — silent try/finally is how "the
+  // delete button does nothing" bugs hide.
+  async function op(fn: () => Promise<unknown>) {
     setBusy(true);
+    setError(null);
     try {
-      await apiSend(`/categories/${cat.id}`, "PATCH", { name: n });
-      setEditing(false);
+      await fn();
       await revalidateAll();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Request failed");
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
+  async function save() {
+    const n = name.trim();
+    if (!n || n === cat.name) { setEditing(false); return; }
+    if (await op(() => apiSend(`/categories/${cat.id}`, "PATCH", { name: n }))) setEditing(false);
+  }
+
   async function savePersona() {
-    setBusy(true);
-    try {
-      await apiSend(`/categories/${cat.id}/persona`, "PATCH", { persona: persona.trim() || null });
+    if (await op(() => apiSend(`/categories/${cat.id}/persona`, "PATCH", { persona: persona.trim() || null }))) {
       setPersonaOpen(false);
-      await revalidateAll();
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -286,13 +322,7 @@ function CategoryRow({ cat }: { cat: CategoryDto }) {
     if (inUse > 0 && !window.confirm(
       `"${cat.name}" is used by ${cat.accountCount} account(s) and ${cat.clipCount} clip(s). Remove it as an option? Existing items keep their category.`,
     )) return;
-    setBusy(true);
-    try {
-      await apiSend(`/categories/${cat.id}`, "DELETE");
-      await revalidateAll();
-    } finally {
-      setBusy(false);
-    }
+    await op(() => apiSend(`/categories/${cat.id}`, "DELETE"));
   }
 
   return (
@@ -335,6 +365,7 @@ function CategoryRow({ cat }: { cat: CategoryDto }) {
           <button onClick={remove} disabled={busy} style={{ color: "var(--danger)" }}>Delete</button>
         </div>
       </div>
+      {error && <p className="text-xs mt-1" style={{ color: "var(--danger)" }}>{error}</p>}
       {personaOpen ? (
         <div className="mt-2 flex flex-col gap-2">
           <textarea

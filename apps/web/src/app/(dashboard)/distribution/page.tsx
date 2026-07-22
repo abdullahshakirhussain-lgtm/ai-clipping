@@ -263,7 +263,6 @@ function DoneRow({ task }: { task: PostTask }) {
 
 function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolean }) {
   const [busy, setBusy] = useState(false);
-  const [url, setUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [extStatus, setExtStatus] = useState<string | null>(null);
   // Freeze the preview src: the queue polls and hands us a fresh presigned URL
@@ -292,7 +291,6 @@ function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolea
       if (m.kind === "status" && m.message) setExtStatus(m.message);
       else if (m.kind === "result") {
         if (m.url) {
-          setUrl(m.url);
           setExtStatus("Posted ✓ — marking done");
           void act(() => apiSend(`/jobs/${task.jobId}/posted`, "POST", { url: m.url }));
         } else {
@@ -347,26 +345,18 @@ function PostCard({ task, extConnected }: { task: PostTask; extConnected: boolea
               Download
             </a>
           )}
-          <Button variant="ghost" onClick={() => act(() => apiSend(`/jobs/${task.jobId}/skip`, "POST"))} disabled={busy}>Skip</Button>
+          <Button
+            variant="secondary"
+            onClick={() => act(() => apiSend(`/jobs/${task.jobId}/posted`, "POST", {}))}
+            disabled={busy}
+          >
+            ✓ Mark posted
+          </Button>
+          <Button variant="ghost" onClick={() => act(() => apiSend(`/jobs/${task.jobId}/skip`, "POST", {}))} disabled={busy}>Skip</Button>
         </div>
         {extStatus && (
           <div className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>{extStatus}</div>
         )}
-        <div className="flex gap-2 mt-2">
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste the posted URL…"
-            className="flex-1 px-3 py-2 rounded-lg surface-2 border outline-none text-sm"
-            style={{ borderColor: "var(--border)" }}
-          />
-          <Button
-            onClick={() => act(() => apiSend(`/jobs/${task.jobId}/posted`, "POST", { url }))}
-            disabled={busy || !/^https?:\/\//.test(url)}
-          >
-            Mark posted
-          </Button>
-        </div>
       </div>
     </Card>
   );

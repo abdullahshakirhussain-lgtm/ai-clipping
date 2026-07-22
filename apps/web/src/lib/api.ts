@@ -51,11 +51,15 @@ export function apiGet<T>(path: string): Promise<T> {
 }
 
 export function apiSend<T>(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown): Promise<T> {
+  // Only send a JSON content-type when there IS a body: Fastify 400s any
+  // request that declares application/json with an empty body
+  // (FST_ERR_CTP_EMPTY_JSON_BODY), which silently broke body-less DELETEs.
   return fetch(`${V1}${path}`, {
     method,
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    ...(body === undefined
+      ? {}
+      : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   }).then(handle);
 }
 
