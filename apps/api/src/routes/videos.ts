@@ -47,6 +47,19 @@ export const videoRoutes: RouteModule = (app, { container }): void => {
     (req) => svc.get(req.params.id),
   );
 
+  // Terminate an in-progress video from the queue (stops a running story job).
+  app.post(
+    "/videos/:id/cancel",
+    {
+      schema: {
+        tags: ["videos"],
+        params: IdParamSchema,
+        response: { 200: z.object({ cancelled: z.boolean() }) },
+      },
+    },
+    (req) => svc.cancel(req.params.id),
+  );
+
   // Primary ingest: upload your own video file. Streams to a temp path, then the
   // service probes + stores it and jumps straight to transcription.
   app.post(

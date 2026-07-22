@@ -26,6 +26,21 @@ export class VideoService {
     return rows.map(toSourceVideoDto);
   }
 
+  /**
+   * Terminate an in-progress video from the queue. Marking it FAILED both stops
+   * it before it starts (the pipeline's status transitions only fire from the
+   * expected prior status, so a FAILED video's next stage no-ops) and aborts a
+   * running story job (which polls its status between stages and bails). A
+   * finished video (PROCESSED) can't be cancelled.
+   */
+  async cancel(id: string): Promise<{ cancelled: boolean }> {
+    const v = await this.repos.sourceVideos.byId(id);
+    if (!v) throw new NotFoundError("SourceVideo", id);
+    if (v.status === "PROCESSED" || v.status === "FAILED") return { cancelled: false };
+    await this.repos.sourceVideos.update(id, { status: "FAILED", error: "Cancelled by user" });
+    return { cancelled: true };
+  }
+
   async get(id: string): Promise<SourceVideoDetail> {
     const v = await this.repos.sourceVideos.byId(id);
     if (!v) throw new NotFoundError("SourceVideo", id);

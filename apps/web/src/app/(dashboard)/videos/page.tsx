@@ -1,7 +1,34 @@
 "use client";
-import { useVideos, type SourceVideoDto } from "@/lib/api";
+import { useState } from "react";
+import { apiSend, revalidateAll, useVideos, type SourceVideoDto } from "@/lib/api";
 import { Card, EmptyState, PageHeader, Spinner, StatusBadge } from "@/components/ui";
 import { duration, timeAgo } from "@/lib/format";
+
+const DONE = new Set(["PROCESSED", "FAILED"]);
+
+function TerminateButton({ id }: { id: string }) {
+  const [busy, setBusy] = useState(false);
+  async function cancel() {
+    if (!window.confirm("Terminate this video? It can't be resumed.")) return;
+    setBusy(true);
+    try {
+      await apiSend(`/videos/${id}/cancel`, "POST");
+      await revalidateAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button
+      onClick={cancel}
+      disabled={busy}
+      className="text-[11px] mt-1.5 px-2 py-0.5 rounded border"
+      style={{ borderColor: "var(--danger)", color: "var(--danger)" }}
+    >
+      {busy ? "Terminating…" : "✕ Terminate"}
+    </button>
+  );
+}
 
 const STYLE_LABEL: Record<string, string> = {
   "bold-center": "Bold white",
@@ -112,6 +139,11 @@ export default function VideosPage() {
                         <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
                           <div className="h-full transition-all" style={{ width: `${v.storyProgress.pct}%`, background: "var(--primary)" }} />
                         </div>
+                      </div>
+                    )}
+                    {!DONE.has(v.status) && (
+                      <div>
+                        <TerminateButton id={v.id} />
                       </div>
                     )}
                   </td>

@@ -844,8 +844,13 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
 
   const workDir = join(ctx.workRoot, sourceVideoId);
   // Progress is written into storySpec so the Video Queue can show a bar; we hold
-  // the spec in memory and rewrite it (JSON) at each stage.
+  // the spec in memory and rewrite it (JSON) at each stage. It doubles as the
+  // cancellation checkpoint: if the video was terminated from the queue (status
+  // flipped off DETECTING), bail before the next stage instead of spending more
+  // API calls. Called between every image, so a cancel lands within one frame.
   const setProgress = async (stage: string, pct: number, extra?: Record<string, unknown>) => {
+    const cur = await ctx.repos.sourceVideos.byId(sourceVideoId);
+    if (!cur || cur.status !== SourceVideoStatus.DETECTING) throw new StoryCancelledError();
     await ctx.repos.sourceVideos.update(sourceVideoId, {
       storySpec: { ...spec, ...extra, progress: { stage, pct } } as never,
     });
@@ -987,10 +992,19 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       "story video generated",
     );
   } catch (err) {
+    if (err instanceof StoryCancelledError) {
+      // Terminated from the queue: it's already FAILED with the "Cancelled"
+      // message — don't overwrite it, just stop.
+      ctx.logger.info({ sourceVideoId }, "story generation cancelled");
+      return;
+    }
     await failVideo(ctx, sourceVideoId, err);
     throw err;
   }
 }
+
+/** Thrown when a story job notices it was terminated from the queue. */
+class StoryCancelledError extends Error {}
 
 /** Run an async mapper over items with bounded concurrency, preserving order. */
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
