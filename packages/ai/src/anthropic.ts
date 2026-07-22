@@ -652,51 +652,78 @@ Call submit_metadata with optimized fields.`,
     const outline = await this.callTool<{
       title?: string;
       setting?: string;
+      hookOptions?: string[];
+      hook?: string;
       ending?: string;
       spine?: Array<{ role?: string; fact?: string }>;
     }>(
-      `You are the STORY ARCHITECT. Plan a genuinely interesting, TRUE-to-the-topic short-form story about: "${input.topic}".
+      `You are the STORY ARCHITECT for a short-form (TikTok/Reels/Shorts) story video. The topic is: "${input.topic}".
 
-Recall what you actually know, then output the spine a narrator will flesh out. Ground everything in concrete specifics: real names, dates, places, numbers, the telling human detail. No vague filler, no "some say", no invented facts.
+STEP 1 — PICK ONE STORY. A topic is not a story. If "${input.topic}" is broad, hunt down the SINGLE most compelling, twist-laden, TRUE micro-story inside it — one specific incident, person, or event — NOT an overview. If it's already specific, use it. Weigh a few candidate angles in your head and choose the one with the strongest TURN (a reversal, a "wait, what?", a hidden twist). If an angle has no real turn, discard it and pick one that does. This choice is 60% of the video's quality — be ruthless.
 
-1. "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS topic — real place, era, architecture, objects, clothing, weather, palette (for Russia: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, fur ushanka hats and heavy coats, overcast winter sky"). If there's a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka"). This is the visual anchor for every frame — never generic.
+Work only from what you actually know: real names, dates, places, numbers, the telling human detail. No vague filler, no "some say", no invented facts. Tone is PUNCHY BUT HONEST — the drama is allowed to be big, but every claim must be real and the hook must be a promise the ending truly keeps. Never over-promise.
 
-2. "ending": the story's REAL, satisfying payoff — the actual final fact, consequence or twist it lands on. NOT a moral, NOT a call-to-action, NOT a rhetorical question. This is where the narration will stop.
+Output:
 
-3. "spine": the ordered beats (minimum 5, up to ${maxBeats}), one per key story moment. Each beat has:
-   - "role": its job in the arc — hook / setup / rising / turn / payoff / resolution.
+1. "hookOptions": exactly 3 candidate opening lines, each a DIFFERENT hook type, each opening a curiosity loop the viewer can't leave unclosed:
+   - curiosity gap (a fact that demands its own explanation),
+   - contradiction / pattern-break (violates an expectation),
+   - cold stakes (money/lives/consequences stated flat up front),
+   - or a single strange specific detail.
+   A hook PROVOKES, it never describes ("Today we'll look at…" is banned). Specific and concrete beats vague grandiosity ("the craziest story ever" is banned).
+
+2. "hook": the single STRONGEST of your 3 options — the one that most makes a scroll impossible AND that this true story can actually pay off.
+
+3. "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS story — real place, era, architecture, objects, clothing, weather, palette (for a Moscow story: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, fur ushanka hats and heavy coats, overcast winter sky"). If there's a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka"). Never generic — this anchors every frame.
+
+4. "ending": the story's REAL, satisfying payoff — the actual final fact, consequence or twist it lands on, and it should pay off the hook (ideally calling back to a detail from it). NOT a moral, NOT a call-to-action, NOT a rhetorical question.
+
+5. "spine": the ordered beats (minimum 5, up to ${maxBeats}), one per key story moment. Each beat has:
+   - "role": its job in the arc — hook / rehook / setup / rising / turn / payoff / resolution.
    - "fact": the concrete real thing that happens in this beat (the event + the specific detail), one line.
-   The FIRST beat's role is "hook" — the single most surprising, scroll-stopping way in. The LAST beat delivers the "ending" above.
+   Structure it for retention: beat 1 = "hook" (delivers the hook above); an early "rehook" (~beat 2-3) that opens a second loop before curiosity dips; the stakes/tension RISE every beat with no flat middle; a clear "turn" around 60-70%; then "payoff" (lands the ending, calls back to the hook) and a short "resolution". Use only as many beats as the true story needs — don't pad.
 
-Use only as many beats as the true story needs — don't pad. Call submit_outline.`,
+Call submit_outline.`,
       {
         name: "submit_outline",
-        description: "Submit the researched story spine.",
+        description: "Submit the chosen story: hook options, the winning hook, and the researched spine.",
         input_schema: {
           type: "object",
           properties: {
             title: { type: "string" },
+            hookOptions: {
+              type: "array",
+              items: { type: "string" },
+              description: "exactly 3 candidate opening lines, each a different hook type, each provoking not describing",
+            },
+            hook: {
+              type: "string",
+              description: "the single strongest opening line — a curiosity loop this true story can actually pay off",
+            },
             setting: {
               type: "string",
               description: "one compact line of concrete on-topic visual markers + recurring character look",
             },
             ending: {
               type: "string",
-              description: "the real factual payoff the story lands on — no moral, CTA or question",
+              description: "the real factual payoff that pays off the hook — no moral, CTA or question",
             },
             spine: {
               type: "array",
               items: {
                 type: "object",
                 properties: {
-                  role: { type: "string", description: "hook | setup | rising | turn | payoff | resolution" },
+                  role: {
+                    type: "string",
+                    description: "hook | rehook | setup | rising | turn | payoff | resolution",
+                  },
                   fact: { type: "string", description: "the concrete real event + specific detail for this beat" },
                 },
                 required: ["role", "fact"],
               },
             },
           },
-          required: ["title", "setting", "ending", "spine"],
+          required: ["title", "hookOptions", "hook", "setting", "ending", "spine"],
         },
       },
       1536,
@@ -708,6 +735,7 @@ Use only as many beats as the true story needs — don't pad. Call submit_outlin
       .filter((s) => s.fact);
     const planSetting = String(outline.setting ?? "").trim();
     const planEnding = String(outline.ending ?? "").trim();
+    const planHook = String(outline.hook ?? "").trim();
     const spineText = spine.length
       ? spine.map((s, i) => `${i + 1}. [${s.role || "beat"}] ${s.fact}`).join("\n")
       : `(no spine returned — build a complete, factual arc about ${input.topic} yourself)`;
@@ -723,6 +751,7 @@ Use only as many beats as the true story needs — don't pad. Call submit_outlin
     }>(
       `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.
 
+OPENING HOOK (use this as beat 1, verbatim or barely reworded — do NOT soften or bury it): ${planHook || "open with the single most scroll-stopping true detail of this story"}
 VISUAL WORLD (setting): ${planSetting || "(derive a concrete, on-topic world)"}
 STORY SPINE — follow this order, one beat each:
 ${spineText}
@@ -730,9 +759,14 @@ ENDING TO LAND ON: ${planEnding || "the story's real final consequence"}
 
 HOW TO WRITE IT:
 - Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone.
-- Narrator persona: "${narrator}" — shape the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat.
+- Narrator persona: "${narrator}" — shape the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat. Tone is PUNCHY BUT HONEST: big drama, only real facts, never over-promise.
 - Keep the WHOLE spoken narration UNDER 2 minutes (~${maxWords} words absolute maximum, ~150 words/min). SHORTER is better when the story is best told tight — never pad.
-- The HOOK (first beat) must earn the first 3 seconds. Every body beat pulls into the next with real specifics.
+
+RETENTION MECHANICS (this is the job):
+- HOOK: beat 1 opens the curiosity loop in the first sentence and provokes, never describes. Earn the first 3 seconds or nothing else matters.
+- REHOOK: around the 2nd-3rd beat, open a SECOND smaller loop ("but that's not the strange part…") to catch anyone about to scroll before the curiosity dips.
+- ESCALATE every beat — stakes, tension or weirdness rise, each beat pulling into the next; NO flat middle. Land one concrete detail (a name, a number, a sensory image) per beat.
+- CALLBACK: at the payoff, pay off the exact promise/detail from the hook so the ending clicks shut like a lid.
 
 ENDING RULES (critical — this is what's been going wrong):
 - End ON the story's real final fact/consequence (the "ending" above), stated plainly, then STOP.
