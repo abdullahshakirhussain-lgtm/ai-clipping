@@ -48,10 +48,13 @@ const EnvSchema = z.object({
   ELEVENLABS_MODEL: z.string().default("eleven_v3"),
 
   // ── Story Studio (generated videos) ────────────────────────────────────────
-  // Image generation for narrated slideshows. "openai" uses gpt-image-1 (same
-  // OPENAI_API_KEY as TTS); "mock" draws solid cards so the pipeline runs keyless.
-  IMAGE_PROVIDER: z.enum(["mock", "openai"]).default("mock"),
+  // Image generation for narrated slideshows. "fal" = FLUX.1 schnell via fal.ai
+  // (~50x cheaper than gpt-image-1, needs FAL_KEY); "openai" = gpt-image-1 (uses
+  // OPENAI_API_KEY); "mock" draws solid cards so the pipeline runs keyless.
+  IMAGE_PROVIDER: z.enum(["mock", "openai", "fal"]).default("mock"),
   OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1"),
+  FAL_KEY: z.string().optional().default(""),
+  FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/schnell"),
   STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(16),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),

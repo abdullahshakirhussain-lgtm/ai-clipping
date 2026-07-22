@@ -4,6 +4,7 @@ import {
   DeepgramTranscriptionProvider,
   ElevenLabsTtsProvider,
   GroqWhisperProvider,
+  FalImageProvider,
   MockImageProvider,
   MockLlmProvider,
   MockTranscriptionProvider,
@@ -206,6 +207,11 @@ function buildTtsTiers(env: Env, logger: Logger): (tier: string) => TtsProvider 
 }
 
 function buildImageProvider(env: Env, logger: Logger): ImageProvider {
+  if (env.IMAGE_PROVIDER === "fal") {
+    if (!env.FAL_KEY) throw new Error("IMAGE_PROVIDER=fal requires FAL_KEY");
+    logger.info({ model: env.FAL_IMAGE_MODEL }, "using fal.ai image generation (FLUX)");
+    return new FalImageProvider({ apiKey: env.FAL_KEY, model: env.FAL_IMAGE_MODEL });
+  }
   if (env.IMAGE_PROVIDER === "openai") {
     if (!env.OPENAI_API_KEY) throw new Error("IMAGE_PROVIDER=openai requires OPENAI_API_KEY");
     logger.info({ model: env.OPENAI_IMAGE_MODEL }, "using OpenAI image generation");
