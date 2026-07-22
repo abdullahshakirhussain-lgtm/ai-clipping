@@ -705,21 +705,23 @@ export async function assembleSlideshow(input: {
   //    not per output frame across a 1-2 minute video — is the bulk of the cost;
   //    uniform sizes then let us use the lightweight concat demuxer (one input,
   //    no N parallel looped decoders) instead of a heavy filter_complex.
-  const scaled = await Promise.all(
-    slides.map(async (s, i) => {
-      const out = join(workDir, `slide-${i}.png`);
-      await run(
-        bin("ffmpeg"),
-        [
-          "-y", "-i", s.imageFile,
-          "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=white,setsar=1",
-          "-frames:v", "1", out,
-        ],
-        { cwd: workDir, timeoutMs: 60 * 1000 },
-      );
-      return `slide-${i}.png`;
-    }),
-  );
+  //    SEQUENTIAL + single-threaded: firing all N scales at once, each spawning
+  //    PNG encoder threads, exhausts thread/PID limits on constrained containers
+  //    (EAGAIN / ff_frame_thread_encoder_init failed). Each scale is a single
+  //    frame, so sequential is still quick.
+  const scaled: string[] = [];
+  for (let i = 0; i < slides.length; i++) {
+    await run(
+      bin("ffmpeg"),
+      [
+        "-y", "-threads", "1", "-i", slides[i]!.imageFile,
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=white,setsar=1",
+        "-frames:v", "1", "-threads", "1", join(workDir, `slide-${i}.png`),
+      ],
+      { cwd: workDir, timeoutMs: 60 * 1000 },
+    );
+    scaled.push(`slide-${i}.png`);
+  }
 
   // 2. concat-demuxer playlist with per-slide durations. The last file is
   //    repeated because the demuxer only honours a duration when another entry
