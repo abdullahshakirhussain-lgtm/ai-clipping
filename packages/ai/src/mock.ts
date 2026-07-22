@@ -234,8 +234,13 @@ export class MockImageProvider implements ImageProvider {
   }
 }
 
-/** Minimal uncompressed-ish PNG of a solid RGB colour (w×h), valid for ffmpeg. */
-function solidPng(width: number, height: number, [r, g, b]: [number, number, number]): Buffer {
+/**
+ * Minimal PNG of a solid RGB colour (w×h), valid for ffmpeg — proper CRCs and
+ * zlib-deflated scanlines. Exported: also the pipeline's fallback card when a
+ * beat's image generation fails (a hand-crafted base64 stub used there once
+ * shipped a truncated IDAT and crashed the whole assembly).
+ */
+export function solidPng(width: number, height: number, [r, g, b]: [number, number, number]): Buffer {
   const crcTable = (() => {
     const t: number[] = [];
     for (let n = 0; n < 256; n++) {

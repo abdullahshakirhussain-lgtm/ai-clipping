@@ -716,15 +716,28 @@ export async function assembleSlideshow(input: {
   //    frame, so sequential is still quick.
   const scaled: string[] = [];
   for (let i = 0; i < slides.length; i++) {
-    await run(
-      bin("ffmpeg"),
-      [
-        "-y", "-threads", "1", "-i", slides[i]!.imageFile,
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1",
-        "-frames:v", "1", "-threads", "1", join(workDir, `slide-${i}.png`),
-      ],
-      { cwd: workDir, timeoutMs: 60 * 1000 },
-    );
+    try {
+      await run(
+        bin("ffmpeg"),
+        [
+          "-y", "-threads", "1", "-i", slides[i]!.imageFile,
+          "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1",
+          "-frames:v", "1", "-threads", "1", join(workDir, `slide-${i}.png`),
+        ],
+        { cwd: workDir, timeoutMs: 60 * 1000 },
+      );
+    } catch {
+      // A corrupt/truncated image (bad download, broken fallback bytes) must
+      // degrade to a blank card, not sink a finished narration + N good frames.
+      await run(
+        bin("ffmpeg"),
+        [
+          "-y", "-threads", "1", "-f", "lavfi", "-i", "color=white:size=1080x1920",
+          "-frames:v", "1", "-threads", "1", join(workDir, `slide-${i}.png`),
+        ],
+        { cwd: workDir, timeoutMs: 60 * 1000 },
+      );
+    }
     scaled.push(`slide-${i}.png`);
   }
 

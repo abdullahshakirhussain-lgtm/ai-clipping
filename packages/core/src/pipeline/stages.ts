@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import {
   narratorInstruction,
+  solidPng,
   styledImagePrompt,
   type CommentaryLine,
   type CommentaryMode,
@@ -1020,13 +1021,15 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T,
   return results;
 }
 
-/** A blank white PNG card — fallback when image generation fails for a beat. */
+/**
+ * A blank white PNG card — fallback when image generation fails for a beat.
+ * Built with the real PNG encoder (proper CRCs + deflate): the previous
+ * hand-crafted base64 bytes had a truncated IDAT, and ffmpeg failing to decode
+ * the fallback card killed the entire assembly ("IEND without all image").
+ * 90x160 is exact 9:16, so the cover+crop prescale scales it with no cropping.
+ */
 function plainCardPng(): Buffer {
-  // 2x2 white PNG (ffmpeg scales/pads it to the 9:16 card). Precomputed bytes.
-  return Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-    "base64",
-  );
+  return solidPng(90, 160, [255, 255, 255]);
 }
 
 /** Generates metadata + scores, then moves the clip to READY_FOR_REVIEW. */
