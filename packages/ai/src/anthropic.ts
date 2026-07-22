@@ -782,6 +782,7 @@ For EACH beat give:
           : ""
       }
 - "imagePrompt": a concrete scene for THIS moment that LIVES INSIDE the setting — show WHERE we are with specific props/architecture/objects from the setting, never a figure in a blank void. The character is a SIMPLE STICK FIGURE, the SAME one every beat; capture their emotion/expression AND the action, e.g. "our stick figure with hands on his head in shock, on a snowy Moscow street with the Kremlin wall behind him". No text/letters in the image.
+  DRAWABLE-SAFE (image prompts only — the narration is unaffected): the image API refuses graphic content, so NEVER put corpses, bodies, gore, blood, executions, weapons in use, or named real-world figures (Hitler, dictators, criminals) in an imagePrompt. IMPLY the dark beat instead: the empty rowboat, a covered stretcher, boots in the snow, a silhouette behind glass, officials huddled over a briefcase, the aftermath. Suggestion reads better on screen anyway.
 - "delivery": 1-2 sentences on the emotion of this beat (feeds the read's arc).
 
 Also give: "title"; "setting" (echo/refine the visual-world line above); "description" (1-2 sentences — a soft CTA is fine HERE in the description only, NEVER in the narration); up to 6 "hashtags".
