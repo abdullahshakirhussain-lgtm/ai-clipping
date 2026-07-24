@@ -99,15 +99,50 @@ export class AnthropicLlmProvider implements LlmProvider {
     prompt: string | Anthropic.ContentBlockParam[],
     tool: Anthropic.Tool,
     maxTokens = 4096,
-    opts?: { model?: string; temperature?: number },
+    opts?: { model?: string; temperature?: number; effort?: "low" | "medium" | "high" | "xhigh" | "max" },
   ): Promise<T> {
+    const model = opts?.model ?? this.model;
+    const messages: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
+    const pickToolUse = (msg: Anthropic.Message): T | null => {
+      const b = msg.content.find((x): x is Anthropic.ToolUseBlock => x.type === "tool_use");
+      return b ? (b.input as T) : null;
+    };
+
+    // Reasoning path: adaptive thinking + effort lets the model plan the story
+    // (angle selection, arc, topic-faithfulness) before writing — the biggest
+    // quality lever for the writers. Forced tool_choice is incompatible with
+    // thinking, so we use "auto" and instruct the model to call the tool; if it
+    // reasons but skips the tool, or an account/model rejects the params, we
+    // fall through to the guaranteed forced-tool call below (never breaks prod).
+    if (opts?.effort) {
+      try {
+        const out = pickToolUse(
+          await this.client.messages.create({
+            model,
+            max_tokens: maxTokens,
+            thinking: { type: "adaptive" },
+            output_config: { effort: opts.effort },
+            tools: [tool],
+            tool_choice: { type: "auto" },
+            messages,
+          }),
+        );
+        if (out) return out;
+        console.warn(`[story] reasoning call returned no tool_use (effort=${opts.effort}); falling back to plain call`);
+      } catch (err) {
+        // effort/thinking not supported here — degrade to the plain call, but
+        // surface it: a silent fallback would hide that reasoning never engaged.
+        console.warn(`[story] reasoning params rejected (effort=${opts.effort}): ${(err instanceof Error ? err.message : String(err)).slice(0, 160)}`);
+      }
+    }
+
     const params: Anthropic.MessageCreateParamsNonStreaming = {
-      model: opts?.model ?? this.model,
+      model,
       max_tokens: maxTokens,
       ...(opts?.temperature !== undefined ? { temperature: opts.temperature } : {}),
       tools: [tool],
       tool_choice: { type: "tool", name: tool.name },
-      messages: [{ role: "user", content: prompt }],
+      messages,
     };
     let msg: Anthropic.Message;
     try {
@@ -122,9 +157,9 @@ export class AnthropicLlmProvider implements LlmProvider {
         throw err;
       }
     }
-    const block = msg.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-    if (!block) throw new Error("Claude did not return the expected tool call");
-    return block.input as T;
+    const out = pickToolUse(msg);
+    if (!out) throw new Error("Claude did not return the expected tool call");
+    return out;
   }
 
   /**
@@ -651,6 +686,7 @@ Call submit_metadata with optimized fields.`,
     // tacked-on cringe closer.
     const outline = await this.callTool<{
       title?: string;
+      angleOptions?: string[];
       setting?: string;
       hookOptions?: string[];
       hook?: string;
@@ -659,13 +695,19 @@ Call submit_metadata with optimized fields.`,
     }>(
       `You are the STORY ARCHITECT for a short-form (TikTok/Reels/Shorts) story video. The topic is: "${input.topic}".
 
-STEP 1 — PICK ONE STORY. A topic is not a story. If "${input.topic}" is broad, hunt down the SINGLE most compelling, twist-laden, TRUE micro-story inside it — one specific incident, person, or event — NOT an overview. If it's already specific, use it. Weigh a few candidate angles in your head and choose the one with the strongest TURN (a reversal, a "wait, what?", a hidden twist). If an angle has no real turn, discard it and pick one that does. This choice is 60% of the video's quality — be ruthless.
+STAY ON TOPIC — this is non-negotiable. The finished video MUST be unmistakably about "${input.topic}". Someone who searched "${input.topic}" has to think "yes, this is exactly that", never "wait, why is this about something else".
+- If "${input.topic}" names a SPECIFIC person, event, place, or thing, tell THAT story directly. Do NOT swap it for a lesser-known tangent that merely touches it.
+- Only if "${input.topic}" is genuinely BROAD (a whole category, field, era, or concept) do you narrow to one specific true story inside it — and even then the topic's core subject must be CENTRAL to the story, not a loose association.
+
+STEP 1 — BRAINSTORM 3 ANGLES, THEN PICK ONE. A topic is not a story. Think of 3 genuinely DIFFERENT true story angles, each unmistakably about "${input.topic}" (different people / events / moments — not three retellings of the same one). Judge them on: strongest hook, clearest arc, a real TURN (a reversal, a "wait, what?"), and how squarely on-topic they are. Then pick the SINGLE best — an angle with no real turn is disqualified. This choice is 60% of the video's quality; be ruthless. Everything below (hook, setting, ending, spine) is for that ONE chosen angle. List the 3 one-line angle premises you weighed in "angleOptions".
 
 Work only from what you actually know: real names, dates, places, numbers, the telling human detail. No vague filler, no "some say", no invented facts. Tone is PUNCHY BUT HONEST — the drama is allowed to be big, but every claim must be real and the hook must be a promise the ending truly keeps. Never over-promise.
 
 Output:
 
-1. "hookOptions": exactly 3 candidate opening lines. HARD RULE — every option MUST literally begin with one of these fixed stems (fill the brackets; the stem's opening words stay exactly as written):
+0. "angleOptions": the 3 distinct true-story angles you considered (one line each), all on-topic for "${input.topic}".
+
+1. "hookOptions": exactly 3 candidate opening lines for the CHOSEN angle. HARD RULE — every option MUST literally begin with one of these fixed stems (fill the brackets; the stem's opening words stay exactly as written):
    - "It's [date/year]. [A person] is [mid-action]…"  (e.g. "It's August 10th, 1998. A night guard in Stockholm is starting his last round.")
    - "In a small town in [country/region], [a person does one concrete thing]…"  (also fine: "In [year], in [place], …")
    - "Imagine [being in this exact situation]…"
@@ -691,6 +733,11 @@ Call submit_outline.`,
           type: "object",
           properties: {
             title: { type: "string" },
+            angleOptions: {
+              type: "array",
+              items: { type: "string" },
+              description: "the 3 distinct on-topic story angles considered, one line each (the chosen one is expanded below)",
+            },
             hookOptions: {
               type: "array",
               items: { type: "string" },
@@ -724,11 +771,14 @@ Call submit_outline.`,
               },
             },
           },
-          required: ["title", "hookOptions", "hook", "setting", "ending", "spine"],
+          required: ["title", "angleOptions", "hookOptions", "hook", "setting", "ending", "spine"],
         },
       },
-      1536,
-      { model: this.commentaryModel, temperature: 0.8 },
+      // Bigger budget leaves room for adaptive thinking + the larger output.
+      5000,
+      // effort: "high" — the architect is the brain (story pick + arc + on-topic
+      // faithfulness); reasoning here is where the quality gain lives.
+      { model: this.commentaryModel, effort: "high" },
     );
 
     const spine = (outline.spine ?? [])
@@ -818,8 +868,11 @@ Call submit_story.`,
           required: ["title", "script", "description", "hashtags", "setting", "beats"],
         },
       },
-      3072,
-      { model: this.commentaryModel, temperature: 0.9 },
+      // Bigger budget leaves room for adaptive thinking + the full narration.
+      6000,
+      // effort: "medium" — the narrator is execution (spine → coherent prose);
+      // reasoning helps it chain beats without the cost of "high".
+      { model: this.commentaryModel, effort: "medium" },
     );
 
     const cleanBeats = (result.beats ?? [])
