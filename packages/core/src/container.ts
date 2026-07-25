@@ -362,7 +362,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
       maxAgeHours: env.DISCOVERY_MAX_AGE_H,
     }),
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS),
-    cook: new CookService(repos, dispatcher, env.COOK_MAX_SHOTS),
+    cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
     system: new SystemService(),
   };
 

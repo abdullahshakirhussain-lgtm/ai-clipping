@@ -40,6 +40,11 @@ export default function CreatePage() {
 
   const [format, setFormat] = useState<"story" | "cook">("story");
   const [dish, setDish] = useState("");
+  const [cookShots, setCookShots] = useState<{ prompt: string }[]>([]);
+  const [cookTitle, setCookTitle] = useState("");
+  const [cookDescription, setCookDescription] = useState("");
+  const [cookHashtags, setCookHashtags] = useState<string[]>([]);
+  const [planning, setPlanning] = useState(false);
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("stick-scene");
   const [narrator, setNarrator] = useState("storyteller");
@@ -72,7 +77,29 @@ export default function CreatePage() {
     }
   }
 
-  const canGenerate = format === "story" ? topic.trim().length >= 3 : dish.trim().length >= 3;
+  const canGenerate = format === "story" ? topic.trim().length >= 3 : cookShots.length > 0;
+
+  async function planShots() {
+    if (dish.trim().length < 3) return;
+    setPlanning(true);
+    setMsg(null);
+    try {
+      const plan = await apiSend<{ title: string; description: string; hashtags: string[]; shots: { prompt: string }[] }>(
+        "/cook/plan",
+        "POST",
+        { dish: dish.trim() },
+      );
+      setCookShots(plan.shots);
+      setCookTitle(plan.title);
+      setCookDescription(plan.description);
+      setCookHashtags(plan.hashtags);
+      if (plan.shots.length === 0) setMsg("The planner returned no shots — try a more specific dish.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't plan the shots");
+    } finally {
+      setPlanning(false);
+    }
+  }
 
   async function generate() {
     if (!canGenerate) return;
@@ -80,8 +107,18 @@ export default function CreatePage() {
     setMsg(null);
     try {
       if (format === "cook") {
-        await apiSend("/cook", "POST", { dish: dish.trim(), category: category || undefined });
+        await apiSend("/cook", "POST", {
+          dish: dish.trim(),
+          title: cookTitle || undefined,
+          description: cookDescription || undefined,
+          hashtags: cookHashtags,
+          shots: cookShots.map((s) => ({ prompt: s.prompt })),
+          category: category || undefined,
+        });
         setDish("");
+        setCookShots([]);
+        setCookTitle("");
+        setCookDescription("");
       } else {
         await apiSend("/story", "POST", {
           topic: topic.trim(),
@@ -229,7 +266,7 @@ export default function CreatePage() {
 
         {format === "cook" && (
         <>
-        <label className="block mb-4">
+        <label className="block mb-3">
           <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Dish</span>
           <textarea
             value={dish}
@@ -241,18 +278,61 @@ export default function CreatePage() {
             style={{ borderColor: dish.trim() ? "var(--primary)" : "var(--border)" }}
           />
         </label>
-        <label className="block mb-4 max-w-xs">
-          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}
-            className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
-            <option value="">— none —</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
-        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-          Cook-in-the-wild ASMR — no narration, native ambient sound, a hard cut every ~8s. The AI plans an
-          exhaustive shot list and renders real video clips (Veo). Costs more than a slideshow (~$1–2/video).
-        </p>
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <Button onClick={planShots} disabled={planning || dish.trim().length < 3} variant="secondary">
+            {planning ? "Planning…" : cookShots.length ? "↻ Re-plan shots" : "🎬 Plan shots"}
+          </Button>
+          <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+            Free to plan — review &amp; edit every prompt before any video is generated.
+          </span>
+        </div>
+
+        {cookShots.length > 0 && (
+          <>
+            <label className="block mb-3">
+              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Title</span>
+              <input value={cookTitle} onChange={(e) => setCookTitle(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
+            </label>
+            <div className="mb-3">
+              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>
+                Shots ({cookShots.length}) — edit each prompt; these go to the video model verbatim
+              </span>
+              <div className="space-y-2">
+                {cookShots.map((s, i) => (
+                  <div key={i} className="flex gap-2 items-start">
+                    <span className="text-[11px] mt-2 w-4 shrink-0 text-right" style={{ color: "var(--muted)" }}>{i + 1}</span>
+                    <textarea
+                      value={s.prompt}
+                      onChange={(e) => setCookShots((prev) => prev.map((p, j) => (j === i ? { prompt: e.target.value } : p)))}
+                      rows={5}
+                      className="flex-1 px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y"
+                      style={{ borderColor: "var(--border)" }}
+                    />
+                    <button
+                      onClick={() => setCookShots((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-xs mt-2 px-1.5" style={{ color: "var(--danger)" }} title="Remove shot"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <label className="block mb-4 max-w-xs">
+              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
+              <select value={category} onChange={(e) => setCategory(e.target.value)}
+                className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
+                <option value="">— none —</option>
+                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+              {cookShots.length} shots × ~8s ≈ ${(cookShots.length * 0.8).toFixed(2)} on Veo 3.1 Fast. Renders in the
+              background — it lands in the Library, track it in the Video Queue.
+            </p>
+          </>
+        )}
         </>
         )}
 

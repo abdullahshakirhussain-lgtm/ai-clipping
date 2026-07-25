@@ -1,3 +1,4 @@
+import type { CookPlan, LlmProvider } from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
 import type { Dispatcher } from "@clipfactory/queue";
 import type { CreateCookInput } from "../contracts/cook.js";
@@ -7,39 +8,52 @@ export interface CookSpec {
   dish: string;
   category?: string;
   aspectRatio: string;
-  /** Ceiling on shots (= clips) — the planner uses as many as the recipe needs. */
-  maxShots: number;
+  /** The APPROVED (possibly user-edited) shot prompts — the job renders these as-is. */
+  shots: Array<{ prompt: string }>;
+  title?: string;
+  description?: string;
+  hashtags?: string[];
 }
 
 /**
- * Cook Studio: kicks off AI-generated "cook-in-the-wild" videos. Mirrors
- * StoryService — creates a SourceVideo (kind=cook) so the job shows in the Video
- * Queue and the finished video lands in the Library / Distribution like any clip.
+ * Cook Studio: AI cook-in-the-wild videos, two-step so the user reviews the
+ * prompts before any pricey video call. `plan` writes the shot prompts (cheap
+ * LLM); `create` renders the approved prompts (expensive video). Mirrors
+ * StoryService for the create → SourceVideo → job → Clip machinery.
  */
 export class CookService {
   constructor(
     private readonly repos: Repositories,
+    private readonly llm: LlmProvider,
     private readonly dispatcher: Dispatcher,
     private readonly maxShots: number,
   ) {}
 
+  /** Step 1: plan editable shot prompts from a dish (no video spend yet). */
+  async plan(dish: string): Promise<CookPlan> {
+    return this.llm.planCookShots({ dish: dish.trim(), maxShots: this.maxShots, aspectRatio: "9:16" });
+  }
+
+  /** Step 2: render the video from the approved (possibly edited) shots. */
   async create(input: CreateCookInput): Promise<{ sourceVideoId: string }> {
     const campaignId = await this.getOrCreateCookCampaignId();
     const spec: CookSpec = {
       dish: input.dish.trim(),
       category: input.category?.trim() || undefined,
       aspectRatio: "9:16",
-      maxShots: this.maxShots,
+      shots: input.shots.map((s) => ({ prompt: s.prompt })),
+      title: input.title?.trim() || undefined,
+      description: input.description?.trim() || undefined,
+      hashtags: input.hashtags,
     };
     const video = await this.repos.sourceVideos.create({
       campaignId,
       originalUrl: null,
-      title: input.dish.trim().slice(0, 120),
+      title: (input.title?.trim() || input.dish.trim()).slice(0, 120),
       status: "PENDING",
       kind: "cook",
       storySpec: spec as never,
       category: spec.category ?? null,
-      // Generated video carries its own audio; the clip render path is skipped.
       commentaryMode: "off",
     });
     await this.dispatcher.enqueue("cook.generate", { sourceVideoId: video.id }, { jobId: video.id });

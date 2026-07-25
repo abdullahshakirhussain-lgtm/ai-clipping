@@ -1025,7 +1025,12 @@ interface CookSpec {
   dish: string;
   category?: string;
   aspectRatio?: string;
-  maxShots: number;
+  maxShots?: number;
+  /** The APPROVED shot prompts from the review step; the job renders these as-is. */
+  shots?: Array<{ prompt: string }>;
+  title?: string;
+  description?: string;
+  hashtags?: string[];
 }
 
 /**
@@ -1066,32 +1071,40 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
   try {
     await fs.mkdir(workDir, { recursive: true });
 
-    // 1. Plan the shots — the whole product: an exhaustive continuity-locked spec.
-    await setProgress("Planning the shots", 8);
-    const plan = await ctx.llm.planCookShots({
-      dish: spec.dish,
-      maxShots: spec.maxShots,
-      aspectRatio: spec.aspectRatio,
-    });
-    if (plan.shots.length === 0) {
-      await failVideo(ctx, sourceVideoId, new Error("cook planner returned no shots"));
+    // 1. Use the APPROVED shots from the review step. Fall back to planning only
+    //    if a caller enqueued without them (the create form always plans first).
+    let shots = (spec.shots ?? []).filter((s) => s?.prompt?.trim());
+    let title = spec.title;
+    let description = spec.description ?? "";
+    let hashtags = spec.hashtags ?? [];
+    if (shots.length === 0) {
+      await setProgress("Planning the shots", 8);
+      const plan = await ctx.llm.planCookShots({ dish: spec.dish, maxShots: spec.maxShots ?? 6, aspectRatio: spec.aspectRatio });
+      shots = plan.shots;
+      title = title ?? plan.title;
+      description = description || plan.description;
+      hashtags = hashtags.length ? hashtags : plan.hashtags;
+    }
+    if (shots.length === 0) {
+      await failVideo(ctx, sourceVideoId, new Error("cook: no shots to render"));
       return;
     }
-    await setProgress("Generating the clips", 15, { plan: { title: plan.title, shots: plan.shots } });
+    title = title ?? spec.dish;
+    await setProgress("Generating the clips", 15);
 
     // 2. Render each shot as a real clip (native audio). Concurrency 2: video gen
     //    is slow + expensive. A shot that fails is dropped, not fatal — cut the
     //    rest together rather than losing the whole (paid) video.
     let done = 0;
-    const clipFiles = await mapWithConcurrency(plan.shots, 2, async (shot, i) => {
+    const clipFiles = await mapWithConcurrency(shots, 2, async (shot, i) => {
       try {
         const { video: bytes } = await ctx.video.generate({ prompt: shot.prompt, aspectRatio: spec.aspectRatio });
         const f = join(workDir, `shot-${i}.mp4`);
         await fs.writeFile(f, bytes);
         done++;
         await setProgress(
-          `Generating the clips (${done}/${plan.shots.length})`,
-          15 + Math.round((done / plan.shots.length) * 70),
+          `Generating the clips (${done}/${shots.length})`,
+          15 + Math.round((done / shots.length) * 70),
         );
         return f;
       } catch (err) {
@@ -1125,7 +1138,7 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
         // APPROVED like story clips — the user's own content, distribution routes
         // only APPROVED clips.
         status: ClipStatus.APPROVED,
-        detectionReason: plan.title,
+        detectionReason: title,
         detectionSource: "cook",
         captionStyle: video.captionStyle,
         captionPosition: video.captionPosition,
@@ -1145,10 +1158,10 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
       error: null,
     });
     await ctx.repos.clips.upsertEnhancement(clip!.id, {
-      title: plan.title,
-      description: plan.description,
-      hashtags: plan.hashtags,
-      hooks: { variants: [plan.title], selectedIndex: 0 } as never,
+      title,
+      description,
+      hashtags,
+      hooks: { variants: [title], selectedIndex: 0 } as never,
       qualityScore: 80,
       viralScore: 80,
       estimatedEngagement: 80,
@@ -1157,7 +1170,7 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
 
     await ctx.repos.sourceVideos.update(sourceVideoId, {
       status: SourceVideoStatus.PROCESSED,
-      storySpec: { ...spec, plan: { title: plan.title, shots: plan.shots }, progress: { stage: "Done", pct: 100 } } as never,
+      storySpec: { ...spec, progress: { stage: "Done", pct: 100 } } as never,
     });
     ctx.logger.info(
       { sourceVideoId, shots: clips.length, durationSec: Number(totalDur.toFixed(1)) },
