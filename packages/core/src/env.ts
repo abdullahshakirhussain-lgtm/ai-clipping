@@ -72,6 +72,16 @@ const EnvSchema = z.object({
   VEO_DURATION_SECONDS: z.string().default("8"),
   // Ceiling on shots == clips per cook video (cost cap; ~$0.80/shot on Fast).
   COOK_MAX_SHOTS: z.coerce.number().min(2).max(8).default(6),
+  // ── Call Studio (fictional prank calls / talk-show rage bait) ──────────────
+  // Also Google, also the same GEMINI_API_KEY: a text model improvises the
+  // dialogue from the approved brief, then a multi-speaker TTS model performs
+  // it. At ~$10/M audio output tokens a 60s call is ~2¢ — the cheapest format
+  // here by an order of magnitude. AUTO-selects on the key, like video.
+  CALL_PROVIDER: z.enum(["auto", "mock", "google"]).default("auto"),
+  GEMINI_TTS_MODEL: z.string().default("gemini-2.5-flash-preview-tts"),
+  GEMINI_TEXT_MODEL: z.string().default("gemini-2.5-flash"),
+  // Ceiling on spoken length; the planner paces the escalation to fit.
+  CALL_MAX_SECONDS: z.coerce.number().min(20).max(90).default(50),
   // Ceiling on beats == images per story. At 15, a fal FLUX.1 [schnell] run
   // (720x1280, $0.003/img) tops out at ~$0.045/video — under the $0.05 target.
   STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(15),

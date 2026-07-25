@@ -5,7 +5,9 @@ import {
   ElevenLabsTtsProvider,
   GroqWhisperProvider,
   FalImageProvider,
+  GoogleCallProvider,
   GoogleVeoProvider,
+  MockCallProvider,
   MockImageProvider,
   MockLlmProvider,
   MockTranscriptionProvider,
@@ -13,6 +15,7 @@ import {
   MockVideoProvider,
   OpenAiImageProvider,
   OpenAiTtsProvider,
+  type CallAudioProvider,
   type ImageProvider,
   type LlmProvider,
   type TranscriptionProvider,
@@ -54,6 +57,7 @@ import { PublishService } from "./services/publish-service.js";
 import { ReviewService } from "./services/review-service.js";
 import { StoryService } from "./services/story-service.js";
 import { CookService } from "./services/cook-service.js";
+import { CallService } from "./services/call-service.js";
 import { VideoService } from "./services/video-service.js";
 
 export interface Container {
@@ -78,6 +82,7 @@ export interface Container {
     discovery: DiscoveryService;
     story: StoryService;
     cook: CookService;
+    calls: CallService;
     system: SystemService;
   };
   shutdown(): Promise<void>;
@@ -251,6 +256,25 @@ function buildVideoProvider(env: Env, logger: Logger): VideoProvider {
   return new MockVideoProvider();
 }
 
+function buildCallProvider(env: Env, logger: Logger): CallAudioProvider {
+  // Same auto-on-key rule as video, same key: one Gemini key turns on both.
+  const useGoogle = env.CALL_PROVIDER === "google" || (env.CALL_PROVIDER === "auto" && !!env.GEMINI_API_KEY);
+  if (useGoogle) {
+    if (!env.GEMINI_API_KEY) throw new Error("CALL_PROVIDER=google requires GEMINI_API_KEY");
+    logger.info(
+      { tts: env.GEMINI_TTS_MODEL, writer: env.GEMINI_TEXT_MODEL },
+      "using Google call audio (Gemini API, direct)",
+    );
+    return new GoogleCallProvider({
+      apiKey: env.GEMINI_API_KEY,
+      ttsModel: env.GEMINI_TTS_MODEL,
+      textModel: env.GEMINI_TEXT_MODEL,
+    });
+  }
+  logger.info("using mock call provider (silent wav)");
+  return new MockCallProvider();
+}
+
 function buildDownloader(env: Env): DownloadProvider {
   return env.DOWNLOAD_DRIVER === "ytdlp"
     ? new YtDlpDownloader({
@@ -298,6 +322,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const ttsFor = buildTtsTiers(env, logger);
   const images = buildImageProvider(env, logger);
   const video = buildVideoProvider(env, logger);
+  const callAudio = buildCallProvider(env, logger);
   const downloader = buildDownloader(env);
   const publisherFor = buildPublisherFactory(env);
 
@@ -314,6 +339,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     ttsFor,
     images,
     video,
+    callAudio,
     downloader,
     publisherFor,
     logger,
@@ -363,6 +389,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     }),
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
+    calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
     system: new SystemService(),
   };
 

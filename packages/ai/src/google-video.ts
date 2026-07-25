@@ -1,3 +1,4 @@
+import { checkModel } from "./google-call.js";
 import type { VideoProvider } from "./types.js";
 
 export interface GoogleVeoOptions {
@@ -31,6 +32,23 @@ export class GoogleVeoProvider implements VideoProvider {
     this.model = opts.model || "veo-3.1-fast-generate-preview";
     this.resolution = opts.resolution || "720p";
     this.durationSeconds = opts.durationSeconds || "8";
+  }
+
+  /**
+   * Confirms the key can see the configured Veo model and that it exposes
+   * predictLongRunning — a plain models.get, so it costs nothing. Worth running
+   * before the first render: a wrong/renamed preview id otherwise only shows up
+   * after a job has already started.
+   */
+  async check(): Promise<{ ok: boolean; model: string; detail: string; resolution: string; durationSeconds: string }> {
+    const r = await checkModel(this.opts.apiKey, this.model);
+    return {
+      ok: r.ok,
+      model: this.model,
+      detail: r.detail,
+      resolution: this.resolution,
+      durationSeconds: this.durationSeconds,
+    };
   }
 
   async generate(input: { prompt: string; aspectRatio?: string }): Promise<{ video: Buffer; ext: "mp4" }> {

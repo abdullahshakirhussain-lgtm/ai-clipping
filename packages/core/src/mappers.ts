@@ -71,7 +71,12 @@ export function toSourceVideoDto(v: VideoListRow): SourceVideoDto {
     kind: v.kind,
     storyProgress:
       (v.storySpec as { progress?: { stage: string; pct: number } } | null)?.progress ?? null,
-    storyScript: (v.storySpec as { script?: string } | null)?.script ?? null,
+    // Stories carry a narration script; calls carry the improvised transcript.
+    // Both surface in the same "View script" disclosure in the Video Queue.
+    storyScript:
+      (v.storySpec as { script?: string; transcript?: string } | null)?.script ??
+      (v.storySpec as { transcript?: string } | null)?.transcript ??
+      null,
   };
 }
 

@@ -21,6 +21,7 @@ import { campaignRoutes } from "./routes/campaigns.js";
 import { discoveryRoutes } from "./routes/discovery.js";
 import { storyRoutes } from "./routes/story.js";
 import { cookRoutes } from "./routes/cook.js";
+import { callRoutes } from "./routes/calls.js";
 import { distributionRoutes } from "./routes/distribution.js";
 import { clipRoutes } from "./routes/clips.js";
 import { fileRoutes } from "./routes/files.js";
@@ -143,6 +144,7 @@ export async function buildApp(container: Container) {
       discoveryRoutes(typed, deps);
       storyRoutes(typed, deps);
       cookRoutes(typed, deps);
+      callRoutes(typed, deps);
       systemRoutes(typed, deps);
     },
     { prefix: "/api/v1" },

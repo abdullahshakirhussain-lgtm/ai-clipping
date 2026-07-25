@@ -12,6 +12,7 @@ import {
 import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db";
 import {
   analyzeLoudness,
+  applyPhoneFilter,
   assembleClips,
   assembleSlideshow,
   buildAss,
@@ -1179,6 +1180,192 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
   } catch (err) {
     if (err instanceof StoryCancelledError) {
       ctx.logger.info({ sourceVideoId }, "cook generation cancelled");
+      return;
+    }
+    await failVideo(ctx, sourceVideoId, err);
+    throw err;
+  }
+}
+
+interface CallSpecShape {
+  title?: string;
+  description?: string;
+  hashtags?: string[];
+  premise?: string;
+  characters?: Array<{ name: string; voice: string; accent?: string; gender?: string; age?: string; personality?: string }>;
+  durationSeconds?: number;
+  imagePrompts?: string[];
+  /** The APPROVED brief from the review step; sent to the audio model as-is. */
+  brief?: string;
+  category?: string;
+  captionStyle?: string;
+  captionPosition?: "top" | "middle" | "bottom";
+}
+
+/**
+ * Call Studio: a fictional recorded phone call. The approved brief goes to the
+ * audio provider, which improvises the dialogue and performs it as two voices;
+ * the result is band-limited to sound like a real line, given a few stills and
+ * burned-in captions (the genre is watched muted), and lands as a Clip like any
+ * other. Nothing is re-planned here — the brief the user vetted is what ships.
+ */
+export async function runCallGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+  const moved = await ctx.repos.sourceVideos.transition(
+    sourceVideoId,
+    [SourceVideoStatus.PENDING],
+    SourceVideoStatus.DETECTING,
+  );
+  if (!moved) return;
+
+  const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
+  if (!video) return;
+  const spec = (video.storySpec as CallSpecShape | null) ?? null;
+  if (!spec?.brief || (spec.characters ?? []).length < 2) {
+    await failVideo(ctx, sourceVideoId, new Error("call video has no approved brief with 2 speakers"));
+    return;
+  }
+
+  const workDir = join(ctx.workRoot, sourceVideoId);
+  const setProgress = async (stage: string, pct: number, extra?: Record<string, unknown>) => {
+    const cur = await ctx.repos.sourceVideos.byId(sourceVideoId);
+    if (!cur || cur.status !== SourceVideoStatus.DETECTING) throw new StoryCancelledError();
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      storySpec: { ...spec, ...extra, progress: { stage, pct } } as never,
+    });
+  };
+  try {
+    await fs.mkdir(workDir, { recursive: true });
+
+    // 1. The call itself: dialogue improvised from the approved brief, then
+    //    performed. This is the whole product; everything below is assembly.
+    await setProgress("Making the call", 15);
+    const targetSeconds = spec.durationSeconds ?? 45;
+    const call = await ctx.callAudio.generate({
+      brief: spec.brief,
+      speakers: (spec.characters ?? []).slice(0, 2).map((c) => ({
+        name: c.name,
+        voice: c.voice,
+        direction: [c.accent, c.gender, c.age, c.personality].filter(Boolean).join(", "),
+      })),
+      targetSeconds,
+    });
+    const rawAudio = join(workDir, `call-raw.${call.ext}`);
+    await fs.writeFile(rawAudio, call.audio);
+    // Persist the transcript as soon as it exists — it's viewable even if the
+    // render below fails, and it's the record of what was actually said.
+    await setProgress("Cleaning up the line", 45, { transcript: call.transcript });
+
+    // 2. Phone-line treatment. If ffmpeg's filter chain is unhappy, ship the
+    //    clean audio rather than lose a paid call.
+    let audioFile = join(workDir, "call.wav");
+    try {
+      await applyPhoneFilter(rawAudio, audioFile);
+    } catch (err) {
+      ctx.logger.warn({ sourceVideoId, reason: String(err) }, "phone filter failed; using the clean audio");
+      audioFile = rawAudio;
+    }
+    const probed = await probe(audioFile);
+    const totalDur = probed.durationSec > 0 ? probed.durationSec : targetSeconds;
+
+    // 3. Stills. A call is audio-led, so a handful of images is all it needs —
+    //    they hold the screen while the captions carry the dialogue.
+    await setProgress("Drawing the scene", 60);
+    const prompts = (spec.imagePrompts ?? []).filter(Boolean).slice(0, 4);
+    const imagePrompts = prompts.length > 0 ? prompts : ["two people on a phone call, simple scene"];
+    const images = await mapWithConcurrency(imagePrompts, 2, async (prompt, i) => {
+      const imgFile = join(workDir, `img-${i}.png`);
+      try {
+        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(prompt, "stick-scene", spec.premise ?? "") });
+        await fs.writeFile(imgFile, image);
+      } catch (err) {
+        ctx.logger.warn({ sourceVideoId, image: i, reason: String(err) }, "call image failed; using plain card");
+        await fs.writeFile(imgFile, plainCardPng());
+      }
+      return imgFile;
+    });
+
+    // 4. Captions from the dialogue lines, spread across the measured duration.
+    //    The lines are known exactly, so this needs no transcription pass —
+    //    captions match what was said instead of what a recogniser heard.
+    await setProgress("Putting it together", 80);
+    const captionBeats = call.lines.map((l) => ({ text: l.text }));
+    const { captionSegments } = planStoryTiming(captionBeats, totalDur);
+    // Images share the screen time evenly — they're wallpaper, not beats.
+    const per = totalDur / images.length;
+    const slides = images.map((imageFile) => ({ imageFile, durationSec: per }));
+    const assName = `${sourceVideoId}.ass`;
+    const ass = buildAss(
+      captionSegments,
+      0,
+      totalDur,
+      spec.captionStyle ?? video.captionStyle,
+      3,
+      spec.captionPosition ?? (video.captionPosition as "top" | "middle" | "bottom" | undefined),
+    );
+    if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
+
+    const outPath = join(workDir, "call.mp4");
+    await assembleSlideshow({
+      slides,
+      audioFile,
+      captionsFileName: ass.trim() ? assName : undefined,
+      outPath,
+      workDir,
+    });
+
+    // 5. Store + create a ready-to-distribute Clip.
+    const thumbPath = join(workDir, "thumb.jpg");
+    await extractSmartThumbnail(outPath, thumbPath);
+    const title = spec.title || spec.premise || "Call";
+
+    const [clip] = await ctx.repos.clips.createMany([
+      {
+        sourceVideoId,
+        campaignId: video.campaignId,
+        startSec: 0,
+        endSec: totalDur,
+        status: ClipStatus.APPROVED,
+        detectionReason: title,
+        detectionSource: "call",
+        captionStyle: video.captionStyle,
+        captionPosition: video.captionPosition,
+        commentaryMode: "off",
+        category: video.category,
+        hookScore: 80,
+        viralScore: 80,
+        overallScore: 80,
+        scoreBreakdown: { notes: ["call-generated"] } as never,
+      },
+    ]);
+    await ctx.storage.putFile(clipKey(clip!.id), outPath, "video/mp4");
+    await ctx.storage.putFile(thumbKey(clip!.id), thumbPath, "image/jpeg");
+    await ctx.repos.clips.update(clip!.id, {
+      storageKey: clipKey(clip!.id),
+      thumbnailKey: thumbKey(clip!.id),
+      error: null,
+    });
+    await ctx.repos.clips.upsertEnhancement(clip!.id, {
+      title,
+      description: spec.description ?? "",
+      hashtags: spec.hashtags ?? [],
+      hooks: { variants: [title], selectedIndex: 0 } as never,
+      qualityScore: 80,
+      viralScore: 80,
+      estimatedEngagement: 80,
+      model: "call",
+    });
+
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      status: SourceVideoStatus.PROCESSED,
+      storySpec: { ...spec, transcript: call.transcript, progress: { stage: "Done", pct: 100 } } as never,
+    });
+    ctx.logger.info(
+      { sourceVideoId, lines: call.lines.length, durationSec: Number(totalDur.toFixed(1)) },
+      "call video generated",
+    );
+  } catch (err) {
+    if (err instanceof StoryCancelledError) {
+      ctx.logger.info({ sourceVideoId }, "call generation cancelled");
       return;
     }
     await failVideo(ctx, sourceVideoId, err);

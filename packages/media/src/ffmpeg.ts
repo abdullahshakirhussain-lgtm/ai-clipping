@@ -181,6 +181,27 @@ export async function extractAudio(inputPath: string, outPath: string): Promise<
   );
 }
 
+/**
+ * Make clean studio TTS sound like a phone recording: band-limit it to the
+ * classic 300-3400 Hz voice channel, squash the dynamics the way a phone line
+ * does, and normalise. Without this a "recorded call" gives itself away
+ * instantly — the voices are too full and too quiet-to-loud to be down a line.
+ */
+export async function applyPhoneFilter(inputPath: string, outPath: string): Promise<void> {
+  await run(
+    bin("ffmpeg"),
+    [
+      "-y",
+      "-i", inputPath,
+      "-af", "highpass=f=300,lowpass=f=3400,acompressor=threshold=-18dB:ratio=4:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=11",
+      "-ac", "1",
+      "-ar", "24000",
+      outPath,
+    ],
+    { timeoutMs: 5 * 60 * 1000 },
+  );
+}
+
 export interface LoudnessTimeline {
   /** Normalized 0-1 loudness, one sample per second of source. */
   energy: number[];

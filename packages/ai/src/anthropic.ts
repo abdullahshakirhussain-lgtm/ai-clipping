@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { resolveVoice, voiceCatalogue } from "./call-brief.js";
 import { planVisionBatches } from "./types.js";
 import type {
+  CallCharacter,
+  CallPlan,
   ClipSignals,
   CommentaryIntensity,
   CommentaryLine,
@@ -8,6 +11,7 @@ import type {
   CookPlan,
   DescribeVideoContextInput,
   DetectHighlightsInput,
+  PlanCallInput,
   PlanCookInput,
   StoryScript,
   SuggestTopicsInput,
@@ -986,6 +990,150 @@ Call submit_cook.`,
       description: String(result.description ?? ""),
       hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
       shots,
+    };
+  }
+
+  async planCall(input: PlanCallInput): Promise<CallPlan> {
+    const seconds = Math.max(20, Math.min(90, input.maxSeconds));
+    const result = await this.callTool<{
+      title?: string;
+      description?: string;
+      hashtags?: string[];
+      premise?: string;
+      setup?: string;
+      characters?: Array<{
+        name?: string;
+        role?: string;
+        gender?: string;
+        age?: string;
+        accent?: string;
+        voice?: string;
+        personality?: string;
+        agenda?: string;
+        quirks?: string;
+      }>;
+      escalation?: string[];
+      ragebait?: string[];
+      ending?: string;
+      direction?: string;
+      imagePrompts?: string[];
+    }>(
+      `You are the DIRECTOR of a short-form "recorded phone call" video — the rage-bait genre where a call between two people is posted with captions and the comments section does the rest. The user's idea: "${input.idea}".
+
+You are NOT writing dialogue. You are writing the BRIEF that a voice model will improvise the call from. Improvised talk sounds real; written lines sound written. So your job is to pin down everything the improvisation must not get wrong, and nothing else.
+
+What makes this genre work:
+- ONE clear situation the viewer understands in three seconds. If they have to work out who these people are, they scroll.
+- An imbalance of power or patience. Someone wants something, the other person will not give it, and neither will hang up.
+- SPECIFICS carry the rage. Not "he was rude" — a number, a name, a policy, a price, a rule that is almost defensible. The comments are people arguing about the specific.
+- The two voices must be unmistakably different people: different accent, different tempo, different vocabulary, different fillers. This is the single biggest realism lever.
+- It escalates. It does not resolve. It cuts on the peak.
+
+Give me:
+1. "premise" — one line: what this call IS.
+2. "setup" — the situation, told so a stranger gets it instantly (who called whom, why, what's at stake).
+3. "characters" — EXACTLY 2. For each: "name" (a plain first name, used as the speaker label), "role", "gender" ("male"/"female"), "age" (band, e.g. "late 40s"), "accent" (accent AND delivery: tempo, pitch, volume, how they sound when they get annoyed), "voice" (pick a voice id from the catalogue below that fits), "personality", "agenda" (what they want out of this call — the engine), "quirks" (fillers, catchphrases, tics, the phrase they keep repeating).
+   VOICE CATALOGUE (use these ids exactly): ${voiceCatalogue()}
+   Pick two voices that sound nothing alike.
+4. "escalation" — 4 to 6 ordered BEATS describing how the call turns, in plain terms ("she stays polite and it makes him worse"). Beats, never lines.
+5. "ragebait" — 3 to 5 concrete infuriating specifics to work in naturally (the number, the rule, the excuse, the thing they say that everyone has heard before).
+6. "ending" — where it cuts. On the peak. No apology, no resolution, no punchline, no "and that's why…".
+7. "direction" — how the whole thing should be performed as a recording: overlapping, interrupting, phone-line realism, silences, the moment the tone changes.
+8. "imagePrompts" — 3 simple still-image prompts for the on-screen visual (the video is audio-led): the two people mid-call, their surroundings, drawn simply. No text in the image, no faces of real people.
+9. "title" (scroll-stopping, ${seconds}s video), "description" (1-2 sentences; it must make clear this is a fictional/AI-made bit), up to 6 "hashtags".
+
+HARD LIMITS — this has to survive platform review and not get the account struck:
+- Everyone is FICTIONAL. No real people, no real companies, banks, agencies, brands or public figures. Invent the names.
+- No real phone numbers, addresses, or account numbers.
+- No slurs, no sexual content, no threats of real violence, no targeting a real identifiable person.
+- Never claim it's a genuine recording. Anger at a situation, not hate at a group.
+The call is about ${seconds} seconds of speech, which is roughly ${Math.round((seconds / 60) * 150)} words of dialogue — pace the escalation for that, not for a 5-minute call.
+Call submit_call.`,
+      {
+        name: "submit_call",
+        description: "Submit the full call brief: premise, cast, escalation beats, rage-bait specifics and ending.",
+        input_schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" },
+            hashtags: { type: "array", items: { type: "string" } },
+            premise: { type: "string", description: "one line: what this call is" },
+            setup: { type: "string", description: "the situation, instantly graspable" },
+            characters: {
+              type: "array",
+              description: "exactly 2 speakers",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "plain first name, used as the speaker label" },
+                  role: { type: "string" },
+                  gender: { type: "string", enum: ["male", "female"] },
+                  age: { type: "string" },
+                  accent: { type: "string", description: "accent AND delivery: tempo, pitch, how they sound annoyed" },
+                  voice: { type: "string", description: "a voice id from the catalogue" },
+                  personality: { type: "string" },
+                  agenda: { type: "string", description: "what they want out of this call" },
+                  quirks: { type: "string", description: "fillers, catchphrases, tics" },
+                },
+                required: ["name", "role", "gender", "age", "accent", "voice", "personality", "agenda", "quirks"],
+              },
+            },
+            escalation: { type: "array", items: { type: "string" }, description: "4-6 ordered beats, never lines" },
+            ragebait: { type: "array", items: { type: "string" }, description: "3-5 concrete infuriating specifics" },
+            ending: { type: "string", description: "where it cuts — on the peak, unresolved" },
+            direction: { type: "string", description: "how it should be performed as a recording" },
+            imagePrompts: { type: "array", items: { type: "string" }, description: "3 simple still prompts" },
+          },
+          required: [
+            "title",
+            "description",
+            "hashtags",
+            "premise",
+            "setup",
+            "characters",
+            "escalation",
+            "ragebait",
+            "ending",
+            "direction",
+            "imagePrompts",
+          ],
+        },
+      },
+      4000,
+      // effort "high": the brief IS the product here — the audio model only ever
+      // sees this, so a vague cast or a soft escalation can't be fixed later.
+      { model: this.commentaryModel, effort: "high" },
+    );
+
+    const characters: CallCharacter[] = (result.characters ?? []).slice(0, 2).map((c, i) => {
+      const gender = c.gender === "female" ? "female" : "male";
+      return {
+        name: String(c.name ?? (i === 0 ? "Caller" : "Recipient")).trim().slice(0, 40),
+        role: String(c.role ?? "").trim(),
+        gender,
+        age: String(c.age ?? "").trim(),
+        accent: String(c.accent ?? "").trim(),
+        voice: resolveVoice(c.voice, gender, i),
+        personality: String(c.personality ?? "").trim(),
+        agenda: String(c.agenda ?? "").trim(),
+        quirks: String(c.quirks ?? "").trim(),
+      };
+    });
+
+    return {
+      title: String(result.title ?? input.idea).slice(0, 120),
+      description: String(result.description ?? ""),
+      hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
+      premise: String(result.premise ?? input.idea),
+      setup: String(result.setup ?? ""),
+      characters,
+      escalation: (result.escalation ?? []).map(String).filter(Boolean).slice(0, 6),
+      ragebait: (result.ragebait ?? []).map(String).filter(Boolean).slice(0, 5),
+      ending: String(result.ending ?? ""),
+      durationSeconds: seconds,
+      direction: String(result.direction ?? ""),
+      imagePrompts: (result.imagePrompts ?? []).map(String).filter(Boolean).slice(0, 4),
     };
   }
 

@@ -24,6 +24,8 @@ async function main() {
     "video.download": 2,
     "clip.enhance": 4,
     "story.generate": 1, // image+voice+assemble is heavy and rate-limited
+    "cook.generate": 1, // several paid ~8s video calls per job
+    "call.generate": 1, // long-running audio call + assemble
     "publish.execute": 4,
   });
   logger.info("worker started — processing pipeline queues");

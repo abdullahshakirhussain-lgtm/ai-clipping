@@ -7,6 +7,8 @@ export * from "./openai-tts.js";
 export * from "./openai-image.js";
 export * from "./fal-image.js";
 export * from "./google-video.js";
+export * from "./google-call.js";
+export * from "./call-brief.js";
 export * from "./elevenlabs.js";
 export * from "./story-styles.js";
 export * from "./story-narrators.js";

@@ -1,7 +1,12 @@
 import { deflateSync } from "node:zlib";
 import type {
+  CallAudioProvider,
+  CallAudioResult,
+  CallPlan,
+  CallSpeaker,
   CommentaryLine,
   CookPlan,
+  PlanCallInput,
   DescribeVideoContextInput,
   DetectHighlightsInput,
   ImageProvider,
@@ -228,6 +233,66 @@ export class MockLlmProvider implements LlmProvider {
       description: `Cooking ${input.dish} outdoors, no talking. Follow for more.`,
       hashtags: ["#cooking", "#asmr", "#wild", "#fyp"],
       shots,
+    };
+  }
+
+  async planCall(input: PlanCallInput): Promise<CallPlan> {
+    return {
+      title: `MOCK call: ${input.idea}`,
+      description: "A fictional, AI-generated phone call. Not a real recording.",
+      hashtags: ["#prankcall", "#ai", "#fyp"],
+      premise: `MOCK premise for "${input.idea}".`,
+      setup: "A mock call between two mock people about a mock problem.",
+      characters: [
+        {
+          name: "Dave",
+          role: "the caller",
+          gender: "male",
+          age: "late 40s",
+          accent: "flat mock accent, talks over people",
+          voice: "Charon",
+          personality: "certain he is right",
+          agenda: "get the refund",
+          quirks: 'says "listen to me" constantly',
+        },
+        {
+          name: "Priya",
+          role: "the agent",
+          gender: "female",
+          age: "early 30s",
+          accent: "calm, clipped, unbothered",
+          voice: "Kore",
+          personality: "immovably polite",
+          agenda: "follow the policy",
+          quirks: 'repeats "I understand your frustration"',
+        },
+      ],
+      escalation: ["polite opening", "the policy is quoted", "voice raised", "the line goes quiet"],
+      ragebait: ["a $4 fee", "a rule invented on the spot", "the hold music"],
+      ending: "cuts mid-sentence",
+      durationSeconds: Math.min(input.maxSeconds, 45),
+      direction: "overlapping, phone-line quality, no narration",
+      imagePrompts: ["a man on a phone at a kitchen table", "a woman at a desk with a headset", "a phone face-down on a table"],
+    };
+  }
+}
+
+/** Offline call audio: a short silent wav + a stub transcript, so the Call
+ *  pipeline assembles a real video with no key set. */
+export class MockCallProvider implements CallAudioProvider {
+  async generate(input: { brief: string; speakers: CallSpeaker[]; targetSeconds: number }): Promise<CallAudioResult> {
+    const [a, b] = input.speakers;
+    const lines = [
+      { speaker: a?.name ?? "A", text: "Mock line one, this is the mock call." },
+      { speaker: b?.name ?? "B", text: "Mock reply, I understand your frustration." },
+      { speaker: a?.name ?? "A", text: "Mock escalation, listen to me." },
+      { speaker: b?.name ?? "B", text: "Mock final line before it cuts." },
+    ];
+    return {
+      audio: silentWav(Math.max(4, Math.min(input.targetSeconds, 60))),
+      ext: "wav",
+      transcript: lines.map((l) => `${l.speaker}: ${l.text}`).join("\n"),
+      lines,
     };
   }
 }

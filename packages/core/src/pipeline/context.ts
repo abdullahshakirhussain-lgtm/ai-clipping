@@ -1,4 +1,11 @@
-import type { ImageProvider, LlmProvider, TranscriptionProvider, TtsProvider, VideoProvider } from "@clipfactory/ai";
+import type {
+  CallAudioProvider,
+  ImageProvider,
+  LlmProvider,
+  TranscriptionProvider,
+  TtsProvider,
+  VideoProvider,
+} from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
 import type { DownloadProvider } from "@clipfactory/media";
 import type { PublisherAdapter, PublishPlatform } from "@clipfactory/publishers";
@@ -26,6 +33,8 @@ export interface PipelineContext {
   images: ImageProvider;
   /** Real video generation (Veo) for Cook Studio clips. */
   video: VideoProvider;
+  /** Two-speaker call audio (Gemini) for Call Studio. */
+  callAudio: CallAudioProvider;
   downloader: DownloadProvider;
   publisherFor: (platform: PublishPlatform) => PublisherAdapter;
   logger: Logger;

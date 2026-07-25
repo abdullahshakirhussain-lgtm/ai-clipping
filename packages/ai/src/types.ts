@@ -204,11 +204,105 @@ export interface PlanCookInput {
 }
 
 /**
- * Generates real video clips for Cook Studio. fal (Veo 3.1) in production; a mock
- * returns a tiny valid mp4 so the whole pipeline runs keyless.
+ * Generates real video clips for Cook Studio. Google Veo via the Gemini API in
+ * production; a mock returns a tiny valid mp4 so the whole pipeline runs keyless.
  */
 export interface VideoProvider {
   generate(input: { prompt: string; aspectRatio?: string }): Promise<{ video: Buffer; ext: "mp4" }>;
+}
+
+// ── Call Studio (fictional prank calls / talk-show rage bait) ────────────────
+
+/**
+ * One voice in the call. The planner decides ALL of this from a one-line idea
+ * ("rage bait a scammer"), and every field is editable before anything is sent —
+ * these are what make two synthetic voices sound like two actual people.
+ */
+export interface CallCharacter {
+  /** Speaker label — used verbatim in the transcript AND as the TTS speaker key. */
+  name: string;
+  /** Who they are in the scenario ("the scammer", "the woman who called back"). */
+  role: string;
+  gender: "male" | "female";
+  /** Age band; steers the read ("late 40s"). */
+  age: string;
+  /** Accent + register, spoken to the TTS as performance direction. */
+  accent: string;
+  /** Gemini prebuilt voice name (see GEMINI_VOICES). */
+  voice: string;
+  /** Personality in one line. */
+  personality: string;
+  /** What they WANT out of this call — the engine of the conflict. */
+  agenda: string;
+  /** Verbal tics, filler, catchphrases — the things that read as human. */
+  quirks: string;
+}
+
+/**
+ * The call BRIEF, not a script. The audio pipeline writes the actual back-and-
+ * forth from this at generation time; pinning lines here would make every call
+ * sound written. What IS pinned is everything that has to stay consistent:
+ * who the people are, how it escalates, and where it stops.
+ */
+export interface CallPlan {
+  title: string;
+  description: string;
+  hashtags: string[];
+  /** The one-line premise — "the abouts". */
+  premise: string;
+  /** The situation a listener must grasp within ~3 seconds. */
+  setup: string;
+  characters: CallCharacter[];
+  /** Ordered escalation beats — the SHAPE of the call, never the lines. */
+  escalation: string[];
+  /** The specific infuriating details that drive comments. */
+  ragebait: string[];
+  /** How it ends — cut on the peak, no neat punchline. */
+  ending: string;
+  /** Target spoken length in seconds. */
+  durationSeconds: number;
+  /** Extra performance direction (overlaps, interruptions, phone realism). */
+  direction: string;
+  /** 2-4 image prompts for the visual; the video is audio-led. */
+  imagePrompts: string[];
+}
+
+export interface PlanCallInput {
+  /** The user's one-line command, e.g. "rage bait a scammer who called me". */
+  idea: string;
+  /** Ceiling on spoken length (cost + platform cap). */
+  maxSeconds: number;
+}
+
+export interface CallAudioResult {
+  audio: Buffer;
+  ext: "wav";
+  /** The improvised transcript the audio was rendered from. */
+  transcript: string;
+  /** Speaker-labelled lines in order, for slide timing + captions. */
+  lines: Array<{ speaker: string; text: string }>;
+}
+
+export interface CallSpeaker {
+  name: string;
+  /** Gemini prebuilt voice name. */
+  voice: string;
+  /** Accent/tone direction for this speaker, given to the TTS in prose. */
+  direction: string;
+}
+
+/**
+ * Turns an approved brief into finished call audio: improvises the dialogue,
+ * then performs it as a two-speaker recording. Google (Gemini) in production; a
+ * mock returns a short silent wav so the pipeline runs keyless.
+ */
+export interface CallAudioProvider {
+  generate(input: {
+    /** The APPROVED director's brief — sent verbatim, nothing re-planned. */
+    brief: string;
+    speakers: CallSpeaker[];
+    targetSeconds: number;
+  }): Promise<CallAudioResult>;
 }
 
 /**
@@ -366,4 +460,11 @@ export interface LlmProvider {
    * inconsistencies between cuts — retrying doesn't fix that, the script must.
    */
   planCookShots(input: PlanCookInput): Promise<CookPlan>;
+  /**
+   * Turn a one-line idea ("rage bait a scammer") into a full call BRIEF —
+   * characters with gender/accent/voice/agenda/quirks, escalation beats, the
+   * infuriating specifics, the ending. Everything is editable before it's sent;
+   * the dialogue itself is improvised later by the audio model, not written here.
+   */
+  planCall(input: PlanCallInput): Promise<CallPlan>;
 }
