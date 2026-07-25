@@ -5,7 +5,7 @@ import {
   ElevenLabsTtsProvider,
   GroqWhisperProvider,
   FalImageProvider,
-  FalVideoProvider,
+  GoogleVeoProvider,
   MockImageProvider,
   MockLlmProvider,
   MockTranscriptionProvider,
@@ -231,17 +231,20 @@ function buildImageProvider(env: Env, logger: Logger): ImageProvider {
 }
 
 function buildVideoProvider(env: Env, logger: Logger): VideoProvider {
-  if (env.VIDEO_PROVIDER === "fal") {
-    if (!env.FAL_KEY) throw new Error("VIDEO_PROVIDER=fal requires FAL_KEY");
+  // Auto: use Google Veo whenever a Gemini key is present — so the only setup is
+  // adding the key. Explicit "google"/"mock" override the auto behaviour.
+  const useGoogle = env.VIDEO_PROVIDER === "google" || (env.VIDEO_PROVIDER === "auto" && !!env.GEMINI_API_KEY);
+  if (useGoogle) {
+    if (!env.GEMINI_API_KEY) throw new Error("VIDEO_PROVIDER=google requires GEMINI_API_KEY");
     logger.info(
-      { model: env.FAL_VIDEO_MODEL, resolution: env.FAL_VIDEO_RESOLUTION },
-      "using fal.ai video generation (Veo)",
+      { model: env.GEMINI_VEO_MODEL, resolution: env.VEO_RESOLUTION },
+      "using Google Veo video generation (Gemini API, direct)",
     );
-    return new FalVideoProvider({
-      apiKey: env.FAL_KEY,
-      model: env.FAL_VIDEO_MODEL,
-      resolution: env.FAL_VIDEO_RESOLUTION,
-      duration: env.FAL_VIDEO_DURATION,
+    return new GoogleVeoProvider({
+      apiKey: env.GEMINI_API_KEY,
+      model: env.GEMINI_VEO_MODEL,
+      resolution: env.VEO_RESOLUTION,
+      durationSeconds: env.VEO_DURATION_SECONDS,
     });
   }
   logger.info("using mock video provider (stub mp4)");

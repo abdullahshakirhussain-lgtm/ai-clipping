@@ -776,10 +776,12 @@ export async function assembleSlideshow(input: {
 
 /**
  * Concatenate real video clips (each ~8s, WITH its own native audio) into one
- * hard-cut video — the cook-in-the-wild assembler. Each clip is first normalized
- * to an identical 1080x1920 / 24fps / aac stream (cover+crop, plus loudnorm so
- * shot-to-shot volume is even), which lets the concat be a clean stream-copy that
- * keeps every clip's native sizzle/fire/ambient sound.
+ * SEAMLESS hard-cut video — the cook-in-the-wild assembler. Every clip is
+ * normalized to an identical 1080x1920 / 24fps stream (cover+crop) with even
+ * loudness (loudnorm) and 48kHz audio, then joined with the concat FILTER (not
+ * the demuxer + stream-copy) in a single re-encode. The filter path rewrites
+ * timestamps continuously, so there is no black flash, PTS jump, or audio pop at
+ * the cut boundaries — the sizzle/fire/ambient sound flows clip to clip.
  */
 export async function assembleClips(input: {
   clips: string[];
@@ -789,29 +791,29 @@ export async function assembleClips(input: {
   const { clips, workDir } = input;
   if (clips.length === 0) throw new Error("assembleClips: no clips");
 
-  const normed: string[] = [];
-  for (let i = 0; i < clips.length; i++) {
-    const out = `clip-n-${i}.mp4`;
-    await run(
-      bin("ffmpeg"),
-      [
-        "-y", "-i", clips[i]!,
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24",
-        "-af", "loudnorm",
-        "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-        join(workDir, out),
-      ],
-      { cwd: workDir, timeoutMs: 5 * 60 * 1000 },
-    );
-    normed.push(out);
-  }
+  const args: string[] = ["-y"];
+  for (const c of clips) args.push("-i", c);
 
-  const listName = "clips.txt";
-  await writeFile(join(workDir, listName), normed.map((f) => `file '${f}'`).join("\n"), "utf8");
-  await run(
-    bin("ffmpeg"),
-    ["-y", "-f", "concat", "-safe", "0", "-i", listName, "-c", "copy", "-movflags", "+faststart", input.outPath],
-    { cwd: workDir, timeoutMs: 8 * 60 * 1000 },
+  // Per-input: uniform video (cover-crop to 1080x1920, 24fps, yuv420p) + audio
+  // (48kHz, loudnorm). Then concat them all into one continuous v/a pair.
+  const parts: string[] = [];
+  const labels: string[] = [];
+  clips.forEach((_, i) => {
+    parts.push(
+      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24,format=yuv420p[v${i}]`,
+    );
+    parts.push(`[${i}:a]aresample=48000,loudnorm[a${i}]`);
+    labels.push(`[v${i}][a${i}]`);
+  });
+  parts.push(`${labels.join("")}concat=n=${clips.length}:v=1:a=1[vo][ao]`);
+
+  args.push(
+    "-filter_complex", parts.join(";"),
+    "-map", "[vo]", "-map", "[ao]",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+    "-movflags", "+faststart",
+    input.outPath,
   );
+  await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 12 * 60 * 1000 });
 }

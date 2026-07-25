@@ -61,13 +61,16 @@ const EnvSchema = z.object({
   FAL_KEY: z.string().optional().default(""),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/schnell"),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────
-  // "fal" = Veo 3.1 native-audio clips (needs FAL_KEY); "mock" = a tiny stub mp4
-  // so the pipeline runs keyless. Veo 3.1 Fast at 720p ≈ $0.15/sec (~$1.20/8s).
-  VIDEO_PROVIDER: z.enum(["mock", "fal"]).default("mock"),
-  FAL_VIDEO_MODEL: z.string().default("fal-ai/veo3.1/fast"),
-  FAL_VIDEO_RESOLUTION: z.string().default("720p"),
-  FAL_VIDEO_DURATION: z.string().default("8s"),
-  // Ceiling on shots == clips per cook video (cost cap; ~$1.20/shot on Fast).
+  // Google Veo via the Gemini API DIRECTLY (no fal reseller markup). Veo 3.1
+  // Fast @ 720p ≈ $0.10/sec (~$0.80/8s clip). Provider AUTO-selects: set
+  // GEMINI_API_KEY (from Google AI Studio) and it uses Google; leave it blank
+  // and it uses a stub mp4. So adding the key is the only setup.
+  VIDEO_PROVIDER: z.enum(["auto", "mock", "google"]).default("auto"),
+  GEMINI_API_KEY: z.string().optional().default(""),
+  GEMINI_VEO_MODEL: z.string().default("veo-3.1-fast-generate-preview"),
+  VEO_RESOLUTION: z.string().default("720p"),
+  VEO_DURATION_SECONDS: z.string().default("8"),
+  // Ceiling on shots == clips per cook video (cost cap; ~$0.80/shot on Fast).
   COOK_MAX_SHOTS: z.coerce.number().min(2).max(8).default(6),
   // Ceiling on beats == images per story. At 15, a fal FLUX.1 [schnell] run
   // (720x1280, $0.003/img) tops out at ~$0.045/video — under the $0.05 target.
