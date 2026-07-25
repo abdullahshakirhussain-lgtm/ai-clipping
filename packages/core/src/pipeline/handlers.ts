@@ -3,6 +3,7 @@ import type { PipelineContext } from "./context.js";
 import {
   runDetect,
   runDownload,
+  runCookGenerate,
   runEnhance,
   runPublish,
   runRender,
@@ -19,6 +20,7 @@ export function buildHandlers(ctx: PipelineContext): HandlerRegistry {
     "clip.render": (p) => runRender(ctx, p.clipId),
     "clip.enhance": (p) => runEnhance(ctx, p.clipId),
     "story.generate": (p) => runStoryGenerate(ctx, p.sourceVideoId),
+    "cook.generate": (p) => runCookGenerate(ctx, p.sourceVideoId),
     "publish.execute": (p) => runPublish(ctx, p.publishJobId),
   };
 }

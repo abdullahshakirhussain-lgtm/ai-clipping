@@ -60,6 +60,15 @@ const EnvSchema = z.object({
   OPENAI_IMAGE_QUALITY: z.enum(["auto", "low", "medium", "high"]).default("low"),
   FAL_KEY: z.string().optional().default(""),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/schnell"),
+  // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────
+  // "fal" = Veo 3.1 native-audio clips (needs FAL_KEY); "mock" = a tiny stub mp4
+  // so the pipeline runs keyless. Veo 3.1 Fast at 720p ≈ $0.15/sec (~$1.20/8s).
+  VIDEO_PROVIDER: z.enum(["mock", "fal"]).default("mock"),
+  FAL_VIDEO_MODEL: z.string().default("fal-ai/veo3.1/fast"),
+  FAL_VIDEO_RESOLUTION: z.string().default("720p"),
+  FAL_VIDEO_DURATION: z.string().default("8s"),
+  // Ceiling on shots == clips per cook video (cost cap; ~$1.20/shot on Fast).
+  COOK_MAX_SHOTS: z.coerce.number().min(2).max(8).default(6),
   // Ceiling on beats == images per story. At 15, a fal FLUX.1 [schnell] run
   // (720x1280, $0.003/img) tops out at ~$0.045/video — under the $0.05 target.
   STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(15),

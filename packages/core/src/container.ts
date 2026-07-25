@@ -5,16 +5,19 @@ import {
   ElevenLabsTtsProvider,
   GroqWhisperProvider,
   FalImageProvider,
+  FalVideoProvider,
   MockImageProvider,
   MockLlmProvider,
   MockTranscriptionProvider,
   MockTtsProvider,
+  MockVideoProvider,
   OpenAiImageProvider,
   OpenAiTtsProvider,
   type ImageProvider,
   type LlmProvider,
   type TranscriptionProvider,
   type TtsProvider,
+  type VideoProvider,
 } from "@clipfactory/ai";
 import { createRepositories, getPrisma, type Repositories } from "@clipfactory/db";
 import { MockFeedProvider, RedditProvider, type SourceFeedProvider } from "@clipfactory/discovery";
@@ -50,6 +53,7 @@ import { ClipService } from "./services/clip-service.js";
 import { PublishService } from "./services/publish-service.js";
 import { ReviewService } from "./services/review-service.js";
 import { StoryService } from "./services/story-service.js";
+import { CookService } from "./services/cook-service.js";
 import { VideoService } from "./services/video-service.js";
 
 export interface Container {
@@ -73,6 +77,7 @@ export interface Container {
     distribution: DistributionService;
     discovery: DiscoveryService;
     story: StoryService;
+    cook: CookService;
     system: SystemService;
   };
   shutdown(): Promise<void>;
@@ -225,6 +230,24 @@ function buildImageProvider(env: Env, logger: Logger): ImageProvider {
   return new MockImageProvider();
 }
 
+function buildVideoProvider(env: Env, logger: Logger): VideoProvider {
+  if (env.VIDEO_PROVIDER === "fal") {
+    if (!env.FAL_KEY) throw new Error("VIDEO_PROVIDER=fal requires FAL_KEY");
+    logger.info(
+      { model: env.FAL_VIDEO_MODEL, resolution: env.FAL_VIDEO_RESOLUTION },
+      "using fal.ai video generation (Veo)",
+    );
+    return new FalVideoProvider({
+      apiKey: env.FAL_KEY,
+      model: env.FAL_VIDEO_MODEL,
+      resolution: env.FAL_VIDEO_RESOLUTION,
+      duration: env.FAL_VIDEO_DURATION,
+    });
+  }
+  logger.info("using mock video provider (stub mp4)");
+  return new MockVideoProvider();
+}
+
 function buildDownloader(env: Env): DownloadProvider {
   return env.DOWNLOAD_DRIVER === "ytdlp"
     ? new YtDlpDownloader({
@@ -271,6 +294,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const { transcription, llm } = buildAiProviders(env, logger);
   const ttsFor = buildTtsTiers(env, logger);
   const images = buildImageProvider(env, logger);
+  const video = buildVideoProvider(env, logger);
   const downloader = buildDownloader(env);
   const publisherFor = buildPublisherFactory(env);
 
@@ -286,6 +310,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     llm,
     ttsFor,
     images,
+    video,
     downloader,
     publisherFor,
     logger,
@@ -334,6 +359,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
       maxAgeHours: env.DISCOVERY_MAX_AGE_H,
     }),
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS),
+    cook: new CookService(repos, dispatcher, env.COOK_MAX_SHOTS),
     system: new SystemService(),
   };
 

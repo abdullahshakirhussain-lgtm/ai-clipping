@@ -38,6 +38,8 @@ export default function CreatePage() {
   const { data: cats } = useCategories();
   const categories = (cats ?? []).map((c) => c.name);
 
+  const [format, setFormat] = useState<"story" | "cook">("story");
+  const [dish, setDish] = useState("");
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("stick-scene");
   const [narrator, setNarrator] = useState("storyteller");
@@ -70,23 +72,30 @@ export default function CreatePage() {
     }
   }
 
+  const canGenerate = format === "story" ? topic.trim().length >= 3 : dish.trim().length >= 3;
+
   async function generate() {
-    if (topic.trim().length < 3) return;
+    if (!canGenerate) return;
     setBusy(true);
     setMsg(null);
     try {
-      await apiSend("/story", "POST", {
-        topic: topic.trim(),
-        style,
-        narrator,
-        voiceTier,
-        category: category || undefined,
-        captionStyle,
-        captionPosition,
-        music,
-      });
+      if (format === "cook") {
+        await apiSend("/cook", "POST", { dish: dish.trim(), category: category || undefined });
+        setDish("");
+      } else {
+        await apiSend("/story", "POST", {
+          topic: topic.trim(),
+          style,
+          narrator,
+          voiceTier,
+          category: category || undefined,
+          captionStyle,
+          captionPosition,
+          music,
+        });
+        setTopic("");
+      }
       setMsg("Generating… it'll appear in the Library when done. Track progress in the Video Queue.");
-      setTopic("");
       await revalidateAll();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed to start");
@@ -99,10 +108,25 @@ export default function CreatePage() {
     <div>
       <PageHeader
         title="Create"
-        subtitle="Generate an original narrated slideshow — AI script, AI voice, AI images. 100% your content, no copyright risk."
+        subtitle="Generate an original video — a narrated story slideshow or a cook-in-the-wild clip. 100% your content, no copyright risk."
       />
 
       <Card className="mb-6 max-w-2xl">
+        <div className="flex gap-1 mb-5 p-1 rounded-lg surface-2 border w-fit" style={{ borderColor: "var(--border)" }}>
+          {(["story", "cook"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => { setFormat(f); setMsg(null); }}
+              className="text-sm px-3 py-1.5 rounded-md font-medium transition-colors"
+              style={f === format ? { background: "var(--primary)", color: "#fff" } : { color: "var(--muted)" }}
+            >
+              {f === "story" ? "📖 Story slideshow" : "🍳 Cook clip"}
+            </button>
+          ))}
+        </div>
+
+        {format === "story" && (
+        <>
         <label className="block mb-4">
           <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Topic</span>
           <textarea
@@ -200,10 +224,41 @@ export default function CreatePage() {
         <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
           Length is automatic — the story runs as long as it needs to feel complete, capped at ~2 minutes.
         </p>
+        </>
+        )}
+
+        {format === "cook" && (
+        <>
+        <label className="block mb-4">
+          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Dish</span>
+          <textarea
+            value={dish}
+            onChange={(e) => setDish(e.target.value)}
+            rows={2}
+            maxLength={200}
+            placeholder="e.g. trout grilled on a river stone, campfire flatbread"
+            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
+            style={{ borderColor: dish.trim() ? "var(--primary)" : "var(--border)" }}
+          />
+        </label>
+        <label className="block mb-4 max-w-xs">
+          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
+          <select value={category} onChange={(e) => setCategory(e.target.value)}
+            className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
+            <option value="">— none —</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+          Cook-in-the-wild ASMR — no narration, native ambient sound, a hard cut every ~8s. The AI plans an
+          exhaustive shot list and renders real video clips (Veo). Costs more than a slideshow (~$1–2/video).
+        </p>
+        </>
+        )}
 
         <div className="flex items-center gap-3">
-          <Button onClick={generate} disabled={busy || topic.trim().length < 3}>
-            {busy ? "Starting…" : "✨ Generate video"}
+          <Button onClick={generate} disabled={busy || !canGenerate}>
+            {busy ? "Starting…" : format === "cook" ? "🍳 Generate cook video" : "✨ Generate video"}
           </Button>
           {msg && <span className="text-xs" style={{ color: "var(--muted)" }}>{msg}</span>}
         </div>

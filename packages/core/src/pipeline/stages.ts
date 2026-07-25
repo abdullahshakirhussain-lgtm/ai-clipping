@@ -12,6 +12,7 @@ import {
 import { ClipStatus, PublishJobStatus, SourceVideoStatus } from "@clipfactory/db";
 import {
   analyzeLoudness,
+  assembleClips,
   assembleSlideshow,
   buildAss,
   type CaptionWord,
@@ -1013,6 +1014,158 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       // Terminated from the queue: it's already FAILED with the "Cancelled"
       // message — don't overwrite it, just stop.
       ctx.logger.info({ sourceVideoId }, "story generation cancelled");
+      return;
+    }
+    await failVideo(ctx, sourceVideoId, err);
+    throw err;
+  }
+}
+
+interface CookSpec {
+  dish: string;
+  category?: string;
+  aspectRatio?: string;
+  maxShots: number;
+}
+
+/**
+ * Cook Studio: generate a "cook-in-the-wild" ASMR video. An LLM plans an
+ * exhaustive, continuity-locked shot list (every physical aspect pinned so the
+ * video model can't invent inconsistencies between cuts), each shot is rendered
+ * as a real ~8s clip WITH native audio by the video model, and the clips are
+ * hard-cut together — no narration, no captions. Lands as a ready-to-distribute
+ * Clip like a story, so Queue / Library / Distribution are reused.
+ */
+export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+  const moved = await ctx.repos.sourceVideos.transition(
+    sourceVideoId,
+    [SourceVideoStatus.PENDING],
+    SourceVideoStatus.DETECTING,
+  );
+  if (!moved) return;
+
+  const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
+  if (!video) return;
+  const spec = (video.storySpec as CookSpec | null) ?? null;
+  if (!spec?.dish) {
+    await failVideo(ctx, sourceVideoId, new Error("cook video has no spec"));
+    return;
+  }
+
+  const workDir = join(ctx.workRoot, sourceVideoId);
+  // Same progress-in-storySpec + cancellation-checkpoint pattern as stories: a
+  // terminate from the queue (status flipped off DETECTING) bails before the
+  // next expensive video call.
+  const setProgress = async (stage: string, pct: number, extra?: Record<string, unknown>) => {
+    const cur = await ctx.repos.sourceVideos.byId(sourceVideoId);
+    if (!cur || cur.status !== SourceVideoStatus.DETECTING) throw new StoryCancelledError();
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      storySpec: { ...spec, ...extra, progress: { stage, pct } } as never,
+    });
+  };
+  try {
+    await fs.mkdir(workDir, { recursive: true });
+
+    // 1. Plan the shots — the whole product: an exhaustive continuity-locked spec.
+    await setProgress("Planning the shots", 8);
+    const plan = await ctx.llm.planCookShots({
+      dish: spec.dish,
+      maxShots: spec.maxShots,
+      aspectRatio: spec.aspectRatio,
+    });
+    if (plan.shots.length === 0) {
+      await failVideo(ctx, sourceVideoId, new Error("cook planner returned no shots"));
+      return;
+    }
+    await setProgress("Generating the clips", 15, { plan: { title: plan.title, shots: plan.shots } });
+
+    // 2. Render each shot as a real clip (native audio). Concurrency 2: video gen
+    //    is slow + expensive. A shot that fails is dropped, not fatal — cut the
+    //    rest together rather than losing the whole (paid) video.
+    let done = 0;
+    const clipFiles = await mapWithConcurrency(plan.shots, 2, async (shot, i) => {
+      try {
+        const { video: bytes } = await ctx.video.generate({ prompt: shot.prompt, aspectRatio: spec.aspectRatio });
+        const f = join(workDir, `shot-${i}.mp4`);
+        await fs.writeFile(f, bytes);
+        done++;
+        await setProgress(
+          `Generating the clips (${done}/${plan.shots.length})`,
+          15 + Math.round((done / plan.shots.length) * 70),
+        );
+        return f;
+      } catch (err) {
+        ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err) }, "cook shot failed; dropping it");
+        return null;
+      }
+    });
+    const clips = clipFiles.filter((f): f is string => !!f);
+    if (clips.length === 0) {
+      await failVideo(ctx, sourceVideoId, new Error("cook: all shots failed to generate"));
+      return;
+    }
+
+    // 3. Hard-cut the clips together, keeping each clip's native audio.
+    await setProgress("Putting it together", 90);
+    const outPath = join(workDir, "cook.mp4");
+    await assembleClips({ clips, outPath, workDir });
+
+    // 4. Store + create a ready-to-distribute Clip with the planner's metadata.
+    const thumbPath = join(workDir, "thumb.jpg");
+    await extractSmartThumbnail(outPath, thumbPath);
+    const probed = await probe(outPath);
+    const totalDur = probed.durationSec > 0 ? probed.durationSec : clips.length * 8;
+
+    const [clip] = await ctx.repos.clips.createMany([
+      {
+        sourceVideoId,
+        campaignId: video.campaignId,
+        startSec: 0,
+        endSec: totalDur,
+        // APPROVED like story clips — the user's own content, distribution routes
+        // only APPROVED clips.
+        status: ClipStatus.APPROVED,
+        detectionReason: plan.title,
+        detectionSource: "cook",
+        captionStyle: video.captionStyle,
+        captionPosition: video.captionPosition,
+        commentaryMode: "off",
+        category: video.category,
+        hookScore: 80,
+        viralScore: 80,
+        overallScore: 80,
+        scoreBreakdown: { notes: ["cook-generated"] } as never,
+      },
+    ]);
+    await ctx.storage.putFile(clipKey(clip!.id), outPath, "video/mp4");
+    await ctx.storage.putFile(thumbKey(clip!.id), thumbPath, "image/jpeg");
+    await ctx.repos.clips.update(clip!.id, {
+      storageKey: clipKey(clip!.id),
+      thumbnailKey: thumbKey(clip!.id),
+      error: null,
+    });
+    await ctx.repos.clips.upsertEnhancement(clip!.id, {
+      title: plan.title,
+      description: plan.description,
+      hashtags: plan.hashtags,
+      hooks: { variants: [plan.title], selectedIndex: 0 } as never,
+      qualityScore: 80,
+      viralScore: 80,
+      estimatedEngagement: 80,
+      model: "cook",
+    });
+
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      status: SourceVideoStatus.PROCESSED,
+      storySpec: { ...spec, plan: { title: plan.title, shots: plan.shots }, progress: { stage: "Done", pct: 100 } } as never,
+    });
+    ctx.logger.info(
+      { sourceVideoId, shots: clips.length, durationSec: Number(totalDur.toFixed(1)) },
+      "cook video generated",
+    );
+  } catch (err) {
+    if (err instanceof StoryCancelledError) {
+      ctx.logger.info({ sourceVideoId }, "cook generation cancelled");
       return;
     }
     await failVideo(ctx, sourceVideoId, err);

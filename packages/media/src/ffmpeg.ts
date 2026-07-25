@@ -773,3 +773,45 @@ export async function assembleSlideshow(input: {
     { cwd: workDir, timeoutMs: 8 * 60 * 1000 },
   );
 }
+
+/**
+ * Concatenate real video clips (each ~8s, WITH its own native audio) into one
+ * hard-cut video — the cook-in-the-wild assembler. Each clip is first normalized
+ * to an identical 1080x1920 / 24fps / aac stream (cover+crop, plus loudnorm so
+ * shot-to-shot volume is even), which lets the concat be a clean stream-copy that
+ * keeps every clip's native sizzle/fire/ambient sound.
+ */
+export async function assembleClips(input: {
+  clips: string[];
+  outPath: string;
+  workDir: string;
+}): Promise<void> {
+  const { clips, workDir } = input;
+  if (clips.length === 0) throw new Error("assembleClips: no clips");
+
+  const normed: string[] = [];
+  for (let i = 0; i < clips.length; i++) {
+    const out = `clip-n-${i}.mp4`;
+    await run(
+      bin("ffmpeg"),
+      [
+        "-y", "-i", clips[i]!,
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24",
+        "-af", "loudnorm",
+        "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+        join(workDir, out),
+      ],
+      { cwd: workDir, timeoutMs: 5 * 60 * 1000 },
+    );
+    normed.push(out);
+  }
+
+  const listName = "clips.txt";
+  await writeFile(join(workDir, listName), normed.map((f) => `file '${f}'`).join("\n"), "utf8");
+  await run(
+    bin("ffmpeg"),
+    ["-y", "-f", "concat", "-safe", "0", "-i", listName, "-c", "copy", "-movflags", "+faststart", input.outPath],
+    { cwd: workDir, timeoutMs: 8 * 60 * 1000 },
+  );
+}

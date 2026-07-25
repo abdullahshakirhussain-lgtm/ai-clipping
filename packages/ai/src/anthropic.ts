@@ -5,8 +5,10 @@ import type {
   CommentaryIntensity,
   CommentaryLine,
   CommentaryRole,
+  CookPlan,
   DescribeVideoContextInput,
   DetectHighlightsInput,
+  PlanCookInput,
   StoryScript,
   SuggestTopicsInput,
   WriteStoryInput,
@@ -891,6 +893,99 @@ Call submit_story.`,
       hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
       setting: String(result.setting ?? "").trim() || planSetting,
       beats: cleanBeats,
+    };
+  }
+
+  async planCookShots(input: PlanCookInput): Promise<CookPlan> {
+    const maxShots = Math.max(3, Math.min(8, input.maxShots));
+    const aspect = input.aspectRatio || "9:16";
+    const result = await this.callTool<{
+      title?: string;
+      description?: string;
+      hashtags?: string[];
+      styleBible?: string;
+      shots?: Array<{ state?: string; action?: string; camera?: string; audio?: string }>;
+    }>(
+      `You are the SHOT PLANNER for a "cook-in-the-wild" ASMR video (the viral genre: cooking in nature, ${aspect} vertical, NO narration, native ambient sound, a hard cut every ~8-10 seconds, every step shown). The dish: "${input.dish}".
+
+The whole game is CONSISTENCY across cuts. The video model invents anything you leave unspecified, and it invents it differently every shot (a rock off the fire one cut, oil appearing from nowhere the next). Retrying does not fix that — the SPEC must. So pin EVERY aspect.
+
+1. "styleBible" — ONE dense block, the immutable look repeated on every shot. It MUST lock all of:
+   - SETTING: the exact outdoor place (e.g. a riverside by a clear rushing stream), fixed.
+   - HEAT SETUP: state explicitly where the heat is — e.g. "a flat cooking stone resting DIRECTLY ON a low campfire, flames and glowing embers visible underneath it, heating it from below". The cooking must be physically possible.
+   - PROPS: the fixed cast of objects (specific bowls, board, utensils) — nothing new appears later.
+   - HANDS: "only weathered bare hands, no rings, no face, no body, no second person".
+   - LIGHT + EXPOSURE: "soft overcast daylight in open shade, balanced natural exposure, muted earthy tones, NO blown-out highlights, NO harsh glare, NO golden glow" (blown highlights are a known failure).
+   - CAMERA: photorealistic cinematic close-up, shallow depth of field, subtle handheld movement, ${aspect} vertical.
+   - HARD RULES: "everything visible is present from the first frame — nothing appears, changes, or vanishes mid-shot unless the on-screen action causes it; no on-screen text, no watermark, no music, no voices, no cartoon or CGI look".
+
+2. "shots" — the ordered cooking steps (minimum 3, up to ${maxShots}), one continuous ~8s action each. Each shot pins:
+   - "state": the food's EXACT current condition, carried forward from the previous shot (raw → rinsed → seasoned → sizzling → browned → plated). This is continuity — the fish rinsed in shot 1 is the fish seasoned in shot 2.
+   - "action": ONE clear continuous action for this ~8s beat (rinse, season, mix a paste, lay on the hot stone → sizzle, pour water → steam, plate). No implied off-screen jumps.
+   - "camera": the framing + any slow move.
+   - "audio": the explicit native ambient sound for this shot (sizzle, crackling fire, running water, steam hiss, birdsong) — ambient only, never music or voices.
+   Make it a real, appetising sequence a viewer watches start to finish. Physically logical throughout.
+
+Also give a scroll-stopping "title", a 1-2 sentence "description" (a soft CTA is fine here), and up to 6 "hashtags".
+Call submit_cook.`,
+      {
+        name: "submit_cook",
+        description: "Submit the locked style bible and the continuity-threaded cooking shot list.",
+        input_schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" },
+            hashtags: { type: "array", items: { type: "string" } },
+            styleBible: {
+              type: "string",
+              description: "the immutable look — setting, heat setup, props, hands, exposure, camera, hard rules — repeated on every shot",
+            },
+            shots: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  state: { type: "string", description: "the food's exact current condition, carried from the previous shot" },
+                  action: { type: "string", description: "one clear continuous ~8s action" },
+                  camera: { type: "string", description: "framing + any slow move" },
+                  audio: { type: "string", description: "explicit native ambient sound; no music/voices" },
+                },
+                required: ["state", "action", "camera", "audio"],
+              },
+            },
+          },
+          required: ["title", "description", "hashtags", "styleBible", "shots"],
+        },
+      },
+      4000,
+      // effort "high": the planner is the whole product — an exhaustive,
+      // continuity-locked spec is what makes the clips cut together.
+      { model: this.commentaryModel, effort: "high" },
+    );
+
+    const bible = String(result.styleBible ?? "").trim();
+    // Assemble each shot's full prompt in code so the bible is byte-identical
+    // across every shot — the strongest consistency lever (a model asked to
+    // repeat it verbatim drifts).
+    const shots = (result.shots ?? [])
+      .map((s) => {
+        const parts = [
+          bible,
+          String(s.state ?? "").trim() ? `STATE: ${String(s.state).trim()}` : "",
+          String(s.action ?? "").trim() ? `ACTION: ${String(s.action).trim()}` : "",
+          String(s.camera ?? "").trim() ? `CAMERA: ${String(s.camera).trim()}` : "",
+          String(s.audio ?? "").trim() ? `AUDIO: ${String(s.audio).trim()}` : "",
+        ].filter(Boolean);
+        return { prompt: parts.join("\n") };
+      })
+      .filter((s) => /ACTION:/.test(s.prompt));
+
+    return {
+      title: String(result.title ?? input.dish).slice(0, 120),
+      description: String(result.description ?? ""),
+      hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
+      shots,
     };
   }
 

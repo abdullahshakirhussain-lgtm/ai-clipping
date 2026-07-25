@@ -1,4 +1,4 @@
-import type { ImageProvider, LlmProvider, TranscriptionProvider, TtsProvider } from "@clipfactory/ai";
+import type { ImageProvider, LlmProvider, TranscriptionProvider, TtsProvider, VideoProvider } from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
 import type { DownloadProvider } from "@clipfactory/media";
 import type { PublisherAdapter, PublishPlatform } from "@clipfactory/publishers";
@@ -24,6 +24,8 @@ export interface PipelineContext {
   ttsFor: (tier: string) => TtsProvider;
   /** Image generation for Story Studio slideshows. */
   images: ImageProvider;
+  /** Real video generation (Veo) for Cook Studio clips. */
+  video: VideoProvider;
   downloader: DownloadProvider;
   publisherFor: (platform: PublishPlatform) => PublisherAdapter;
   logger: Logger;

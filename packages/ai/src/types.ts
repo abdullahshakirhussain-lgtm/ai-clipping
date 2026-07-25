@@ -178,6 +178,39 @@ export interface SuggestTopicsInput {
   count: number;
 }
 
+// ── Cook Studio (generated cook-in-the-wild videos) ──────────────────────────
+
+/** One ~8s shot: a fully-specified video prompt (the style bible baked in). */
+export interface CookShot {
+  /** The complete video prompt for this shot — every aspect pinned, continuity-threaded. */
+  prompt: string;
+}
+
+export interface CookPlan {
+  title: string;
+  description: string;
+  hashtags: string[];
+  /** Ordered shots; each is a full prompt fed to the video model, hard-cut every ~8-10s. */
+  shots: CookShot[];
+}
+
+export interface PlanCookInput {
+  /** The dish / recipe, e.g. "trout on a river stone". */
+  dish: string;
+  /** Ceiling on shots (= clips); the planner uses as many as the recipe needs. */
+  maxShots: number;
+  /** "9:16" (vertical, default) etc. — pinned into every shot for consistency. */
+  aspectRatio?: string;
+}
+
+/**
+ * Generates real video clips for Cook Studio. fal (Veo 3.1) in production; a mock
+ * returns a tiny valid mp4 so the whole pipeline runs keyless.
+ */
+export interface VideoProvider {
+  generate(input: { prompt: string; aspectRatio?: string }): Promise<{ video: Buffer; ext: "mp4" }>;
+}
+
 /**
  * Generates images for the story beats. gpt-image-1 in production; a mock draws
  * a solid card so the pipeline runs keyless.
@@ -326,4 +359,11 @@ export interface LlmProvider {
    * story is the whole product — it must actually be interesting, not filler.
    */
   writeStory(input: WriteStoryInput): Promise<StoryScript>;
+  /**
+   * Plan an exhaustive, continuity-locked shot list for a cook-in-the-wild
+   * video. Every physical aspect is pinned (setting, heat setup, props, hands,
+   * exposure, per-shot food state) so the video model can't invent
+   * inconsistencies between cuts — retrying doesn't fix that, the script must.
+   */
+  planCookShots(input: PlanCookInput): Promise<CookPlan>;
 }

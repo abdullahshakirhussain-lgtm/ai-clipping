@@ -6,6 +6,7 @@ export * from "./anthropic.js";
 export * from "./openai-tts.js";
 export * from "./openai-image.js";
 export * from "./fal-image.js";
+export * from "./fal-video.js";
 export * from "./elevenlabs.js";
 export * from "./story-styles.js";
 export * from "./story-narrators.js";
