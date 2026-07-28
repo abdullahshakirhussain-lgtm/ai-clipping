@@ -58,6 +58,7 @@ import { ReviewService } from "./services/review-service.js";
 import { StoryService } from "./services/story-service.js";
 import { CookService } from "./services/cook-service.js";
 import { CallService } from "./services/call-service.js";
+import { PlanJobs } from "./services/plan-jobs.js";
 import { VideoService } from "./services/video-service.js";
 
 export interface Container {
@@ -83,6 +84,8 @@ export interface Container {
     story: StoryService;
     cook: CookService;
     calls: CallService;
+    /** Background runner for the (slow) Studio planners; polled by the client. */
+    planJobs: PlanJobs;
     system: SystemService;
   };
   shutdown(): Promise<void>;
@@ -390,6 +393,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
     calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
+    planJobs: new PlanJobs(logger),
     system: new SystemService(),
   };
 

@@ -47,6 +47,14 @@ export type CallPlanRequest = z.infer<typeof CallPlanRequestSchema>;
 export const CallPlanSchema = CallSpecSchema.extend({ brief: z.string() });
 export type CallPlanDto = z.infer<typeof CallPlanSchema>;
 
+/** Same background-and-poll shape as cook planning — see PlanStartedSchema. */
+export const CallPlanStatusSchema = z.object({
+  status: z.enum(["pending", "done", "error"]),
+  elapsedMs: z.number(),
+  plan: CallPlanSchema.optional(),
+  error: z.string().optional(),
+});
+
 /** Step 1b — re-assemble the brief after the user edits the fields. No spend. */
 export const CallBriefRequestSchema = CallSpecSchema;
 export const CallBriefSchema = z.object({ brief: z.string() });

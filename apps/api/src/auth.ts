@@ -24,6 +24,17 @@ export function createAuth(env: Env) {
       },
     },
     advanced: {
+      // Every request reaches this service through two proxies (Railway's edge,
+      // then the Next.js /api rewrite), so the socket address is always an
+      // internal hop. Without a header to read, Better Auth puts ALL traffic in
+      // one shared rate-limit bucket per path — meaning any noise can lock the
+      // real user out of sign-in. Railway's edge sets both of these headers.
+      // Caveat: a caller can forge x-forwarded-for to dodge the limit; for a
+      // single-user ops tool behind a login that's a better trade than one
+      // bucket for everyone.
+      ipAddress: {
+        ipAddressHeaders: ["x-forwarded-for", "x-real-ip"],
+      },
       // In production the dashboard and API live on different origins (e.g.
       // separate *.railway.app subdomains), so the session cookie is sent on
       // cross-site fetches only with SameSite=None + Secure. Locally, Lax over

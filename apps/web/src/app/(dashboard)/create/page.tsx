@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { apiGet, apiSend, revalidateAll, useCategories } from "@/lib/api";
+import { apiGet, apiSend, revalidateAll, runPlan, useCategories } from "@/lib/api";
 import { Button, Card, PageHeader } from "@/components/ui";
 
 const STYLES = [
@@ -133,6 +133,7 @@ export default function CreatePage() {
   const [cookDescription, setCookDescription] = useState("");
   const [cookHashtags, setCookHashtags] = useState<string[]>([]);
   const [planning, setPlanning] = useState(false);
+  const [planSec, setPlanSec] = useState(0);
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState("stick-scene");
   const [narrator, setNarrator] = useState("storyteller");
@@ -188,9 +189,14 @@ export default function CreatePage() {
   async function planCall() {
     if (idea.trim().length < 3) return;
     setPlanning(true);
+    setPlanSec(0);
     setMsg(null);
     try {
-      const plan = await apiSend<CallSpec & { brief: string }>("/calls/plan", "POST", { idea: idea.trim() });
+      const plan = await runPlan<CallSpec & { brief: string }>(
+        "/calls",
+        { idea: idea.trim() },
+        { onTick: setPlanSec },
+      );
       const { brief: b, ...spec } = plan;
       setCall(spec);
       setBrief(b);
@@ -226,12 +232,13 @@ export default function CreatePage() {
   async function planShots() {
     if (dish.trim().length < 3) return;
     setPlanning(true);
+    setPlanSec(0);
     setMsg(null);
     try {
-      const plan = await apiSend<{ title: string; description: string; hashtags: string[]; shots: { prompt: string }[] }>(
-        "/cook/plan",
-        "POST",
+      const plan = await runPlan<{ title: string; description: string; hashtags: string[]; shots: { prompt: string }[] }>(
+        "/cook",
         { dish: dish.trim() },
+        { onTick: setPlanSec },
       );
       setCookShots(plan.shots);
       setCookTitle(plan.title);
@@ -460,10 +467,12 @@ export default function CreatePage() {
         </label>
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <Button onClick={planShots} disabled={planning || dish.trim().length < 3} variant="secondary">
-            {planning ? "Planning…" : cookShots.length ? "↻ Re-plan shots" : "🎬 Plan shots"}
+            {planning ? `Planning… ${planSec}s` : cookShots.length ? "↻ Re-plan shots" : "🎬 Plan shots"}
           </Button>
           <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-            Free to plan — review &amp; edit every prompt before any video is generated.
+            {planning
+              ? "Thinking through the shot list — this takes a couple of minutes. Leave the page open."
+              : "Free to plan — review & edit every prompt before any video is generated."}
           </span>
         </div>
 
@@ -532,10 +541,12 @@ export default function CreatePage() {
         </label>
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <Button onClick={planCall} disabled={planning || idea.trim().length < 3} variant="secondary">
-            {planning ? "Writing…" : call ? "↻ Re-write the call" : "🎭 Write the call"}
+            {planning ? `Writing… ${planSec}s` : call ? "↻ Re-write the call" : "🎭 Write the call"}
           </Button>
           <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-            Free to plan. The AI picks the cast, accents, voices and escalation — all of it editable below.
+            {planning
+              ? "Casting and writing the escalation — this takes a couple of minutes. Leave the page open."
+              : "Free to plan. The AI picks the cast, accents, voices and escalation — all of it editable below."}
           </span>
         </div>
 

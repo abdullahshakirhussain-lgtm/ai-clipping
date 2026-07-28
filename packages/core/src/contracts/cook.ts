@@ -20,6 +20,21 @@ export const CookPlanSchema = z.object({
 export type CookPlanDto = z.infer<typeof CookPlanSchema>;
 
 /**
+ * Planning is a single high-effort reasoning call and routinely runs for
+ * minutes, so it does NOT happen inside the request — POST returns a token and
+ * the client polls. Holding the connection open that long got hung up on by a
+ * proxy (HTTP 499) before the model ever finished.
+ */
+export const PlanStartedSchema = z.object({ planId: z.string() });
+
+export const CookPlanStatusSchema = z.object({
+  status: z.enum(["pending", "done", "error"]),
+  elapsedMs: z.number(),
+  plan: CookPlanSchema.optional(),
+  error: z.string().optional(),
+});
+
+/**
  * Step 2 — generate: render the video from the shot prompts the user approved
  * (possibly edited). The prompts are authoritative; the job does not re-plan.
  */

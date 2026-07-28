@@ -63,6 +63,34 @@ export function apiSend<T>(path: string, method: "POST" | "PATCH" | "DELETE", bo
   }).then(handle);
 }
 
+/**
+ * Start a Studio planner and poll it to completion.
+ *
+ * Planning is one high-effort reasoning call and routinely runs for minutes, so
+ * the API kicks it off in the background and hands back a token. Doing it inside
+ * the POST meant a proxy hung up mid-think and the browser saw an HTTP 499.
+ * `onTick` reports elapsed seconds so the UI can show it's still working.
+ */
+export async function runPlan<T>(
+  base: string,
+  body: unknown,
+  opts?: { onTick?: (elapsedSec: number) => void; timeoutMs?: number },
+): Promise<T> {
+  const { planId } = await apiSend<{ planId: string }>(`${base}/plan`, "POST", body);
+  const deadline = Date.now() + (opts?.timeoutMs ?? 10 * 60 * 1000);
+  const startedAt = Date.now();
+  for (;;) {
+    if (Date.now() > deadline) throw new ApiError("Planning timed out — try again", 504, "PLAN_TIMEOUT");
+    await new Promise((r) => setTimeout(r, 2000));
+    opts?.onTick?.(Math.round((Date.now() - startedAt) / 1000));
+    const s = await apiGet<{ status: "pending" | "done" | "error"; plan?: T; error?: string }>(
+      `${base}/plan/${planId}`,
+    );
+    if (s.status === "error") throw new ApiError(s.error ?? "Planning failed", 500, "PLAN_FAILED");
+    if (s.status === "done" && s.plan) return s.plan;
+  }
+}
+
 /** Upload a video file via multipart, reporting progress (0-1). Uses XHR for progress events. */
 export function apiUpload<T>(
   path: string,
