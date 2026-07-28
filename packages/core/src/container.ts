@@ -6,6 +6,7 @@ import {
   GroqWhisperProvider,
   FalImageProvider,
   GoogleCallProvider,
+  GoogleImageProvider,
   GoogleVeoProvider,
   MockCallProvider,
   MockImageProvider,
@@ -58,6 +59,7 @@ import { ReviewService } from "./services/review-service.js";
 import { StoryService } from "./services/story-service.js";
 import { CookService } from "./services/cook-service.js";
 import { CallService } from "./services/call-service.js";
+import { AnimService } from "./services/anim-service.js";
 import { PlanJobs } from "./services/plan-jobs.js";
 import { VideoService } from "./services/video-service.js";
 
@@ -84,6 +86,7 @@ export interface Container {
     story: StoryService;
     cook: CookService;
     calls: CallService;
+    anim: AnimService;
     /** Background runner for the (slow) Studio planners; polled by the client. */
     planJobs: PlanJobs;
     system: SystemService;
@@ -238,25 +241,44 @@ function buildImageProvider(env: Env, logger: Logger): ImageProvider {
   return new MockImageProvider();
 }
 
-function buildVideoProvider(env: Env, logger: Logger): VideoProvider {
+/**
+ * Veo, on whichever model tier the caller wants. Cook uses Fast (photoreal food
+ * has to hold up); animated stick shorts use Lite at half the price, because
+ * flat line art asks much less of the model.
+ */
+function buildVideoProvider(env: Env, logger: Logger, model: string, purpose: string): VideoProvider {
   // Auto: use Google Veo whenever a Gemini key is present — so the only setup is
   // adding the key. Explicit "google"/"mock" override the auto behaviour.
   const useGoogle = env.VIDEO_PROVIDER === "google" || (env.VIDEO_PROVIDER === "auto" && !!env.GEMINI_API_KEY);
   if (useGoogle) {
     if (!env.GEMINI_API_KEY) throw new Error("VIDEO_PROVIDER=google requires GEMINI_API_KEY");
-    logger.info(
-      { model: env.GEMINI_VEO_MODEL, resolution: env.VEO_RESOLUTION },
-      "using Google Veo video generation (Gemini API, direct)",
-    );
+    logger.info({ model, resolution: env.VEO_RESOLUTION, purpose }, "using Google Veo video generation (Gemini API, direct)");
     return new GoogleVeoProvider({
       apiKey: env.GEMINI_API_KEY,
-      model: env.GEMINI_VEO_MODEL,
+      model,
       resolution: env.VEO_RESOLUTION,
       durationSeconds: env.VEO_DURATION_SECONDS,
     });
   }
-  logger.info("using mock video provider (stub mp4)");
+  logger.info({ purpose }, "using mock video provider (stub mp4)");
   return new MockVideoProvider();
+}
+
+/**
+ * Photoreal stills for cook shots — a DIFFERENT provider from the story image
+ * one, which is tuned for flat stick-figure art. Returns null when off, and the
+ * cook stage then falls back to plain text-to-video.
+ */
+function buildSceneImageProvider(env: Env, logger: Logger): ImageProvider | null {
+  const useGoogle =
+    env.SCENE_IMAGE_PROVIDER === "google" || (env.SCENE_IMAGE_PROVIDER === "auto" && !!env.GEMINI_API_KEY);
+  if (!useGoogle) {
+    logger.info("scene images off — cook uses text-to-video directly");
+    return null;
+  }
+  if (!env.GEMINI_API_KEY) throw new Error("SCENE_IMAGE_PROVIDER=google requires GEMINI_API_KEY");
+  logger.info({ model: env.GEMINI_IMAGE_MODEL }, "using Google scene images (first frame for each cook clip)");
+  return new GoogleImageProvider({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_IMAGE_MODEL });
 }
 
 function buildCallProvider(env: Env, logger: Logger): CallAudioProvider {
@@ -324,7 +346,9 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const { transcription, llm } = buildAiProviders(env, logger);
   const ttsFor = buildTtsTiers(env, logger);
   const images = buildImageProvider(env, logger);
-  const video = buildVideoProvider(env, logger);
+  const video = buildVideoProvider(env, logger, env.GEMINI_VEO_MODEL, "cook");
+  const animVideo = buildVideoProvider(env, logger, env.GEMINI_ANIM_MODEL, "animation");
+  const sceneImages = buildSceneImageProvider(env, logger);
   const callAudio = buildCallProvider(env, logger);
   const downloader = buildDownloader(env);
   const publisherFor = buildPublisherFactory(env);
@@ -341,7 +365,9 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     llm,
     ttsFor,
     images,
+    sceneImages,
     video,
+    animVideo,
     callAudio,
     downloader,
     publisherFor,
@@ -358,6 +384,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
       },
       // Mock LLM returns "" anyway; the flag mainly saves the frame extraction.
       visionContext: env.VISION_CONTEXT && env.AI_DRIVER === "live",
+      story: { imageSeconds: env.STORY_IMAGE_SECONDS, maxImages: env.STORY_MAX_IMAGES },
     },
   } as PipelineContext;
 
@@ -393,6 +420,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
     calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
+    anim: new AnimService(repos, llm, dispatcher, env.ANIM_MAX_SHOTS),
     planJobs: new PlanJobs(logger),
     system: new SystemService(),
   };

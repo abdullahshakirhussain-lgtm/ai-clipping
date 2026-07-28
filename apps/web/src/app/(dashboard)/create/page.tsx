@@ -45,6 +45,12 @@ interface CallCharacter {
   agenda: string;
   quirks: string;
 }
+interface AnimShot {
+  text: string;
+  imagePrompt: string;
+  motionPrompt: string;
+}
+
 interface CallSpec {
   title: string;
   description: string;
@@ -118,7 +124,11 @@ export default function CreatePage() {
   const { data: cats } = useCategories();
   const categories = (cats ?? []).map((c) => c.name);
 
-  const [format, setFormat] = useState<"story" | "cook" | "call">("story");
+  const [format, setFormat] = useState<"story" | "cook" | "call" | "anim">("story");
+  const [animShots, setAnimShots] = useState<AnimShot[]>([]);
+  const [animMeta, setAnimMeta] = useState<{ title: string; description: string; hashtags: string[]; setting: string } | null>(
+    null,
+  );
   const [idea, setIdea] = useState("");
   const [call, setCall] = useState<CallSpec | null>(null);
   const [brief, setBrief] = useState("");
@@ -128,7 +138,7 @@ export default function CreatePage() {
   >(null);
   const [checking, setChecking] = useState(false);
   const [dish, setDish] = useState("");
-  const [cookShots, setCookShots] = useState<{ prompt: string }[]>([]);
+  const [cookShots, setCookShots] = useState<{ prompt: string; imagePrompt?: string }[]>([]);
   const [cookTitle, setCookTitle] = useState("");
   const [cookDescription, setCookDescription] = useState("");
   const [cookHashtags, setCookHashtags] = useState<string[]>([]);
@@ -171,7 +181,32 @@ export default function CreatePage() {
       ? topic.trim().length >= 3
       : format === "cook"
         ? cookShots.length > 0
-        : !!call && brief.trim().length > 20;
+        : format === "anim"
+          ? animShots.length > 0
+          : !!call && brief.trim().length > 20;
+
+  async function planAnim() {
+    if (topic.trim().length < 3) return;
+    setPlanning(true);
+    setPlanSec(0);
+    setMsg(null);
+    try {
+      const plan = await runPlan<{
+        title: string;
+        description: string;
+        hashtags: string[];
+        setting: string;
+        shots: AnimShot[];
+      }>("/anim", { topic: topic.trim(), style }, { onTick: setPlanSec });
+      setAnimShots(plan.shots);
+      setAnimMeta({ title: plan.title, description: plan.description, hashtags: plan.hashtags, setting: plan.setting });
+      if (plan.shots.length === 0) setMsg("The planner returned no shots — try a different topic.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't plan the animation");
+    } finally {
+      setPlanning(false);
+    }
+  }
 
   /** Pre-flight the paid Google models — a models.get each, so it costs nothing. */
   async function checkProviders() {
@@ -235,7 +270,12 @@ export default function CreatePage() {
     setPlanSec(0);
     setMsg(null);
     try {
-      const plan = await runPlan<{ title: string; description: string; hashtags: string[]; shots: { prompt: string }[] }>(
+      const plan = await runPlan<{
+        title: string;
+        description: string;
+        hashtags: string[];
+        shots: { prompt: string; imagePrompt?: string }[];
+      }>(
         "/cook",
         { dish: dish.trim() },
         { onTick: setPlanSec },
@@ -257,7 +297,25 @@ export default function CreatePage() {
     setBusy(true);
     setMsg(null);
     try {
-      if (format === "call") {
+      if (format === "anim") {
+        await apiSend("/anim", "POST", {
+          topic: topic.trim(),
+          title: animMeta?.title,
+          description: animMeta?.description,
+          hashtags: animMeta?.hashtags,
+          setting: animMeta?.setting,
+          shots: animShots,
+          style,
+          narrator,
+          voiceTier,
+          category: category || undefined,
+          captionStyle,
+          captionPosition,
+        });
+        setTopic("");
+        setAnimShots([]);
+        setAnimMeta(null);
+      } else if (format === "call") {
         await apiSend("/calls", "POST", {
           ...call,
           brief,
@@ -274,7 +332,7 @@ export default function CreatePage() {
           title: cookTitle || undefined,
           description: cookDescription || undefined,
           hashtags: cookHashtags,
-          shots: cookShots.map((s) => ({ prompt: s.prompt })),
+          shots: cookShots.map((s) => ({ prompt: s.prompt, imagePrompt: s.imagePrompt })),
           category: category || undefined,
         });
         setDish("");
@@ -312,19 +370,25 @@ export default function CreatePage() {
 
       <Card className="mb-6 max-w-2xl">
         <div className="flex gap-1 mb-5 p-1 rounded-lg surface-2 border w-fit" style={{ borderColor: "var(--border)" }}>
-          {(["story", "cook", "call"] as const).map((f) => (
+          {(["story", "anim", "cook", "call"] as const).map((f) => (
             <button
               key={f}
               onClick={() => { setFormat(f); setMsg(null); }}
               className="text-sm px-3 py-1.5 rounded-md font-medium transition-colors"
               style={f === format ? { background: "var(--primary)", color: "#fff" } : { color: "var(--muted)" }}
             >
-              {f === "story" ? "📖 Story slideshow" : f === "cook" ? "🍳 Cook clip" : "📞 Prank call"}
+              {f === "story"
+                ? "📖 Slideshow"
+                : f === "anim"
+                  ? "🎬 Animated short"
+                  : f === "cook"
+                    ? "🍳 Cook clip"
+                    : "📞 Prank call"}
             </button>
           ))}
         </div>
 
-        {(format === "cook" || format === "call") && (
+        {(format === "cook" || format === "call" || format === "anim") && (
           <div className="mb-5">
             <div className="flex items-center gap-2 flex-wrap">
               <Button onClick={checkProviders} disabled={checking} variant="secondary">
@@ -491,13 +555,36 @@ export default function CreatePage() {
                 {cookShots.map((s, i) => (
                   <div key={i} className="flex gap-2 items-start">
                     <span className="text-[11px] mt-2 w-4 shrink-0 text-right" style={{ color: "var(--muted)" }}>{i + 1}</span>
-                    <textarea
-                      value={s.prompt}
-                      onChange={(e) => setCookShots((prev) => prev.map((p, j) => (j === i ? { prompt: e.target.value } : p)))}
-                      rows={5}
-                      className="flex-1 px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y"
-                      style={{ borderColor: "var(--border)" }}
-                    />
+                    <div className="flex-1 space-y-1.5">
+                      <div>
+                        <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>
+                          First frame — the still that gets drawn, then animated
+                        </span>
+                        <textarea
+                          value={s.imagePrompt ?? ""}
+                          onChange={(e) =>
+                            setCookShots((prev) => prev.map((p, j) => (j === i ? { ...p, imagePrompt: e.target.value } : p)))
+                          }
+                          rows={4}
+                          className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y"
+                          style={{ borderColor: "var(--border)" }}
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>
+                          Motion — what happens across the 8 seconds
+                        </span>
+                        <textarea
+                          value={s.prompt}
+                          onChange={(e) =>
+                            setCookShots((prev) => prev.map((p, j) => (j === i ? { ...p, prompt: e.target.value } : p)))
+                          }
+                          rows={5}
+                          className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y"
+                          style={{ borderColor: "var(--border)" }}
+                        />
+                      </div>
+                    </div>
                     <button
                       onClick={() => setCookShots((prev) => prev.filter((_, j) => j !== i))}
                       className="text-xs mt-2 px-1.5" style={{ color: "var(--danger)" }} title="Remove shot"
@@ -517,8 +604,140 @@ export default function CreatePage() {
               </select>
             </label>
             <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-              {cookShots.length} shots × ~8s ≈ ${(cookShots.length * 0.8).toFixed(2)} on Veo 3.1 Fast. Renders in the
-              background — it lands in the Library, track it in the Video Queue.
+              {cookShots.length} shots × ~8s = {cookShots.length * 8}s ≈ $
+              {(cookShots.length * 0.8 + cookShots.length * 0.039).toFixed(2)} on Veo 3.1 Fast (clips + first-frame
+              stills). Each still is drawn as an edit of the one before it, so the stone, fire and props stay put across
+              cuts. Renders in the background — it lands in the Library, track it in the Video Queue.
+            </p>
+          </>
+        )}
+        </>
+        )}
+
+        {format === "anim" && (
+        <>
+        <label className="block mb-3">
+          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Topic</span>
+          <textarea
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            rows={2}
+            maxLength={300}
+            placeholder="e.g. the diver who found a WWII submarine in a lake"
+            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
+            style={{ borderColor: topic.trim() ? "var(--primary)" : "var(--border)" }}
+          />
+        </label>
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <Button onClick={planAnim} disabled={planning || topic.trim().length < 3} variant="secondary">
+            {planning ? `Planning… ${planSec}s` : animShots.length ? "↻ Re-plan" : "🎬 Plan the animation"}
+          </Button>
+          <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+            {planning
+              ? "Writing the story, then the shot list — a couple of minutes. Leave the page open."
+              : "Free to plan. Each beat becomes one ~8s animated clip; review every prompt before anything is generated."}
+          </span>
+        </div>
+
+        {animShots.length > 0 && (
+          <>
+            {animMeta && (
+              <label className="block mb-3">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Title</span>
+                <input value={animMeta.title} onChange={(e) => setAnimMeta({ ...animMeta, title: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
+              </label>
+            )}
+            {animMeta && (
+              <label className="block mb-4">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>
+                  World — repeated into every frame so the look holds across clips
+                </span>
+                <textarea value={animMeta.setting} onChange={(e) => setAnimMeta({ ...animMeta, setting: e.target.value })} rows={2}
+                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-y" style={{ borderColor: "var(--border)" }} />
+              </label>
+            )}
+            <div className="mb-3">
+              <span className="block text-xs mb-2" style={{ color: "var(--muted)" }}>
+                {animShots.length} beats — each becomes one ~8s clip
+              </span>
+              <div className="space-y-3">
+                {animShots.map((s, i) => (
+                  <div key={i} className="p-3 rounded-lg surface-2 border space-y-2" style={{ borderColor: "var(--border)" }}>
+                    <div className="flex items-start gap-2">
+                      <span className="text-[11px] mt-2 w-4 shrink-0 text-right" style={{ color: "var(--muted)" }}>{i + 1}</span>
+                      <div className="flex-1 space-y-2">
+                        <div>
+                          <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Narration</span>
+                          <textarea
+                            value={s.text}
+                            onChange={(e) => setAnimShots((p) => p.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
+                            rows={2}
+                            className="w-full px-2.5 py-1.5 rounded surface-1 border outline-none text-[12px] leading-snug resize-y"
+                            style={{ borderColor: "var(--border)" }}
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>First frame</span>
+                          <textarea
+                            value={s.imagePrompt}
+                            onChange={(e) => setAnimShots((p) => p.map((x, j) => (j === i ? { ...x, imagePrompt: e.target.value } : x)))}
+                            rows={3}
+                            className="w-full px-2.5 py-1.5 rounded surface-1 border outline-none text-[12px] leading-snug resize-y"
+                            style={{ borderColor: "var(--border)" }}
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Motion — what moves over the 8s</span>
+                          <textarea
+                            value={s.motionPrompt}
+                            onChange={(e) => setAnimShots((p) => p.map((x, j) => (j === i ? { ...x, motionPrompt: e.target.value } : x)))}
+                            rows={3}
+                            className="w-full px-2.5 py-1.5 rounded surface-1 border outline-none text-[12px] leading-snug resize-y"
+                            style={{ borderColor: "var(--border)" }}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setAnimShots((p) => p.filter((_, j) => j !== i))}
+                        className="text-xs mt-2 px-1.5" style={{ color: "var(--danger)" }} title="Remove beat"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <label className="block">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Voice</span>
+                <select value={voiceTier} onChange={(e) => setVoiceTier(e.target.value as "standard" | "premium")}
+                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
+                  <option value="standard">Standard (OpenAI)</option>
+                  <option value="premium">Premium (ElevenLabs)</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Caption style</span>
+                <select value={captionStyle} onChange={(e) => setCaptionStyle(e.target.value)}
+                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
+                  {CAPTION_STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}
+                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
+                  <option value="">— none —</option>
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            </div>
+            <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+              {animShots.length} clips × ~8s = {animShots.length * 8}s ≈ ${(animShots.length * 0.4).toFixed(2)} on Veo 3.1
+              Lite. Each clip starts from its own drawn frame, so the figures stay the same across cuts, and the video
+              model&apos;s own audio is dropped in favour of the narration.
             </p>
           </>
         )}
@@ -719,7 +938,9 @@ export default function CreatePage() {
                 ? "🍳 Generate cook video"
                 : format === "call"
                   ? "📞 Make the call"
-                  : "✨ Generate video"}
+                  : format === "anim"
+                    ? "🎬 Animate it"
+                    : "✨ Generate video"}
           </Button>
           {msg && <span className="text-xs" style={{ color: "var(--muted)" }}>{msg}</span>}
         </div>

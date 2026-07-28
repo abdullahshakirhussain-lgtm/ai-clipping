@@ -29,10 +29,21 @@ export interface PipelineContext {
    * the standard mock/OpenAI provider.
    */
   ttsFor: (tier: string) => TtsProvider;
-  /** Image generation for Story Studio slideshows. */
+  /** Image generation for Story Studio slideshows (stick-figure art). */
   images: ImageProvider;
-  /** Real video generation (Veo) for Cook Studio clips. */
+  /**
+   * Photoreal stills used as the FIRST FRAME of each generated video clip.
+   * null when disabled, in which case the video model works from text alone.
+   */
+  sceneImages: ImageProvider | null;
+  /** Real video generation (Veo Fast) for Cook Studio clips — photoreal, pricier. */
   video: VideoProvider;
+  /**
+   * Video generation for animated stick shorts. A separate provider because it
+   * runs on the CHEAP tier (Veo 3.1 Lite, half the price): flat stick art asks
+   * far less of the model than photoreal cooking does.
+   */
+  animVideo: VideoProvider;
   /** Two-speaker call audio (Gemini) for Call Studio. */
   callAudio: CallAudioProvider;
   downloader: DownloadProvider;
@@ -45,6 +56,8 @@ export interface PipelineContext {
     detection: DetectionConfig;
     /** Derive who/what a video is about from sampled frames' on-screen text. */
     visionContext: boolean;
+    /** Slideshow image cadence (see env STORY_IMAGE_SECONDS / STORY_MAX_IMAGES). */
+    story: { imageSeconds: number; maxImages: number };
   };
 }
 

@@ -64,3 +64,70 @@ export function planStoryTiming(
   );
   return { slideDurations, captionSegments };
 }
+
+/** One still on screen: which beat it belongs to, and for how long. */
+export interface CadenceSlide {
+  beatIndex: number;
+  /** 0-based position among the stills carved out of that beat. */
+  subIndex: number;
+  /** How many stills that beat was split into. */
+  subCount: number;
+  durationSec: number;
+}
+
+/**
+ * Decide how many STILLS each beat gets so no image sits on screen much longer
+ * than `targetSec`.
+ *
+ * A narrated beat is a whole sentence, which can easily run 6-8 seconds — long
+ * enough for a viewer to feel nothing is happening. Rather than force the writer
+ * into 8-word fragments (which wrecks the narration), the sentence stays intact
+ * and its screen time is divided between several images of the same moment.
+ *
+ * `maxImages` is a hard cost ceiling; when the ideal split would exceed it, the
+ * longest beats keep their extra stills and the shortest give theirs up first,
+ * so the budget lands where the dead air actually is. Pure, so it's unit-tested.
+ */
+export function planImageCadence(
+  slideDurations: number[],
+  targetSec: number,
+  maxImages: number,
+): CadenceSlide[] {
+  const n = slideDurations.length;
+  if (n === 0) return [];
+  const target = Math.max(0.5, targetSec);
+
+  // Ideal split per beat, capped at 4 stills so one runaway beat can't eat the
+  // whole budget (and so the prompt expansion stays a small ask).
+  const want = slideDurations.map((d) => Math.max(1, Math.min(4, Math.round(d / target))));
+
+  // Trim to budget: repeatedly take a still back from whichever beat currently
+  // has the SHORTEST time-per-still, i.e. the one that needs it least.
+  let total = want.reduce((a, c) => a + c, 0);
+  const budget = Math.max(n, maxImages); // never drop below one still per beat
+  while (total > budget) {
+    let victim = -1;
+    let bestPerStill = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (want[i]! <= 1) continue;
+      const perStill = slideDurations[i]! / (want[i]! - 1);
+      if (perStill < bestPerStill) {
+        bestPerStill = perStill;
+        victim = i;
+      }
+    }
+    if (victim < 0) break; // everything is already at 1
+    want[victim]!--;
+    total--;
+  }
+
+  const slides: CadenceSlide[] = [];
+  for (let i = 0; i < n; i++) {
+    const k = want[i]!;
+    const each = slideDurations[i]! / k;
+    for (let s = 0; s < k; s++) {
+      slides.push({ beatIndex: i, subIndex: s, subCount: k, durationSec: each });
+    }
+  }
+  return slides;
+}

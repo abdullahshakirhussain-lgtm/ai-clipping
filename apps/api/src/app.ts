@@ -22,6 +22,7 @@ import { discoveryRoutes } from "./routes/discovery.js";
 import { storyRoutes } from "./routes/story.js";
 import { cookRoutes } from "./routes/cook.js";
 import { callRoutes } from "./routes/calls.js";
+import { animRoutes } from "./routes/anim.js";
 import { distributionRoutes } from "./routes/distribution.js";
 import { clipRoutes } from "./routes/clips.js";
 import { fileRoutes } from "./routes/files.js";
@@ -145,6 +146,7 @@ export async function buildApp(container: Container) {
       storyRoutes(typed, deps);
       cookRoutes(typed, deps);
       callRoutes(typed, deps);
+      animRoutes(typed, deps);
       systemRoutes(typed, deps);
     },
     { prefix: "/api/v1" },

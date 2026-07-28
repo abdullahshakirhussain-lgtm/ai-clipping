@@ -1,6 +1,7 @@
 import type { HandlerRegistry } from "@clipfactory/queue";
 import type { PipelineContext } from "./context.js";
 import {
+  runAnimGenerate,
   runCallGenerate,
   runDetect,
   runDownload,
@@ -23,6 +24,7 @@ export function buildHandlers(ctx: PipelineContext): HandlerRegistry {
     "story.generate": (p) => runStoryGenerate(ctx, p.sourceVideoId),
     "cook.generate": (p) => runCookGenerate(ctx, p.sourceVideoId),
     "call.generate": (p) => runCallGenerate(ctx, p.sourceVideoId),
+    "anim.generate": (p) => runAnimGenerate(ctx, p.sourceVideoId),
     "publish.execute": (p) => runPublish(ctx, p.publishJobId),
   };
 }

@@ -9,7 +9,7 @@ export interface CookSpec {
   category?: string;
   aspectRatio: string;
   /** The APPROVED (possibly user-edited) shot prompts — the job renders these as-is. */
-  shots: Array<{ prompt: string }>;
+  shots: Array<{ prompt: string; imagePrompt?: string }>;
   title?: string;
   description?: string;
   hashtags?: string[];
@@ -41,7 +41,7 @@ export class CookService {
       dish: input.dish.trim(),
       category: input.category?.trim() || undefined,
       aspectRatio: "9:16",
-      shots: input.shots.map((s) => ({ prompt: s.prompt })),
+      shots: input.shots.map((s) => ({ prompt: s.prompt, imagePrompt: s.imagePrompt })),
       title: input.title?.trim() || undefined,
       description: input.description?.trim() || undefined,
       hashtags: input.hashtags,

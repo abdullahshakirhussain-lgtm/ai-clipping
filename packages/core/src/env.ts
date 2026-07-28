@@ -71,7 +71,15 @@ const EnvSchema = z.object({
   VEO_RESOLUTION: z.string().default("720p"),
   VEO_DURATION_SECONDS: z.string().default("8"),
   // Ceiling on shots == clips per cook video (cost cap; ~$0.80/shot on Fast).
-  COOK_MAX_SHOTS: z.coerce.number().min(2).max(8).default(6),
+  // 9 x 8s = 72s, over the 60s TikTok Creator Rewards line.
+  COOK_MAX_SHOTS: z.coerce.number().min(2).max(12).default(9),
+  // Photoreal still for each cook shot, used as the clip's FIRST FRAME so the
+  // video model animates an approved scene instead of imagining one. Same
+  // GEMINI_API_KEY; "auto" turns it on when the key is present. gemini-2.5-flash-image
+  // ($0.039) can edit the previous frame forward, which is what holds the stone,
+  // fire and props steady across cuts. "off" reverts to pure text-to-video.
+  SCENE_IMAGE_PROVIDER: z.enum(["auto", "off", "google"]).default("auto"),
+  GEMINI_IMAGE_MODEL: z.string().default("gemini-2.5-flash-image"),
   // ── Call Studio (fictional prank calls / talk-show rage bait) ──────────────
   // Also Google, also the same GEMINI_API_KEY: a text model improvises the
   // dialogue from the approved brief, then a multi-speaker TTS model performs
@@ -82,9 +90,23 @@ const EnvSchema = z.object({
   GEMINI_TEXT_MODEL: z.string().default("gemini-2.5-flash"),
   // Ceiling on spoken length; the planner paces the escalation to fit.
   CALL_MAX_SECONDS: z.coerce.number().min(20).max(90).default(50),
-  // Ceiling on beats == images per story. At 15, a fal FLUX.1 [schnell] run
-  // (720x1280, $0.003/img) tops out at ~$0.045/video — under the $0.05 target.
-  STORY_MAX_BEATS: z.coerce.number().min(4).max(20).default(15),
+
+  // ── Animation Studio (fully animated stick shorts) ─────────────────────────
+  // One generated clip per narrated beat, so figures actually move. Stick art
+  // asks far less of the model than photoreal cooking, so it runs on the cheap
+  // tier: Veo 3.1 Lite is $0.05/s (half of Fast) and still does image-to-video.
+  // 9 x 8s = 72s for ~$3.60. Set GEMINI_ANIM_MODEL to Fast if Lite disappoints.
+  GEMINI_ANIM_MODEL: z.string().default("veo-3.1-lite-generate-preview"),
+  ANIM_MAX_SHOTS: z.coerce.number().min(2).max(12).default(9),
+  // Ceiling on narrated BEATS per story (sentences, not images).
+  STORY_MAX_BEATS: z.coerce.number().min(4).max(30).default(18),
+  // Target seconds each image holds the screen. Long-form slideshows need a new
+  // picture roughly every 3s to carry emotion; any beat whose narration runs
+  // longer is split into extra stills of the same moment, so the writing stays
+  // natural sentences instead of being chopped into 8-word fragments.
+  STORY_IMAGE_SECONDS: z.coerce.number().min(1.5).max(8).default(3),
+  // Hard ceiling on stills per story (cost cap). 30 x ~$0.006 ≈ $0.18.
+  STORY_MAX_IMAGES: z.coerce.number().min(4).max(60).default(30),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),

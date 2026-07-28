@@ -20,6 +20,7 @@ export * from "./services/calibration-service.js";
 export * from "./services/distribution-service.js";
 export * from "./services/system-service.js";
 export * from "./services/call-service.js";
+export * from "./services/anim-service.js";
 export * from "./services/plan-jobs.js";
 
 export * from "./pipeline/context.js";

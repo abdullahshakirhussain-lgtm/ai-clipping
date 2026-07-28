@@ -14,6 +14,7 @@ import {
   analyzeLoudness,
   applyPhoneFilter,
   assembleClips,
+  assembleNarratedClips,
   assembleSlideshow,
   buildAss,
   type CaptionWord,
@@ -44,7 +45,7 @@ import {
   selectDiverse,
   type ScoringWeights,
 } from "../detection.js";
-import { planStoryTiming } from "../story-timing.js";
+import { planImageCadence, planStoryTiming } from "../story-timing.js";
 import type { PipelineContext } from "./context.js";
 
 const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
@@ -895,13 +896,51 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     const probed = await probe(audioFile);
     const totalDur = probed.durationSec > 0 ? probed.durationSec : Math.max(4, story.beats.length * 3);
 
-    // 2b. Images, one per beat, with bounded concurrency (progress per image).
+    // 2b. Decide the IMAGE CADENCE before drawing anything. A beat is a whole
+    //     sentence and can hold the screen 6-8s — long enough for a short to
+    //     feel static. Beats that run long are split into several stills of the
+    //     same moment, so the narration stays natural sentences while the
+    //     picture changes roughly every STORY_IMAGE_SECONDS.
+    const beatDurations = planStoryTiming(
+      story.beats.map((b) => ({ text: stripAudioTags(b.text) })),
+      totalDur,
+      voice.words,
+    ).slideDurations;
+    const cadence = planImageCadence(beatDurations, ctx.config.story.imageSeconds, ctx.config.story.maxImages);
+
+    // One cheap LLM call expands only the beats that need extra frames.
+    const needsSplit = cadence.filter((s) => s.subIndex === 0 && s.subCount > 1);
+    let expanded = new Map<number, string[]>();
+    if (needsSplit.length > 0) {
+      try {
+        const lists = await ctx.llm.expandImagePrompts({
+          setting: story.setting,
+          beats: needsSplit.map((s) => ({
+            text: stripAudioTags(story.beats[s.beatIndex]!.text),
+            imagePrompt: story.beats[s.beatIndex]!.imagePrompt,
+            count: s.subCount,
+          })),
+        });
+        expanded = new Map(needsSplit.map((s, i) => [s.beatIndex, lists[i] ?? []]));
+      } catch (err) {
+        // Not fatal: every slide falls back to its beat's original prompt, which
+        // just means repeated frames rather than a failed video.
+        ctx.logger.warn({ sourceVideoId, reason: String(err) }, "image-prompt expansion failed; reusing beat prompts");
+      }
+    }
+
+    const slidePrompts = cadence.map((s) => {
+      const beat = story.beats[s.beatIndex]!;
+      return expanded.get(s.beatIndex)?.[s.subIndex] ?? beat.imagePrompt;
+    });
+
+    // 2c. Draw them, with bounded concurrency (progress per image).
     await setProgress("Drawing the images", 30);
     let done = 0;
-    const images = await mapWithConcurrency(story.beats, 3, async (beat, i) => {
+    const images = await mapWithConcurrency(slidePrompts, 3, async (prompt, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
-        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(beat.imagePrompt, spec.style, story.setting) });
+        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(prompt, spec.style, story.setting) });
         await fs.writeFile(imgFile, image);
       } catch (err) {
         // Grim beat prompts (corpses, dictators, plagues — normal for the
@@ -924,16 +963,17 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         }
       }
       done++;
-      await setProgress(`Drawing the images (${done}/${story.beats.length})`, 30 + Math.round((done / story.beats.length) * 55));
+      await setProgress(`Drawing the images (${done}/${slidePrompts.length})`, 30 + Math.round((done / slidePrompts.length) * 55));
       return imgFile;
     });
 
-    // 3. Time images + captions against the ONE narration (exact word timings
-    //    from ElevenLabs, else proportional), then assemble.
+    // 3. Captions stay per-BEAT (whole sentences), while the slides follow the
+    //    finer image cadence — the two are timed against the same narration, so
+    //    they stay in sync even though there are more images than beats.
     await setProgress("Putting it together", 90);
     const captionBeats = story.beats.map((b) => ({ text: stripAudioTags(b.text) }));
-    const { slideDurations, captionSegments } = planStoryTiming(captionBeats, totalDur, voice.words);
-    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: slideDurations[i]! }));
+    const { captionSegments } = planStoryTiming(captionBeats, totalDur, voice.words);
+    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: cadence[i]!.durationSec }));
     const assName = `${sourceVideoId}.ass`;
     const ass = buildAss(captionSegments, 0, totalDur, spec.captionStyle ?? video.captionStyle, 3, spec.captionPosition);
     if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
@@ -1028,7 +1068,7 @@ interface CookSpec {
   aspectRatio?: string;
   maxShots?: number;
   /** The APPROVED shot prompts from the review step; the job renders these as-is. */
-  shots?: Array<{ prompt: string }>;
+  shots?: Array<{ prompt: string; imagePrompt?: string }>;
   title?: string;
   description?: string;
   hashtags?: string[];
@@ -1096,26 +1136,70 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
     // 2. Render each shot as a real clip (native audio). Concurrency 2: video gen
     //    is slow + expensive. A shot that fails is dropped, not fatal — cut the
     //    rest together rather than losing the whole (paid) video.
+    // 2a. A still for each shot, drawn SEQUENTIALLY so each one can be an edit
+    //     of the previous frame. That chain is what holds the stone, the fire,
+    //     the props and the hands identical across cuts — a text prompt asks the
+    //     model to imagine the scene again every time, and it obliges.
+    //     A still is ~$0.04 against ~$0.80 for the clip it seeds, so this is the
+    //     cheap end to be picky at.
+    const seeds: Array<Buffer | null> = shots.map(() => null);
+    if (ctx.sceneImages) {
+      let prev: Buffer | null = null;
+      for (let i = 0; i < shots.length; i++) {
+        const imagePrompt = shots[i]!.imagePrompt?.trim();
+        if (!imagePrompt) continue;
+        try {
+          const { image } = await ctx.sceneImages.generate({
+            prompt: imagePrompt,
+            ...(prev ? { referenceImage: prev } : {}),
+          });
+          seeds[i] = image;
+          prev = image;
+          await setProgress(`Drawing the scenes (${i + 1}/${shots.length})`, 15 + Math.round(((i + 1) / shots.length) * 15));
+        } catch (err) {
+          // A missing still is not fatal: that shot falls back to text-to-video.
+          ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err) }, "cook scene image failed; text-to-video for this shot");
+        }
+      }
+    }
+
     let done = 0;
+    // Keep the FIRST provider error: when every shot fails it's almost always
+    // one systemic cause (billing not enabled on the Google project, a renamed
+    // preview model, a rejected parameter), and burying it in a warn log left
+    // the user staring at a generic "video generation failed" with nothing to
+    // act on.
+    let firstError: string | null = null;
     const clipFiles = await mapWithConcurrency(shots, 2, async (shot, i) => {
       try {
-        const { video: bytes } = await ctx.video.generate({ prompt: shot.prompt, aspectRatio: spec.aspectRatio });
+        const seed = seeds[i];
+        const { video: bytes } = await ctx.video.generate({
+          prompt: shot.prompt,
+          aspectRatio: spec.aspectRatio,
+          ...(seed ? { image: { png: seed } } : {}),
+        });
         const f = join(workDir, `shot-${i}.mp4`);
         await fs.writeFile(f, bytes);
         done++;
         await setProgress(
           `Generating the clips (${done}/${shots.length})`,
-          15 + Math.round((done / shots.length) * 70),
+          30 + Math.round((done / shots.length) * 55),
         );
         return f;
       } catch (err) {
-        ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err) }, "cook shot failed; dropping it");
+        const reason = err instanceof Error ? err.message : String(err);
+        firstError ??= reason;
+        ctx.logger.warn({ sourceVideoId, shot: i, reason }, "cook shot failed; dropping it");
         return null;
       }
     });
     const clips = clipFiles.filter((f): f is string => !!f);
     if (clips.length === 0) {
-      await failVideo(ctx, sourceVideoId, new Error("cook: all shots failed to generate"));
+      await failVideo(
+        ctx,
+        sourceVideoId,
+        new Error(`cook: all ${shots.length} shots failed. First error — ${firstError ?? "unknown"}`),
+      );
       return;
     }
 
@@ -1366,6 +1450,225 @@ export async function runCallGenerate(ctx: PipelineContext, sourceVideoId: strin
   } catch (err) {
     if (err instanceof StoryCancelledError) {
       ctx.logger.info({ sourceVideoId }, "call generation cancelled");
+      return;
+    }
+    await failVideo(ctx, sourceVideoId, err);
+    throw err;
+  }
+}
+
+interface AnimSpecShape {
+  topic?: string;
+  style?: string;
+  narrator?: string;
+  voiceTier?: string;
+  setting?: string;
+  shots?: Array<{ text: string; imagePrompt: string; motionPrompt: string }>;
+  title?: string;
+  description?: string;
+  hashtags?: string[];
+  captionStyle?: string;
+  captionPosition?: "top" | "middle" | "bottom";
+}
+
+/**
+ * Animated stick short: every narrated beat becomes a real generated clip, so
+ * the figures move instead of a still holding the screen for four seconds.
+ *
+ * The shape that makes it hold together: a STILL is drawn for each beat first
+ * (cheap, in the locked stick style) and handed to the video model as the first
+ * frame, which is what stops the characters redesigning themselves every clip.
+ * Each clip is then trimmed to its beat's measured narration, and the video
+ * model's own audio is discarded in favour of the single TTS take.
+ */
+export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+  const moved = await ctx.repos.sourceVideos.transition(
+    sourceVideoId,
+    [SourceVideoStatus.PENDING],
+    SourceVideoStatus.DETECTING,
+  );
+  if (!moved) return;
+
+  const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
+  if (!video) return;
+  const spec = (video.storySpec as AnimSpecShape | null) ?? null;
+  const shots = (spec?.shots ?? []).filter((s) => s?.text?.trim() && s?.motionPrompt?.trim());
+  if (!spec || shots.length === 0) {
+    await failVideo(ctx, sourceVideoId, new Error("anim video has no approved shots"));
+    return;
+  }
+
+  const workDir = join(ctx.workRoot, sourceVideoId);
+  const setProgress = async (stage: string, pct: number, extra?: Record<string, unknown>) => {
+    const cur = await ctx.repos.sourceVideos.byId(sourceVideoId);
+    if (!cur || cur.status !== SourceVideoStatus.DETECTING) throw new StoryCancelledError();
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      storySpec: { ...spec, ...extra, progress: { stage, pct } } as never,
+    });
+  };
+  try {
+    await fs.mkdir(workDir, { recursive: true });
+    const style = spec.style ?? "stick-scene";
+    const setting = spec.setting ?? "";
+
+    // 1. One continuous narration take (no per-beat seams), same as stories.
+    await setProgress("Recording the narration", 8);
+    const tts = ctx.ttsFor(spec.voiceTier ?? "standard");
+    const narrator = spec.narrator ?? "storyteller";
+    const fullText = shots.map((s) => s.text).join("\n\n");
+    const voice = await tts.synthesize({
+      text: tts.speaksTags ? fullText : stripAudioTags(fullText),
+      instructions: narratorInstruction(narrator),
+    });
+    const audioFile = join(workDir, `narration.${voice.ext}`);
+    await fs.writeFile(audioFile, voice.audio);
+    const probedAudio = await probe(audioFile);
+    const totalDur = probedAudio.durationSec > 0 ? probedAudio.durationSec : shots.length * 8;
+
+    // 2. Per-beat durations: each clip is trimmed to the narration it carries,
+    //    so the picture never drifts away from the words.
+    const captionBeats = shots.map((s) => ({ text: stripAudioTags(s.text) }));
+    const { slideDurations, captionSegments } = planStoryTiming(captionBeats, totalDur, voice.words);
+
+    // 3. First-frame stills, drawn sequentially and chained: each one is an edit
+    //    of the previous frame where the provider supports it, which is what
+    //    keeps the same stick figures across independent clips.
+    await setProgress("Drawing the frames", 15);
+    const seeds: Array<Buffer | null> = shots.map(() => null);
+    let prev: Buffer | null = null;
+    for (let i = 0; i < shots.length; i++) {
+      try {
+        const { image } = await ctx.images.generate({
+          prompt: styledImagePrompt(shots[i]!.imagePrompt, style, setting),
+          ...(prev ? { referenceImage: prev } : {}),
+        });
+        seeds[i] = image;
+        prev = image;
+      } catch (err) {
+        ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err) }, "anim frame failed; animating from text alone");
+      }
+      await setProgress(`Drawing the frames (${i + 1}/${shots.length})`, 15 + Math.round(((i + 1) / shots.length) * 15));
+    }
+
+    // 4. Animate. Concurrency 2 — generation is slow and paid.
+    await setProgress("Animating", 30);
+    let done = 0;
+    let firstError: string | null = null;
+    const rendered = await mapWithConcurrency(shots, 2, async (shot, i) => {
+      try {
+        const seed = seeds[i];
+        const { video: bytes } = await ctx.animVideo.generate({
+          prompt: [
+            `Simple 2D stick-figure animation. ${setting}`.trim(),
+            `ACTION: ${shot.motionPrompt}`,
+            "One continuous shot, no cuts, no camera change, no new characters, no on-screen text.",
+          ].join("\n"),
+          aspectRatio: "9:16",
+          ...(seed ? { image: { png: seed } } : {}),
+          // The default bars human faces — fatal when the cast IS the subject.
+          negativePrompt: "on-screen text, subtitles, watermark, logo, photorealistic, blurry, low quality",
+        });
+        const f = join(workDir, `shot-${i}.mp4`);
+        await fs.writeFile(f, bytes);
+        done++;
+        await setProgress(`Animating (${done}/${shots.length})`, 30 + Math.round((done / shots.length) * 50));
+        return f;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        firstError ??= reason;
+        ctx.logger.warn({ sourceVideoId, shot: i, reason }, "anim shot failed");
+        return null;
+      }
+    });
+
+    // A missing clip would desync every later beat from its narration, so a
+    // failure here is fatal rather than silently dropped (unlike cook, where the
+    // clips are independent).
+    const missing = rendered.findIndex((f) => !f);
+    if (missing >= 0) {
+      await failVideo(
+        ctx,
+        sourceVideoId,
+        new Error(`anim: shot ${missing + 1}/${shots.length} failed. First error — ${firstError ?? "unknown"}`),
+      );
+      return;
+    }
+
+    // 5. Cut them together under the one narration, captions burned in.
+    await setProgress("Putting it together", 85);
+    const assName = `${sourceVideoId}.ass`;
+    const ass = buildAss(
+      captionSegments,
+      0,
+      totalDur,
+      spec.captionStyle ?? video.captionStyle,
+      3,
+      spec.captionPosition ?? (video.captionPosition as "top" | "middle" | "bottom" | undefined),
+    );
+    if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
+
+    const outPath = join(workDir, "anim.mp4");
+    await assembleNarratedClips({
+      clips: rendered.map((f, i) => ({ file: f!, durationSec: slideDurations[i]! })),
+      audioFile,
+      captionsFileName: ass.trim() ? assName : undefined,
+      outPath,
+      workDir,
+    });
+
+    // 6. Store + create a ready-to-distribute Clip.
+    const thumbPath = join(workDir, "thumb.jpg");
+    await extractSmartThumbnail(outPath, thumbPath);
+    const title = spec.title || spec.topic || "Animated short";
+
+    const [clip] = await ctx.repos.clips.createMany([
+      {
+        sourceVideoId,
+        campaignId: video.campaignId,
+        startSec: 0,
+        endSec: totalDur,
+        status: ClipStatus.APPROVED,
+        detectionReason: title,
+        detectionSource: "anim",
+        captionStyle: video.captionStyle,
+        captionPosition: video.captionPosition,
+        commentaryMode: "off",
+        category: video.category,
+        hookScore: 80,
+        viralScore: 80,
+        overallScore: 80,
+        scoreBreakdown: { notes: ["anim-generated"] } as never,
+      },
+    ]);
+    await ctx.storage.putFile(clipKey(clip!.id), outPath, "video/mp4");
+    await ctx.storage.putFile(thumbKey(clip!.id), thumbPath, "image/jpeg");
+    await ctx.repos.clips.update(clip!.id, {
+      storageKey: clipKey(clip!.id),
+      thumbnailKey: thumbKey(clip!.id),
+      error: null,
+    });
+    await ctx.repos.clips.upsertEnhancement(clip!.id, {
+      title,
+      description: spec.description ?? "",
+      hashtags: spec.hashtags ?? [],
+      hooks: { variants: [title], selectedIndex: 0 } as never,
+      qualityScore: 80,
+      viralScore: 80,
+      estimatedEngagement: 80,
+      model: "anim",
+    });
+
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      status: SourceVideoStatus.PROCESSED,
+      storySpec: { ...spec, script: fullText, progress: { stage: "Done", pct: 100 } } as never,
+    });
+    ctx.logger.info(
+      { sourceVideoId, shots: shots.length, durationSec: Number(totalDur.toFixed(1)) },
+      "animated video generated",
+    );
+  } catch (err) {
+    if (err instanceof StoryCancelledError) {
+      ctx.logger.info({ sourceVideoId }, "anim generation cancelled");
       return;
     }
     await failVideo(ctx, sourceVideoId, err);

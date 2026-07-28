@@ -1,5 +1,5 @@
 import { checkModel } from "./google-call.js";
-import type { VideoProvider } from "./types.js";
+import type { VideoProvider, VideoSeedImage } from "./types.js";
 
 export interface GoogleVeoOptions {
   apiKey: string;
@@ -51,27 +51,49 @@ export class GoogleVeoProvider implements VideoProvider {
     };
   }
 
-  async generate(input: { prompt: string; aspectRatio?: string }): Promise<{ video: Buffer; ext: "mp4" }> {
+  async generate(input: {
+    prompt: string;
+    aspectRatio?: string;
+    image?: VideoSeedImage;
+    negativePrompt?: string;
+  }): Promise<{ video: Buffer; ext: "mp4" }> {
     const headers = { "x-goog-api-key": this.opts.apiKey, "Content-Type": "application/json" };
+
+    // A seed image makes this IMAGE-TO-VIDEO: the still is the first frame.
+    const instance: Record<string, unknown> = { prompt: input.prompt };
+    if (input.image) {
+      instance.image = {
+        bytesBase64Encoded: input.image.png.toString("base64"),
+        mimeType: input.image.mimeType || "image/png",
+      };
+    }
 
     // 1. Kick off the long-running generation.
     const start = await fetch(`${BASE}/models/${this.model}:predictLongRunning`, {
       method: "POST",
       headers,
       body: JSON.stringify({
-        instances: [{ prompt: input.prompt }],
+        instances: [instance],
         parameters: {
           aspectRatio: input.aspectRatio || "9:16",
           resolution: this.resolution,
           durationSeconds: this.durationSeconds,
-          personGeneration: "allow_all",
-          negativePrompt: "on-screen text, subtitles, watermark, logo, human faces, blurry, low quality",
+          // Not interchangeable: Google allows "allow_all" ONLY for
+          // text-to-video, and requires "allow_adult" for image-to-video,
+          // interpolation and reference images. Sending the wrong one 400s
+          // every request.
+          personGeneration: input.image ? "allow_adult" : "allow_all",
+          // Caller-overridable: cook wants "no human faces" (hands only), but a
+          // stick-figure animation obviously must not exclude its characters.
+          negativePrompt:
+            input.negativePrompt ??
+            "on-screen text, subtitles, watermark, logo, human faces, blurry, low quality",
         },
       }),
     });
     if (!start.ok) {
       const detail = await start.text().catch(() => "");
-      throw new Error(`Veo start failed (${start.status}): ${detail.slice(0, 300)}`);
+      throw new Error(`Veo start failed (${start.status}): ${detail.slice(0, 300)}${veoHint(start.status, detail)}`);
     }
     const op = (await start.json()) as { name?: string };
     if (!op.name) throw new Error("Veo start returned no operation name");
@@ -106,6 +128,29 @@ export class GoogleVeoProvider implements VideoProvider {
     if (!dl.ok) throw new Error(`Veo video download failed (${dl.status})`);
     return { video: Buffer.from(await dl.arrayBuffer()), ext: "mp4" };
   }
+}
+
+/**
+ * Turn Google's terse rejections into the actual next action. Veo has NO free
+ * tier, so the single most common cause of "every shot failed" is a key whose
+ * Google Cloud project has no billing account — which the raw error states only
+ * obliquely, if at all.
+ */
+function veoHint(status: number, detail: string): string {
+  const d = detail.toLowerCase();
+  if (d.includes("billing") || d.includes("quota") || status === 429) {
+    return "\nHINT: Veo has no free tier — enable billing on the Google Cloud project behind GEMINI_API_KEY.";
+  }
+  if (status === 403 || d.includes("permission")) {
+    return "\nHINT: the key can't access this model. Veo requires a paid (billing-enabled) project; check GEMINI_API_KEY and GEMINI_VEO_MODEL.";
+  }
+  if (status === 404 || d.includes("not found")) {
+    return "\nHINT: model id not found — Veo preview ids get renamed. Run GET /system/providers to see what this key resolves.";
+  }
+  if (status === 400) {
+    return "\nHINT: a parameter was rejected. personGeneration must be 'allow_all' for text-to-video and 'allow_adult' for image-to-video; durationSeconds must be the string \"8\" at 1080p/4k.";
+  }
+  return "";
 }
 
 interface OpResult {

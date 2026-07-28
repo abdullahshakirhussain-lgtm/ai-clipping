@@ -796,6 +796,67 @@ export async function assembleSlideshow(input: {
 }
 
 /**
+ * Concatenate generated clips under ONE narration track — the animated-story
+ * assembler.
+ *
+ * Differs from `assembleClips` in the two ways that matter: every clip's own
+ * audio is DISCARDED (the video model always generates some, and here it would
+ * fight the voice-over), and each clip is trimmed to the length of the narration
+ * beat it illustrates, so picture and words stay together instead of drifting a
+ * little further apart at every cut. Single re-encode with continuous
+ * timestamps, same as the cook path, so the cuts stay clean.
+ */
+export async function assembleNarratedClips(input: {
+  clips: Array<{ file: string; durationSec: number }>;
+  audioFile: string;
+  captionsFileName?: string;
+  outPath: string;
+  workDir: string;
+}): Promise<void> {
+  const { clips, workDir } = input;
+  if (clips.length === 0) throw new Error("assembleNarratedClips: no clips");
+
+  const args: string[] = ["-y"];
+  for (const c of clips) args.push("-i", c.file);
+  args.push("-i", input.audioFile);
+  const audioIndex = clips.length;
+
+  const parts: string[] = [];
+  const labels: string[] = [];
+  clips.forEach((c, i) => {
+    const d = Math.max(0.2, c.durationSec).toFixed(3);
+    // tpad → trim → reset PTS. Each segment must come out EXACTLY as long as the
+    // narration beat it carries, in both directions:
+    //   - clip longer than the beat  → trim cuts it back
+    //   - clip SHORTER than the beat → tpad holds the last frame to fill the gap
+    // Without the pad, a beat whose narration outruns its 8s clip would shorten
+    // the picture while the voice keeps going, and every later beat would drift
+    // further out of sync. A brief freeze is a far better failure than that.
+    parts.push(
+      `[${i}:v]tpad=stop_mode=clone:stop_duration=${d},trim=0:${d},setpts=PTS-STARTPTS,` +
+        `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24,format=yuv420p[v${i}]`,
+    );
+    labels.push(`[v${i}]`);
+  });
+  // Video only (v=1:a=0) — the clips' own audio never enters the graph.
+  parts.push(`${labels.join("")}concat=n=${clips.length}:v=1:a=0[vcat]`);
+  parts.push(
+    input.captionsFileName ? `[vcat]subtitles=${input.captionsFileName}[vo]` : `[vcat]null[vo]`,
+  );
+
+  args.push(
+    "-filter_complex", parts.join(";"),
+    "-map", "[vo]",
+    "-map", `${audioIndex}:a`,
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "160k",
+    "-shortest", "-movflags", "+faststart",
+    input.outPath,
+  );
+  await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 20 * 60 * 1000 });
+}
+
+/**
  * Concatenate real video clips (each ~8s, WITH its own native audio) into one
  * SEAMLESS hard-cut video — the cook-in-the-wild assembler. Every clip is
  * normalized to an identical 1080x1920 / 24fps stream (cover+crop) with even
@@ -812,29 +873,45 @@ export async function assembleClips(input: {
   const { clips, workDir } = input;
   if (clips.length === 0) throw new Error("assembleClips: no clips");
 
-  const args: string[] = ["-y"];
-  for (const c of clips) args.push("-i", c);
-
-  // Per-input: uniform video (cover-crop to 1080x1920, 24fps, yuv420p) + audio
-  // (48kHz, loudnorm). Then concat them all into one continuous v/a pair.
-  const parts: string[] = [];
-  const labels: string[] = [];
-  clips.forEach((_, i) => {
-    parts.push(
-      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24,format=yuv420p[v${i}]`,
+  // Per-input: uniform video (cover-crop to 1080x1920, 24fps, yuv420p) + evened
+  // audio. Then concat them all into one continuous v/a pair.
+  const build = (audioFilter: string): string[] => {
+    const args: string[] = ["-y"];
+    for (const c of clips) args.push("-i", c);
+    const parts: string[] = [];
+    const labels: string[] = [];
+    clips.forEach((_, i) => {
+      parts.push(
+        `[${i}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24,format=yuv420p[v${i}]`,
+      );
+      parts.push(`[${i}:a]aresample=48000,${audioFilter}[a${i}]`);
+      labels.push(`[v${i}][a${i}]`);
+    });
+    parts.push(`${labels.join("")}concat=n=${clips.length}:v=1:a=1[vo][ao]`);
+    args.push(
+      "-filter_complex", parts.join(";"),
+      "-map", "[vo]", "-map", "[ao]",
+      "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+      "-movflags", "+faststart",
+      input.outPath,
     );
-    parts.push(`[${i}:a]aresample=48000,loudnorm[a${i}]`);
-    labels.push(`[v${i}][a${i}]`);
-  });
-  parts.push(`${labels.join("")}concat=n=${clips.length}:v=1:a=1[vo][ao]`);
+    return args;
+  };
 
-  args.push(
-    "-filter_complex", parts.join(";"),
-    "-map", "[vo]", "-map", "[ao]",
-    "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-    "-movflags", "+faststart",
-    input.outPath,
-  );
-  await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 12 * 60 * 1000 });
+  try {
+    // loudnorm is the correct tool — real EBU R128 matching, so a sizzle and a
+    // river don't jump in level at the cut.
+    await run(bin("ffmpeg"), build("loudnorm"), { cwd: workDir, timeoutMs: 12 * 60 * 1000 });
+  } catch (err) {
+    // ...but it emits NaN on a DIGITALLY SILENT track and takes the whole render
+    // with it ("Input contains (near) NaN/+-Inf"). One near-silent clip out of
+    // nine would otherwise throw away every paid clip in the video, so fall back
+    // to dynaudnorm, which handles silence, rather than lose the render.
+    if (String(err).includes("NaN") || String(err).includes("Error submitting audio frame")) {
+      await run(bin("ffmpeg"), build("dynaudnorm"), { cwd: workDir, timeoutMs: 12 * 60 * 1000 });
+      return;
+    }
+    throw err;
+  }
 }

@@ -2,15 +2,18 @@ import Anthropic from "@anthropic-ai/sdk";
 import { resolveVoice, voiceCatalogue } from "./call-brief.js";
 import { planVisionBatches } from "./types.js";
 import type {
+  AnimShot,
   CallCharacter,
   CallPlan,
   ClipSignals,
+  PlanAnimationInput,
   CommentaryIntensity,
   CommentaryLine,
   CommentaryRole,
   CookPlan,
   DescribeVideoContextInput,
   DetectHighlightsInput,
+  ExpandImagePromptsInput,
   PlanCallInput,
   PlanCookInput,
   StoryScript,
@@ -681,7 +684,7 @@ Call submit_metadata with optimized fields.`,
   }
 
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
-    const maxBeats = Math.max(5, Math.min(20, input.maxBeats));
+    const maxBeats = Math.max(5, Math.min(30, input.maxBeats));
     const maxWords = Math.max(120, Math.min(400, input.maxWords));
     const narrator = input.narrator ?? "storyteller";
 
@@ -908,7 +911,7 @@ Call submit_story.`,
       description?: string;
       hashtags?: string[];
       styleBible?: string;
-      shots?: Array<{ state?: string; action?: string; camera?: string; audio?: string }>;
+      shots?: Array<{ state?: string; action?: string; camera?: string; audio?: string; frame?: string }>;
     }>(
       `You are the SHOT PLANNER for a "cook-in-the-wild" ASMR video (the viral genre: cooking in nature, ${aspect} vertical, NO narration, native ambient sound, a hard cut every ~8-10 seconds, every step shown). The dish: "${input.dish}".
 
@@ -928,6 +931,7 @@ The whole game is CONSISTENCY across cuts. The video model invents anything you 
    - "action": ONE clear continuous action for this ~8s beat (rinse, season, mix a paste, lay on the hot stone → sizzle, pour water → steam, plate). No implied off-screen jumps.
    - "camera": the framing + any slow move.
    - "audio": the explicit native ambient sound for this shot (sizzle, crackling fire, running water, steam hiss, birdsong) — ambient only, never music or voices.
+   - "frame": a still-photograph description of this shot's OPENING FRAME — the exact composition at the instant before the action starts, written for a photo model (no motion verbs, no "then"). This still is generated first and becomes the clip's first frame, so it must describe the food's state, the stone on the fire, the props in shot and where the hands are.
    Make it a real, appetising sequence a viewer watches start to finish. Physically logical throughout.
 
 Also give a scroll-stopping "title", a 1-2 sentence "description" (a soft CTA is fine here), and up to 6 "hashtags".
@@ -954,8 +958,12 @@ Call submit_cook.`,
                   action: { type: "string", description: "one clear continuous ~8s action" },
                   camera: { type: "string", description: "framing + any slow move" },
                   audio: { type: "string", description: "explicit native ambient sound; no music/voices" },
+                  frame: {
+                    type: "string",
+                    description: "still-photo description of the opening frame — composition at rest, no motion verbs",
+                  },
                 },
-                required: ["state", "action", "camera", "audio"],
+                required: ["state", "action", "camera", "audio", "frame"],
               },
             },
           },
@@ -981,7 +989,14 @@ Call submit_cook.`,
           String(s.camera ?? "").trim() ? `CAMERA: ${String(s.camera).trim()}` : "",
           String(s.audio ?? "").trim() ? `AUDIO: ${String(s.audio).trim()}` : "",
         ].filter(Boolean);
-        return { prompt: parts.join("\n") };
+        // The still prompt gets the SAME bible, so the frame the photo model
+        // draws and the world the video model continues are one description.
+        const frame = String(s.frame ?? "").trim();
+        const imageParts = [
+          bible,
+          `FRAME (a still photograph, no motion): ${frame || String(s.state ?? "").trim()}`,
+        ].filter(Boolean);
+        return { prompt: parts.join("\n"), imagePrompt: imageParts.join("\n") };
       })
       .filter((s) => /ACTION:/.test(s.prompt));
 
@@ -991,6 +1006,130 @@ Call submit_cook.`,
       hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
       shots,
     };
+  }
+
+  async expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]> {
+    if (input.beats.length === 0) return [];
+    const listing = input.beats
+      .map(
+        (b, i) =>
+          `${i + 1}. NARRATION: "${b.text}"\n   BASE IMAGE: ${b.imagePrompt}\n   SPLIT INTO: ${b.count} frames`,
+      )
+      .join("\n");
+
+    const result = await this.callTool<{ beats?: Array<{ prompts?: string[] }> }>(
+      `These story beats each stay on screen too long for one picture. Split each one into the requested number of SUCCESSIVE MOMENTS of that same beat, so the viewer sees the action progress instead of a frozen frame.
+
+WORLD (every frame lives here): ${input.setting || "unspecified"}
+
+${listing}
+
+Rules:
+- The frames are consecutive instants of the SAME beat, in order: before → during → after. Something must visibly CHANGE between them — a pose, a gesture, a position, an expression, what's in frame.
+- Do NOT introduce new events the narration doesn't mention, and never jump ahead to a later beat.
+- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the frames match.
+- Keep every subject centered and simply drawn; no on-screen text.
+- Return exactly the requested number of prompts per beat, in the same beat order.
+Call submit_frames.`,
+      {
+        name: "submit_frames",
+        description: "Submit the expanded per-beat frame prompts.",
+        input_schema: {
+          type: "object",
+          properties: {
+            beats: {
+              type: "array",
+              description: "one entry per beat given, in the same order",
+              items: {
+                type: "object",
+                properties: {
+                  prompts: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "successive moments of this beat, exactly the requested count",
+                  },
+                },
+                required: ["prompts"],
+              },
+            },
+          },
+          required: ["beats"],
+        },
+      },
+      3000,
+    );
+
+    // Pad/trim to exactly what was asked for: a short answer would silently
+    // desync the slide list from the timing plan.
+    return input.beats.map((b, i) => {
+      const got = (result.beats?.[i]?.prompts ?? []).map(String).map((s) => s.trim()).filter(Boolean);
+      const out: string[] = [];
+      for (let k = 0; k < b.count; k++) out.push(got[k] ?? got[got.length - 1] ?? b.imagePrompt);
+      return out;
+    });
+  }
+
+  async planAnimationShots(input: PlanAnimationInput): Promise<AnimShot[]> {
+    if (input.beats.length === 0) return [];
+    const listing = input.beats
+      .map((b, i) => `${i + 1}. NARRATION: "${b.text}"\n   SCENE: ${b.imagePrompt}`)
+      .join("\n");
+
+    const result = await this.callTool<{
+      shots?: Array<{ imagePrompt?: string; motionPrompt?: string }>;
+    }>(
+      `These narrated beats are being turned into an ANIMATED short: each beat becomes one ~8-second generated video clip of stick figures actually moving — walking, reaching, reacting — not a still with a camera drift.
+
+WORLD (every shot lives here): ${input.setting || "unspecified"}
+The art style is TRUE simple stick figures: plain circle heads, single-line limbs, no faces beyond the simplest marks, flat colourful backgrounds. Never detailed or realistic characters.
+
+${listing}
+
+For each beat give me two things:
+- "imagePrompt": the FIRST FRAME as a still — the composition at the instant the beat begins. Where each figure stands, their pose, what's in frame, the background. No motion words. This still is drawn first and handed to the video model, so it is what keeps the characters looking identical from clip to clip: describe the recurring figures the SAME way every time (same colours, same size, same markings).
+- "motionPrompt": what MOVES over the 8 seconds, in one continuous action. Name the physical motion — "the taller figure walks in from the left and stops beside the crate, then raises one arm". Motion the narration implies, nothing extra. No cuts, no camera changes mid-shot, no new characters appearing.
+
+Rules:
+- Exactly one continuous action per beat. If the narration covers two events, animate the one that carries it.
+- Keep the cast tight and consistent; a figure introduced in beat 1 looks the same in beat 7.
+- No on-screen text, no words, no letters anywhere in frame.
+- Return one entry per beat, in order.
+Call submit_animation.`,
+      {
+        name: "submit_animation",
+        description: "Submit the per-beat first-frame and motion prompts.",
+        input_schema: {
+          type: "object",
+          properties: {
+            shots: {
+              type: "array",
+              description: "one per beat, in order",
+              items: {
+                type: "object",
+                properties: {
+                  imagePrompt: { type: "string", description: "the first frame as a still; no motion words" },
+                  motionPrompt: { type: "string", description: "one continuous physical action over ~8s" },
+                },
+                required: ["imagePrompt", "motionPrompt"],
+              },
+            },
+          },
+          required: ["shots"],
+        },
+      },
+      5000,
+      // The look has to survive N independent clips, so this is worth reasoning on.
+      { model: this.commentaryModel, effort: "medium" },
+    );
+
+    return input.beats.map((b, i) => {
+      const s = result.shots?.[i];
+      return {
+        text: b.text,
+        imagePrompt: String(s?.imagePrompt ?? b.imagePrompt).trim() || b.imagePrompt,
+        motionPrompt: String(s?.motionPrompt ?? "").trim() || `slow natural movement matching: ${b.text}`,
+      };
+    });
   }
 
   async planCall(input: PlanCallInput): Promise<CallPlan> {

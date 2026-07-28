@@ -173,6 +173,41 @@ export interface StoryScript {
   beats: StoryBeat[];
 }
 
+export interface ExpandImagePromptsInput {
+  /** The story's locked visual world, so the extra frames stay on-topic. */
+  setting: string;
+  /** Beats needing more than one still: the spoken line, the base prompt, how many. */
+  beats: Array<{ text: string; imagePrompt: string; count: number }>;
+}
+
+// ── Animated stick shorts (one generated clip per narrated beat) ────────────
+
+/** One ~8s animated beat: the narration, its first frame, and what moves. */
+export interface AnimShot {
+  /** Spoken narration for this beat (paced to fit one ~8s clip). */
+  text: string;
+  /** Still that seeds the clip's first frame — pins the character design. */
+  imagePrompt: string;
+  /** What actually MOVES across the 8 seconds. */
+  motionPrompt: string;
+}
+
+export interface AnimPlan {
+  title: string;
+  description: string;
+  hashtags: string[];
+  /** The locked visual world, threaded into every frame. */
+  setting: string;
+  shots: AnimShot[];
+}
+
+export interface PlanAnimationInput {
+  setting: string;
+  /** Art-style preset key, e.g. "stick-scene". */
+  style: string;
+  beats: Array<{ text: string; imagePrompt: string }>;
+}
+
 export interface SuggestTopicsInput {
   category?: string;
   count: number;
@@ -184,6 +219,12 @@ export interface SuggestTopicsInput {
 export interface CookShot {
   /** The complete video prompt for this shot — every aspect pinned, continuity-threaded. */
   prompt: string;
+  /**
+   * Prompt for the STILL that becomes this shot's first frame. Generated and
+   * reviewed before the (20x pricier) clip, and chained off the previous frame
+   * so the scene can't drift between cuts.
+   */
+  imagePrompt?: string;
 }
 
 export interface CookPlan {
@@ -203,12 +244,29 @@ export interface PlanCookInput {
   aspectRatio?: string;
 }
 
+/** A still handed to the video model as the clip's first frame. */
+export interface VideoSeedImage {
+  png: Buffer;
+  mimeType?: string;
+}
+
 /**
- * Generates real video clips for Cook Studio. Google Veo via the Gemini API in
- * production; a mock returns a tiny valid mp4 so the whole pipeline runs keyless.
+ * Generates real video clips. Google Veo via the Gemini API in production; a
+ * mock returns a tiny valid mp4 so the whole pipeline runs keyless.
+ *
+ * `image` switches it to IMAGE-TO-VIDEO: the still becomes the first frame, so
+ * the model animates a scene we already approved instead of imagining one from
+ * words. That is the main consistency lever — a still costs cents and can be
+ * regenerated freely, a clip costs ~80¢ and can't.
  */
 export interface VideoProvider {
-  generate(input: { prompt: string; aspectRatio?: string }): Promise<{ video: Buffer; ext: "mp4" }>;
+  generate(input: {
+    prompt: string;
+    aspectRatio?: string;
+    image?: VideoSeedImage;
+    /** Overrides the default exclusions (which bar human faces — wrong for stick figures). */
+    negativePrompt?: string;
+  }): Promise<{ video: Buffer; ext: "mp4" }>;
 }
 
 // ── Call Studio (fictional prank calls / talk-show rage bait) ────────────────
@@ -310,7 +368,16 @@ export interface CallAudioProvider {
  * a solid card so the pipeline runs keyless.
  */
 export interface ImageProvider {
-  generate(input: { prompt: string; size?: string }): Promise<{ image: Buffer; ext: "png" }>;
+  generate(input: {
+    prompt: string;
+    size?: string;
+    /**
+     * Previous frame to edit forward instead of drawing from scratch. Honoured
+     * by providers that accept image input (Gemini); ignored by the others, who
+     * simply draw the prompt — so callers can always pass it.
+     */
+    referenceImage?: Buffer;
+  }): Promise<{ image: Buffer; ext: "png" }>;
 }
 
 // ── Commentary track ────────────────────────────────────────────────────────
@@ -460,6 +527,20 @@ export interface LlmProvider {
    * inconsistencies between cuts — retrying doesn't fix that, the script must.
    */
   planCookShots(input: PlanCookInput): Promise<CookPlan>;
+  /**
+   * Break a beat's single image prompt into `count` successive MOMENTS of that
+   * same beat, so a long sentence isn't one static picture. Returns one array
+   * per requested beat, in order; a beat asking for 1 just gets its original
+   * prompt back.
+   */
+  expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]>;
+  /**
+   * Turn narrated beats into ANIMATION shots: a first-frame still prompt plus
+   * the motion that plays over it. Split in two because the still is what keeps
+   * the character design stable across clips, and the motion is what the video
+   * model actually has to invent.
+   */
+  planAnimationShots(input: PlanAnimationInput): Promise<AnimShot[]>;
   /**
    * Turn a one-line idea ("rage bait a scammer") into a full call BRIEF —
    * characters with gender/accent/voice/agenda/quirks, escalation beats, the

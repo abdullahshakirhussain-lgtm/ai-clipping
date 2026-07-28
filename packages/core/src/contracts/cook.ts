@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-const CookShotSchema = z.object({ prompt: z.string().min(1).max(4000) });
+const CookShotSchema = z.object({
+  prompt: z.string().min(1).max(4000),
+  /** Prompt for the still that seeds this clip's first frame (image-to-video). */
+  imagePrompt: z.string().max(4000).optional(),
+});
 
 /**
  * Step 1 — plan: from a dish, an LLM writes the exhaustive, continuity-locked
