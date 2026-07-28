@@ -9,6 +9,7 @@ export interface AnimSpec {
   style: string;
   narrator: string;
   voiceTier: string;
+  music: string;
   setting: string;
   /** The APPROVED shots — rendered as-is, never re-planned. */
   shots: Array<{ text: string; imagePrompt: string; motionPrompt: string }>;
@@ -71,6 +72,7 @@ export class AnimService {
       style: input.style || DEFAULT_STYLE,
       narrator: input.narrator || "storyteller",
       voiceTier: input.voiceTier || "standard",
+      music: input.music || "none",
       setting: input.setting ?? "",
       shots: input.shots.map((s) => ({
         text: s.text,

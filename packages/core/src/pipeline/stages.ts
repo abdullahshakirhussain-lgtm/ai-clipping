@@ -1462,6 +1462,7 @@ interface AnimSpecShape {
   style?: string;
   narrator?: string;
   voiceTier?: string;
+  music?: string;
   setting?: string;
   shots?: Array<{ text: string; imagePrompt: string; motionPrompt: string }>;
   title?: string;
@@ -1607,7 +1608,7 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
     );
     if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
 
-    const outPath = join(workDir, "anim.mp4");
+    let outPath = join(workDir, "anim.mp4");
     await assembleNarratedClips({
       clips: rendered.map((f, i) => ({ file: f!, durationSec: slideDurations[i]! })),
       audioFile,
@@ -1615,6 +1616,15 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
       outPath,
       workDir,
     });
+
+    // 5b. Optional music bed under the narration (skips cleanly with no track).
+    const musicFile = spec.music ? await resolveMusicFile(spec.music) : null;
+    if (musicFile) {
+      const withMusic = join(workDir, "anim-music.mp4");
+      await mixMusic(outPath, musicFile, withMusic, workDir);
+      outPath = withMusic;
+      ctx.logger.info({ sourceVideoId, mood: spec.music }, "music bed mixed in");
+    }
 
     // 6. Store + create a ready-to-distribute Clip.
     const thumbPath = join(workDir, "thumb.jpg");

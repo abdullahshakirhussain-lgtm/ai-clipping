@@ -47,6 +47,7 @@ export const CreateAnimInputSchema = z.object({
   style: z.string().max(40).optional(),
   narrator: z.string().max(40).optional(),
   voiceTier: z.enum(["standard", "premium"]).optional(),
+  music: z.string().max(40).optional(),
   category: z.string().max(60).optional(),
   captionStyle: z.string().max(40).optional(),
   captionPosition: z.enum(["top", "middle", "bottom"]).optional(),

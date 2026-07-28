@@ -308,6 +308,7 @@ export default function CreatePage() {
           style,
           narrator,
           voiceTier,
+          music,
           category: category || undefined,
           captionStyle,
           captionPosition,
@@ -711,6 +712,20 @@ export default function CreatePage() {
             </div>
             <div className="grid grid-cols-3 gap-3 mb-4">
               <label className="block">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Art style</span>
+                <select value={style} onChange={(e) => setStyle(e.target.value)}
+                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
+                  {STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Narrator</span>
+                <select value={narrator} onChange={(e) => setNarrator(e.target.value)}
+                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
+                  {NARRATORS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </label>
+              <label className="block">
                 <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Voice</span>
                 <select value={voiceTier} onChange={(e) => setVoiceTier(e.target.value as "standard" | "premium")}
                   className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
@@ -719,10 +734,24 @@ export default function CreatePage() {
                 </select>
               </label>
               <label className="block">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Music</span>
+                <select value={music} onChange={(e) => setMusic(e.target.value)}
+                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
+                  {MUSIC.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </label>
+              <label className="block">
                 <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Caption style</span>
                 <select value={captionStyle} onChange={(e) => setCaptionStyle(e.target.value)}
                   className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
                   {CAPTION_STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Caption position</span>
+                <select value={captionPosition} onChange={(e) => setCaptionPosition(e.target.value)}
+                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
+                  {CAPTION_POSITIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </label>
               <label className="block">
