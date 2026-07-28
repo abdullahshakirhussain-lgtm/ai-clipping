@@ -7,8 +7,14 @@ export interface GoogleVeoOptions {
   model?: string;
   /** "720p" (cheapest) | "1080p" | "4k". */
   resolution?: string;
-  /** "4" | "6" | "8" — must be "8" for 1080p/4k. */
-  durationSeconds?: string;
+  /**
+   * 4 | 6 | 8 — must be 8 for 1080p/4k, reference images or extension.
+   *
+   * A NUMBER, despite Google's parameter table documenting it as a string: the
+   * live API rejects `"8"` with `The value type for durationSeconds needs to be
+   * a number` (400 INVALID_ARGUMENT). Trust the API over the docs here.
+   */
+  durationSeconds?: number;
 }
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
@@ -26,12 +32,12 @@ const BASE = "https://generativelanguage.googleapis.com/v1beta";
 export class GoogleVeoProvider implements VideoProvider {
   private readonly model: string;
   private readonly resolution: string;
-  private readonly durationSeconds: string;
+  private readonly durationSeconds: number;
 
   constructor(private readonly opts: GoogleVeoOptions) {
     this.model = opts.model || "veo-3.1-fast-generate-preview";
     this.resolution = opts.resolution || "720p";
-    this.durationSeconds = opts.durationSeconds || "8";
+    this.durationSeconds = Number(opts.durationSeconds) || 8;
   }
 
   /**
@@ -40,7 +46,7 @@ export class GoogleVeoProvider implements VideoProvider {
    * before the first render: a wrong/renamed preview id otherwise only shows up
    * after a job has already started.
    */
-  async check(): Promise<{ ok: boolean; model: string; detail: string; resolution: string; durationSeconds: string }> {
+  async check(): Promise<{ ok: boolean; model: string; detail: string; resolution: string; durationSeconds: number }> {
     const r = await checkModel(this.opts.apiKey, this.model);
     return {
       ok: r.ok,
@@ -148,7 +154,7 @@ function veoHint(status: number, detail: string): string {
     return "\nHINT: model id not found — Veo preview ids get renamed. Run GET /system/providers to see what this key resolves.";
   }
   if (status === 400) {
-    return "\nHINT: a parameter was rejected. personGeneration must be 'allow_all' for text-to-video and 'allow_adult' for image-to-video; durationSeconds must be the string \"8\" at 1080p/4k.";
+    return "\nHINT: a parameter was rejected. personGeneration must be 'allow_all' for text-to-video and 'allow_adult' for image-to-video; durationSeconds must be a NUMBER (8, not \"8\") and must be 8 at 1080p/4k.";
   }
   return "";
 }

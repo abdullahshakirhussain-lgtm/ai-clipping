@@ -69,7 +69,11 @@ const EnvSchema = z.object({
   GEMINI_API_KEY: z.string().optional().default(""),
   GEMINI_VEO_MODEL: z.string().default("veo-3.1-fast-generate-preview"),
   VEO_RESOLUTION: z.string().default("720p"),
-  VEO_DURATION_SECONDS: z.string().default("8"),
+  // A NUMBER, not a string: the API rejects "8" with "The value type for
+  // durationSeconds needs to be a number", even though Google's own parameter
+  // table documents it as a string. Coerced so an env var (always a string)
+  // still arrives as one.
+  VEO_DURATION_SECONDS: z.coerce.number().min(4).max(8).default(8),
   // Ceiling on shots == clips per cook video (cost cap; ~$0.80/shot on Fast).
   // 9 x 8s = 72s, over the 60s TikTok Creator Rewards line.
   COOK_MAX_SHOTS: z.coerce.number().min(2).max(12).default(9),
