@@ -17,11 +17,25 @@ allowBuilds:
   prisma: true
   sharp: true
   youtube-dl-exec: true
-  onnxruntime-node: true
+  # Explicitly DENIED, not merely omitted: pnpm fails the whole install with
+  # ERR_PNPM_IGNORED_BUILDS if a package with build scripts is left undecided.
+  onnxruntime-node: false
 
 # Packages allowed to run install/build scripts. Must include every platform
 # variant of native deps: the build host's platform decides which one resolves
 # (Railway/Docker = linux-x64; local dev here = windows-x64).
+#
+# onnxruntime-node is deliberately DENIED above, not listed here: its postinstall
+# fetches the CUDA execution-provider binaries from a CDN, and that download timed
+# out on Railway's builder twice in a row (ETIMEDOUT), failing
+# `pnpm install --frozen-lockfile` and blocking every deploy.
+#
+# Nothing is lost by skipping it. The CPU runtime (libonnxruntime.so.1 +
+# onnxruntime_binding.node) ships inside the npm tarball for linux/darwin/win32 —
+# only the CUDA binaries are downloaded, because they're too big for the registry,
+# and Railway has no GPU to use them with. Face-detect reframing
+# (packages/media/src/reframe.ts) keeps working on CPU, and it's behind a lazy
+# import whose planReframe falls back to a center crop if anything does go wrong.
 onlyBuiltDependencies:
   - "@embedded-postgres/windows-x64"
   - "@embedded-postgres/linux-x64"
@@ -37,4 +51,3 @@ onlyBuiltDependencies:
   - prisma
   - sharp
   - youtube-dl-exec
-  - onnxruntime-node
