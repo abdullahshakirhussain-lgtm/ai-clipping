@@ -74,17 +74,30 @@ export class GoogleVeoProvider implements VideoProvider {
     prompt: string;
     aspectRatio?: string;
     image?: VideoSeedImage;
+    referenceImages?: Buffer[];
     negativePrompt?: string;
   }): Promise<{ video: Buffer; ext: "mp4" }> {
     const headers = { "x-goog-api-key": this.opts.apiKey, "Content-Type": "application/json" };
 
-    // A seed image makes this IMAGE-TO-VIDEO: the still is the first frame.
+    // Two DIFFERENT features, both optional and independent:
+    //   image          — IMAGE-TO-VIDEO. The still is the clip's first frame.
+    //                    Every Veo 3.1 variant supports this, Lite included.
+    //   referenceImages — up to 3 "asset" stills the model refers to for the
+    //                    whole clip, not just frame one. The stronger character
+    //                    anchor, but Veo 3.1 and Fast only; Lite rejects them
+    //                    and the retry below sheds the field.
     const instance: Record<string, unknown> = { prompt: input.prompt };
     if (input.image) {
       instance.image = {
         bytesBase64Encoded: input.image.png.toString("base64"),
         mimeType: input.image.mimeType || "image/png",
       };
+    }
+    if (input.referenceImages?.length) {
+      instance.referenceImages = input.referenceImages.slice(0, 3).map((png) => ({
+        image: { inlineData: { mimeType: "image/png", data: png.toString("base64") } },
+        referenceType: "asset",
+      }));
     }
 
     const parameters: Record<string, unknown> = {
@@ -122,9 +135,12 @@ export class GoogleVeoProvider implements VideoProvider {
       const detail = await start.text().catch(() => "");
       const unsupported = /[`'"]?([A-Za-z_][A-Za-z0-9_]*)[`'"]?\s+(?:isn'?t|is not)\s+supported/i.exec(detail);
       const field = unsupported?.[1];
-      if (attempt < 4 && field && field in parameters) {
+      // The rejected field can live in either half of the request — parameters
+      // (negativePrompt) or the instance (referenceImages on Lite).
+      const bag = field && field in parameters ? parameters : field && field in instance ? instance : null;
+      if (attempt < 4 && field && bag) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete parameters[field];
+        delete bag[field];
         console.warn(`[veo] ${this.model} rejected "${field}"; retrying without it`);
         continue;
       }

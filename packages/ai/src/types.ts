@@ -282,6 +282,14 @@ export interface VideoProvider {
     prompt: string;
     aspectRatio?: string;
     image?: VideoSeedImage;
+    /**
+     * ASSET REFERENCES — a different feature from `image`. `image` is the clip's
+     * FIRST FRAME (supported on every Veo 3.1 variant, Lite included); these are
+     * up to 3 stills the model keeps referring to for the whole clip, which is
+     * the stronger character anchor. Veo 3.1 and Fast only — Lite rejects them,
+     * and the provider sheds them automatically when it does.
+     */
+    referenceImages?: Buffer[];
     /** Overrides the default exclusions (which bar human faces — wrong for stick figures). */
     negativePrompt?: string;
   }): Promise<{ video: Buffer; ext: "mp4" }>;

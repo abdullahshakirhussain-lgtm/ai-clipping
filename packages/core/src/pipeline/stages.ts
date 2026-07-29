@@ -1566,6 +1566,10 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
       await setProgress(`Drawing the frames (${i + 1}/${shots.length})`, 15 + Math.round(((i + 1) / shots.length) * 15));
     }
 
+    // The first drawn frame is the closest thing we have to a character sheet:
+    // it shows the cast in the style every later clip has to match.
+    const castSheet = seeds[0];
+
     // 4. Animate. Concurrency 2 — generation is slow and paid.
     await setProgress("Animating", 30);
     let done = 0;
@@ -1588,6 +1592,12 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
             .join("\n"),
           aspectRatio: "9:16",
           ...(seed ? { image: { png: seed } } : {}),
+          // The opening frame doubles as a CHARACTER SHEET for every later clip:
+          // an asset reference the model consults for the whole shot, not just
+          // frame one. Strictly stronger than the first-frame seed alone, and
+          // free to attempt — Veo 3.1 Lite rejects the field and the provider
+          // sheds it, so this only takes effect on Fast/Standard.
+          ...(castSheet && i > 0 ? { referenceImages: [castSheet] } : {}),
           // The default bars human faces — fatal when the cast IS the subject.
           negativePrompt: "on-screen text, subtitles, watermark, logo, photorealistic, blurry, low quality",
         });
