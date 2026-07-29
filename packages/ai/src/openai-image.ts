@@ -42,8 +42,27 @@ export class OpenAiImageProvider implements ImageProvider {
    * finished video — back off (honouring Retry-After) and try again. Other 4xx
    * (moderation blocks, bad params) are deterministic; fail fast so the caller
    * can fall back differently.
+   *
+   * With `referenceImage`, this EDITS the previous frame instead of drawing from
+   * scratch (POST /v1/images/edits, multipart) — the character-consistency lever
+   * for animated shorts, where the same stick figures have to survive across
+   * independently generated clips. Any failure of the edit path falls back to a
+   * plain generation, so the worst case is exactly the old behaviour.
    */
-  async generate(input: { prompt: string; size?: string }): Promise<{ image: Buffer; ext: "png" }> {
+  async generate(input: {
+    prompt: string;
+    size?: string;
+    referenceImage?: Buffer;
+  }): Promise<{ image: Buffer; ext: "png" }> {
+    if (input.referenceImage) {
+      try {
+        return await this.edit(input.prompt, input.referenceImage, input.size);
+      } catch (err) {
+        // Never fatal: an unavailable edits endpoint, an unverified org, or a
+        // moderation block on the edit just means this frame is drawn fresh.
+        console.warn(`[image] edit-from-previous-frame failed, drawing fresh: ${String(err).slice(0, 200)}`);
+      }
+    }
     const MAX_ATTEMPTS = 3;
     let lastErr: unknown = new Error("OpenAI image: no attempts made");
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -83,6 +102,38 @@ export class OpenAiImageProvider implements ImageProvider {
       }
     }
     throw lastErr;
+  }
+
+  /**
+   * Edit an existing frame forward: POST /v1/images/edits, multipart/form-data
+   * (the edits endpoint takes form fields, not JSON). gpt-image models return
+   * b64_json by default, so no response_format is sent.
+   */
+  private async edit(prompt: string, reference: Buffer, size?: string): Promise<{ image: Buffer; ext: "png" }> {
+    const form = new FormData();
+    form.append("model", this.model);
+    form.append("prompt", prompt);
+    form.append("size", size || "1024x1536");
+    form.append("quality", this.quality);
+    form.append("n", "1");
+    // Uint8Array copy: Buffer's view may be a slice of a larger pooled
+    // ArrayBuffer, which would upload surrounding bytes.
+    form.append("image", new Blob([new Uint8Array(reference)], { type: "image/png" }), "frame.png");
+
+    const res = await fetch("https://api.openai.com/v1/images/edits", {
+      method: "POST",
+      // No Content-Type header — fetch sets it with the multipart boundary.
+      headers: { Authorization: `Bearer ${this.opts.apiKey}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`OpenAI image edit failed (${res.status}): ${detail.slice(0, 200)}`);
+    }
+    const json = (await res.json()) as { data?: Array<{ b64_json?: string }> };
+    const b64 = json.data?.[0]?.b64_json;
+    if (!b64) throw new Error("OpenAI image edit returned no b64_json");
+    return { image: Buffer.from(b64, "base64"), ext: "png" };
   }
 }
 
