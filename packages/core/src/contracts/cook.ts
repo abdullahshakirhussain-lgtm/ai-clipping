@@ -47,7 +47,9 @@ export const CreateCookInputSchema = z.object({
   title: z.string().max(200).optional(),
   description: z.string().max(2000).optional(),
   hashtags: z.array(z.string()).max(10).optional(),
-  shots: z.array(CookShotSchema).min(1).max(8),
+  // Must be >= COOK_MAX_SHOTS, or the planner produces a shot list that the
+  // create call then rejects as too long.
+  shots: z.array(CookShotSchema).min(1).max(12),
   category: z.string().max(60).optional(),
 });
 export type CreateCookInput = z.infer<typeof CreateCookInputSchema>;

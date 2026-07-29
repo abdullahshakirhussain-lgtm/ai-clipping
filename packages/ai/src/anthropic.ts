@@ -904,7 +904,9 @@ Call submit_story.`,
   }
 
   async planCookShots(input: PlanCookInput): Promise<CookPlan> {
-    const maxShots = Math.max(3, Math.min(8, input.maxShots));
+    // Ceiling must track COOK_MAX_SHOTS (12) — a lower clamp here silently caps
+    // the video's length no matter what the env says.
+    const maxShots = Math.max(3, Math.min(12, input.maxShots));
     const aspect = input.aspectRatio || "9:16";
     const result = await this.callTool<{
       title?: string;
@@ -1245,11 +1247,17 @@ Call submit_call.`,
       { model: this.commentaryModel, effort: "high" },
     );
 
-    const characters: CallCharacter[] = (result.characters ?? []).slice(0, 2).map((c, i) => {
-      const gender = c.gender === "female" ? "female" : "male";
+    // EXACTLY two, always. The call format is two speakers by definition (the
+    // TTS caps at two), and the response schema requires two — a short list from
+    // the model would otherwise fail serialization and surface as an opaque 500
+    // instead of a usable brief.
+    const raw = (result.characters ?? []).slice(0, 2);
+    while (raw.length < 2) raw.push({});
+    const characters: CallCharacter[] = raw.map((c, i) => {
+      const gender = c.gender === "female" ? "female" : c.gender === "male" ? "male" : i === 0 ? "male" : "female";
       return {
-        name: String(c.name ?? (i === 0 ? "Caller" : "Recipient")).trim().slice(0, 40),
-        role: String(c.role ?? "").trim(),
+        name: String(c.name ?? (i === 0 ? "Caller" : "Recipient")).trim().slice(0, 40) || (i === 0 ? "Caller" : "Recipient"),
+        role: String(c.role ?? (i === 0 ? "the caller" : "the person who answered")).trim(),
         gender,
         age: String(c.age ?? "").trim(),
         accent: String(c.accent ?? "").trim(),
@@ -1259,6 +1267,18 @@ Call submit_call.`,
         quirks: String(c.quirks ?? "").trim(),
       };
     });
+    // Two speakers with the same voice are indistinguishable on the recording.
+    if (characters[1]!.voice === characters[0]!.voice) {
+      characters[1]!.voice = resolveVoice(undefined, characters[1]!.gender, 1);
+      if (characters[1]!.voice === characters[0]!.voice) {
+        characters[1]!.voice = resolveVoice(undefined, characters[1]!.gender, 2);
+      }
+    }
+
+    // Non-empty: the schema requires at least one beat, and an empty list would
+    // fail serialization rather than degrade.
+    const beats = (result.escalation ?? []).map(String).filter(Boolean).slice(0, 6);
+    const escalation = beats.length > 0 ? beats : ["the call opens politely and steadily gets worse"];
 
     return {
       title: String(result.title ?? input.idea).slice(0, 120),
@@ -1267,7 +1287,7 @@ Call submit_call.`,
       premise: String(result.premise ?? input.idea),
       setup: String(result.setup ?? ""),
       characters,
-      escalation: (result.escalation ?? []).map(String).filter(Boolean).slice(0, 6),
+      escalation,
       ragebait: (result.ragebait ?? []).map(String).filter(Boolean).slice(0, 5),
       ending: String(result.ending ?? ""),
       durationSeconds: seconds,
