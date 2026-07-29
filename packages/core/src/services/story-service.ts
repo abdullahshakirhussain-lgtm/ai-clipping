@@ -19,9 +19,11 @@ export interface StorySpec {
   style: string;
   voiceTier: string;
   narrator: string;
-  /** Ceilings, not targets — the writer uses as much as the story needs. */
+  /** Ceiling on beats — the writer uses as many as the story needs. */
   maxBeats: number;
   maxWords: number;
+  /** Word FLOOR, so the narration clears the 60-second line. */
+  minWords?: number;
   category?: string;
   captionStyle: string;
   captionPosition: "top" | "middle" | "bottom";

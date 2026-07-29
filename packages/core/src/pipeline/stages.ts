@@ -818,6 +818,7 @@ interface StorySpec {
   narrator?: string;
   maxBeats: number;
   maxWords?: number;
+  minWords?: number;
   category?: string;
   captionStyle?: string;
   captionPosition?: "top" | "middle" | "bottom";
@@ -870,6 +871,9 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       style: spec.style,
       maxBeats: spec.maxBeats,
       maxWords: spec.maxWords ?? 280,
+      // Floor, so the narration clears 60s. Defaulted for specs written before
+      // the field existed (they're read back out of the DB as-is).
+      minWords: spec.minWords ?? 170,
       narrator: spec.narrator,
       voiceTags: tts.speaksTags === true,
     });
