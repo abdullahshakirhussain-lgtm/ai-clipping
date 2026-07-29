@@ -40,14 +40,21 @@ export class AnimService {
   /** Step 1: topic → story → per-beat first-frame + motion prompts. No video spend. */
   async plan(topic: string, style?: string): Promise<AnimPlan> {
     const chosenStyle = style || DEFAULT_STYLE;
-    // Beats must each fit ONE ~8s clip, so the writer gets a tight word budget:
-    // ~20 spoken words per beat at ~150wpm. That is what makes the narration and
-    // the clip boundaries line up instead of drifting apart.
+    // Two constraints at once:
+    //   - Each beat must fit ONE ~8s clip, so ~19-22 spoken words per beat at
+    //     ~150wpm keeps the narration and the clip boundaries aligned.
+    //   - The finished video is trimmed to the NARRATION's length, not to
+    //     clips x 8s. So the word floor is what actually decides runtime: at 9
+    //     beats that's 171-198 words, about 68-79 seconds, past the 60s line.
+    // minBeats is set to the full count because one beat == one paid clip; a
+    // short spine would silently halve both the runtime and the shot list.
     const story = await this.llm.writeStory({
       topic: topic.trim(),
       style: chosenStyle,
       maxBeats: this.maxShots,
-      maxWords: this.maxShots * 20,
+      minBeats: this.maxShots,
+      maxWords: this.maxShots * 22,
+      minWords: this.maxShots * 19,
       narrator: "storyteller",
     });
     const shots = await this.llm.planAnimationShots({

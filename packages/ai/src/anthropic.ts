@@ -686,6 +686,9 @@ Call submit_metadata with optimized fields.`,
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
     const maxBeats = Math.max(5, Math.min(30, input.maxBeats));
     const maxWords = Math.max(120, Math.min(400, input.maxWords));
+    // Floors, kept strictly below the ceilings so the two can never invert.
+    const minBeats = Math.max(5, Math.min(maxBeats, input.minBeats ?? 5));
+    const minWords = Math.max(60, Math.min(maxWords - 10, input.minWords ?? 60));
     const narrator = input.narrator ?? "storyteller";
 
     // ── Pass 1: architect the TRUE story spine (real facts + arc + a factual
@@ -729,7 +732,7 @@ Output:
 
 4. "ending": the story's REAL final fact or consequence — the last thing that actually happened, stated as plain fact. It must resolve the question the cold open raised, but it is NOT a punchline: no moral, no call-to-action, no rhetorical question, no crafted closing line.
 
-5. "spine": the ordered beats (minimum 5, up to ${maxBeats}), one per key story moment. Each beat has:
+5. "spine": the ordered beats — ${minBeats === maxBeats ? `EXACTLY ${maxBeats}` : `at least ${minBeats}, up to ${maxBeats}`}, one per key story moment. Each beat has:
    - "role": its job in the arc — hook / rehook / setup / rising / turn / payoff.
    - "fact": the concrete real thing that happens in this beat, one line — and every fact NAMES its people and places outright (real names, dates, amounts): "Glyndwr Michael, a homeless Welshman, dies in London in January 1943", never "a man dies". No bare he/they/the man in a spine fact.
    KEEP THE CAST TIGHT: give NAMES only to the 1-3 people the story actually returns to, and the first fact that names someone must say who they are ("a British spy, Ewen Montagu"). Everyone who appears only once stays a role, never a name (a coroner, a fisherman) — a name the viewer meets once and never again just confuses.
@@ -821,7 +824,7 @@ ENDING TO LAND ON: ${planEnding || "the story's real final consequence"}
 HOW TO WRITE IT:
 - Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone.
 - Narrator persona: "${narrator}" — shape the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat. Tone is PUNCHY BUT HONEST: big drama, only real facts, never over-promise.
-- Keep the WHOLE spoken narration UNDER 2 minutes (~${maxWords} words absolute maximum, ~150 words/min). SHORTER is better when the story is best told tight — never pad.
+- LENGTH: the whole spoken narration must run BETWEEN ${minWords} and ${maxWords} words (~150 words/min, so roughly ${Math.round(minWords / 2.5)}-${Math.round(maxWords / 2.5)} seconds). ${minWords} words is a FLOOR, not a suggestion — a story that lands short is not finished, so go back and give the setup and the turn the detail they deserve. Never pad with filler or repetition to reach it: earn the length with concrete specifics — names, dates, amounts, what someone actually said or did.
 
 RETENTION MECHANICS (this is the job):
 - COLD OPEN: the very FIRST WORDS of the whole narration are the opening hook above — starting "It's…", "In…" or "Imagine…". The viewer lands mid-scene (a date, a place, a person in motion), present tense. NEVER announce, name or summarize what the video is about before or after the hook's first line ("This is the story of…" is banned); the scene raises the question by itself.

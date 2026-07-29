@@ -149,6 +149,16 @@ export interface WriteStoryInput {
   maxBeats: number;
   /** CEILING on spoken words (~2-min cap); shorter is fine — length follows the story. */
   maxWords: number;
+  /**
+   * FLOOR on beats. Set where one beat maps to one paid clip (animation), so
+   * the writer can't hand back a 5-beat story and quietly halve the runtime.
+   */
+  minBeats?: number;
+  /**
+   * FLOOR on spoken words. Every format now targets over a minute (~150 wpm),
+   * and without a floor the writer is told shorter is better and obliges.
+   */
+  minWords?: number;
   /** Narrator persona key — shapes the emotional arc the writer directs. */
   narrator?: string;
   /** When true, embed ElevenLabs-v3 audio tags inline in the beat text. */

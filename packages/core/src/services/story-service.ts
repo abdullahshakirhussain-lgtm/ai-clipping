@@ -6,6 +6,13 @@ import type { CreateStoryInput } from "../contracts/story.js";
 /** Spoken-word ceiling ≈ 2 minutes at ~150 wpm, with margin so the read lands under. */
 const MAX_WORDS = 280;
 
+/**
+ * ~150 wpm, so 170 words ≈ 68 seconds — comfortably past the 60-second line
+ * TikTok's Creator Rewards requires. Without a floor the writer is told shorter
+ * is better and will happily hand back a 40-second story.
+ */
+const MIN_WORDS = 170;
+
 /** Story spec persisted on the SourceVideo (kind=story) and read by the generator. */
 export interface StorySpec {
   topic: string;
@@ -47,6 +54,7 @@ export class StoryService {
       narrator: input.narrator,
       maxBeats: this.maxBeats,
       maxWords: MAX_WORDS,
+      minWords: MIN_WORDS,
       category: input.category?.trim() || undefined,
       captionStyle: input.captionStyle,
       captionPosition: input.captionPosition,
