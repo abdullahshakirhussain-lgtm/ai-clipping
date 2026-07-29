@@ -53,12 +53,21 @@ export class GoogleVeoProvider implements VideoProvider {
    * died when Google's rejection wording didn't match the pattern.
    */
   private readonly supportsReferenceImages: boolean;
+  /**
+   * Lite also rejects `negativePrompt`. Sending it anyway means every shot pays
+   * for a rejected request BEFORE the real one — doubling the request count
+   * against Lite's 10 RPM preview quota, which is exactly what turned a soft
+   * rate limit into a run that 429'd on every shot. Gate it like referenceImages
+   * rather than leaning on the strip-and-retry backstop.
+   */
+  private readonly supportsNegativePrompt: boolean;
 
   constructor(private readonly opts: GoogleVeoOptions) {
     this.model = opts.model || "veo-3.1-fast-generate-preview";
     this.resolution = opts.resolution || "720p";
     this.durationSeconds = Number(opts.durationSeconds) || 8;
     this.supportsReferenceImages = !/lite/i.test(this.model);
+    this.supportsNegativePrompt = !/lite/i.test(this.model);
   }
 
   /**
@@ -116,12 +125,16 @@ export class GoogleVeoProvider implements VideoProvider {
       // and requires "allow_adult" for image-to-video, interpolation and
       // reference images. Sending the wrong one 400s every request.
       personGeneration: input.image ? "allow_adult" : "allow_all",
-      // Caller-overridable: cook wants "no human faces" (hands only), but a
-      // stick-figure animation obviously must not exclude its characters.
-      negativePrompt:
-        input.negativePrompt ??
-        "on-screen text, subtitles, watermark, logo, human faces, blurry, low quality",
     };
+    // Caller-overridable: cook wants "no human faces" (hands only), but a
+    // stick-figure animation obviously must not exclude its characters. Only
+    // sent to models that accept it — Lite doesn't, and a known-rejected field
+    // costs a wasted request per shot against its tiny preview quota.
+    if (this.supportsNegativePrompt) {
+      parameters.negativePrompt =
+        input.negativePrompt ??
+        "on-screen text, subtitles, watermark, logo, human faces, blurry, low quality";
+    }
 
     // 1. Kick off the long-running generation.
     //
@@ -230,7 +243,18 @@ export class GoogleVeoProvider implements VideoProvider {
  */
 function veoHint(status: number, detail: string): string {
   const d = detail.toLowerCase();
-  if (d.includes("billing") || d.includes("quota") || status === 429) {
+  // A 429 is a rate/quota limit, NOT a billing problem — and Google's 429 body
+  // literally contains the words "check your plan and billing details", so this
+  // MUST be tested before the billing branch or it misdiagnoses every 429 as
+  // "enable billing" when billing is already on. Veo 3.1 preview models are 10
+  // RPM / 10 concurrent on Tier 1.
+  if (status === 429 || d.includes("exceeded your current quota") || d.includes("rate limit")) {
+    return (
+      "\nHINT: this is a Veo RATE/QUOTA limit, not billing. Veo 3.1 preview models allow only ~10 requests/min and 10 concurrent on Tier 1. " +
+      "Lower ANIM_CONCURRENCY (to 1) and/or ANIM_MAX_SHOTS, wait for the per-minute window to clear, or raise your API tier. Check ai.dev/rate-limit to see which quota is at zero."
+    );
+  }
+  if (d.includes("billing")) {
     return "\nHINT: Veo has no free tier — enable billing on the Google Cloud project behind GEMINI_API_KEY.";
   }
   if (status === 403 || d.includes("permission")) {
@@ -297,8 +321,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** How many times one call may wait out a rate limit before giving up. */
-export const MAX_RATE_LIMIT_WAITS = 6;
+/**
+ * How many times one call may wait out a rate limit before giving up. Kept low
+ * on purpose: when the quota is genuinely exhausted (not a momentary burst) the
+ * 429 repeats no matter how long we wait, so each extra retry is dead time — and
+ * at 12 shots that dead time multiplies. Four waits is ~2+4+8+16 = 30s worst
+ * case, after which the shot fails over and the >1/3-stills guard surfaces the
+ * quota wall immediately instead of 12 minutes later.
+ */
+export const MAX_RATE_LIMIT_WAITS = 4;
 
 export function isRateLimited(status: number): boolean {
   return status === 429;

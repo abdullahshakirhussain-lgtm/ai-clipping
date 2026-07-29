@@ -110,10 +110,11 @@ const EnvSchema = z.object({
   // Per-clip length for animation only; cook keeps VEO_DURATION_SECONDS (8).
   // Must be 4, 6 or 8 — and 8 if you ever raise VEO_RESOLUTION past 720p.
   ANIM_CLIP_SECONDS: z.coerce.number().min(4).max(8).default(6),
-  // Parallel video calls. Kept low on purpose: Veo Tier 1 allows 50 requests a
-  // minute and each shot also polls, so this is the dial to turn down first if
-  // Google starts pushing back.
-  ANIM_CONCURRENCY: z.coerce.number().min(1).max(6).default(2),
+  // Parallel video calls. Default 1: Veo 3.1 PREVIEW models (Lite/Fast) are only
+  // ~10 requests/min and 10 concurrent on Tier 1 — far below the 50 RPM of the
+  // production tier — and each shot ALSO polls every 8-20s, so even 2 in flight
+  // brushes the ceiling and 429s. Raise it only on Tier 2+.
+  ANIM_CONCURRENCY: z.coerce.number().min(1).max(6).default(1),
   // Ceiling on narrated BEATS per story (sentences, not images). Long-form runs
   // ~8 minutes, which is roughly 45 sentence-length beats.
   STORY_MAX_BEATS: z.coerce.number().min(4).max(60).default(45),

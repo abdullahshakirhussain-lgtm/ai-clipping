@@ -69,6 +69,19 @@ describe("Veo request body", () => {
     expect(custom.parameters.negativePrompt).toBe("photorealistic, blurry");
   });
 
+  it("does NOT send negativePrompt to Lite, which rejects it", async () => {
+    // Lite rejects the field; sending it costs a wasted (rejected) request per
+    // shot against Lite's ~10 RPM preview quota, which is what turned a soft
+    // rate limit into a run that 429'd on every shot. Gate, don't strip-retry.
+    const body = await generate({ model: "veo-3.1-lite-generate-preview" }, { prompt: "x" });
+    expect(body.parameters.negativePrompt).toBeUndefined();
+  });
+
+  it("still sends negativePrompt to Fast, which supports it", async () => {
+    const body = await generate({ model: "veo-3.1-fast-generate-preview" }, { prompt: "x" });
+    expect(body.parameters.negativePrompt).toContain("human faces");
+  });
+
   it("targets the configured model on the predictLongRunning endpoint", async () => {
     const body = await generate({ model: "veo-3.1-lite-generate-preview" }, { prompt: "x" });
     expect(captured!.url).toContain("veo-3.1-lite-generate-preview:predictLongRunning");
