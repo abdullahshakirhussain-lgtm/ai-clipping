@@ -74,31 +74,47 @@ export class GoogleVeoProvider implements VideoProvider {
       };
     }
 
+    const parameters: Record<string, unknown> = {
+      aspectRatio: input.aspectRatio || "9:16",
+      resolution: this.resolution,
+      durationSeconds: this.durationSeconds,
+      // Not interchangeable: Google allows "allow_all" ONLY for text-to-video,
+      // and requires "allow_adult" for image-to-video, interpolation and
+      // reference images. Sending the wrong one 400s every request.
+      personGeneration: input.image ? "allow_adult" : "allow_all",
+      // Caller-overridable: cook wants "no human faces" (hands only), but a
+      // stick-figure animation obviously must not exclude its characters.
+      negativePrompt:
+        input.negativePrompt ??
+        "on-screen text, subtitles, watermark, logo, human faces, blurry, low quality",
+    };
+
     // 1. Kick off the long-running generation.
-    const start = await fetch(`${BASE}/models/${this.model}:predictLongRunning`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        instances: [instance],
-        parameters: {
-          aspectRatio: input.aspectRatio || "9:16",
-          resolution: this.resolution,
-          durationSeconds: this.durationSeconds,
-          // Not interchangeable: Google allows "allow_all" ONLY for
-          // text-to-video, and requires "allow_adult" for image-to-video,
-          // interpolation and reference images. Sending the wrong one 400s
-          // every request.
-          personGeneration: input.image ? "allow_adult" : "allow_all",
-          // Caller-overridable: cook wants "no human faces" (hands only), but a
-          // stick-figure animation obviously must not exclude its characters.
-          negativePrompt:
-            input.negativePrompt ??
-            "on-screen text, subtitles, watermark, logo, human faces, blurry, low quality",
-        },
-      }),
-    });
-    if (!start.ok) {
+    //
+    // The Veo preview models do NOT accept the same parameter set — Lite rejects
+    // negativePrompt outright, and which knobs exist has already shifted once
+    // mid-preview. Rather than hard-code a per-model matrix that goes stale,
+    // drop whatever parameter the API names as unsupported and retry: the 400
+    // identifies it precisely ("`negativePrompt` isn't supported by this
+    // model"). Bounded so a genuinely broken request still fails fast.
+    let start: Response;
+    for (let attempt = 0; ; attempt++) {
+      start = await fetch(`${BASE}/models/${this.model}:predictLongRunning`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ instances: [instance], parameters }),
+      });
+      if (start.ok) break;
+
       const detail = await start.text().catch(() => "");
+      const unsupported = /[`'"]?([A-Za-z_][A-Za-z0-9_]*)[`'"]?\s+(?:isn'?t|is not)\s+supported/i.exec(detail);
+      const field = unsupported?.[1];
+      if (attempt < 4 && field && field in parameters) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete parameters[field];
+        console.warn(`[veo] ${this.model} rejected "${field}"; retrying without it`);
+        continue;
+      }
       throw new Error(`Veo start failed (${start.status}): ${detail.slice(0, 300)}${veoHint(start.status, detail)}`);
     }
     const op = (await start.json()) as { name?: string };
