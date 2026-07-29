@@ -1,4 +1,30 @@
+import { isRateLimited, MAX_RATE_LIMIT_WAITS, retryAfterMs } from "./google-video.js";
 import type { CallAudioProvider, CallAudioResult, CallSpeaker } from "./types.js";
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * POST with rate-limit backoff. A call is two chained requests (write the
+ * dialogue, then perform it), so a 429 on either one loses the whole call —
+ * including, on the second, the text already generated and paid for.
+ */
+async function postWithBackoff(url: string, apiKey: string, body: unknown, label: string): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return res;
+    if ((isRateLimited(res.status) || res.status >= 500) && attempt < MAX_RATE_LIMIT_WAITS) {
+      const wait = retryAfterMs(res.headers, attempt);
+      console.warn(`[${label}] ${res.status}; waiting ${Math.round(wait / 1000)}s`);
+      await sleep(wait);
+      continue;
+    }
+    return res;
+  }
+}
 
 export interface GoogleCallOptions {
   apiKey: string;
@@ -88,14 +114,15 @@ OUTPUT RULES — follow exactly:
 - Keep every hard rule in the brief. Everyone is fictional; no real people, companies or numbers.
 - End where the brief says it ends — cut on the peak, no resolution, no closing quip.`;
 
-    const res = await fetch(`${BASE}/models/${this.textModel}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": this.opts.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const res = await postWithBackoff(
+      `${BASE}/models/${this.textModel}:generateContent`,
+      this.opts.apiKey,
+      {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { temperature: 1.0, maxOutputTokens: 2048 },
-      }),
-    });
+      },
+      "gemini-dialogue",
+    );
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       throw new Error(`Gemini dialogue call failed (${res.status}): ${detail.slice(0, 300)}`);
@@ -110,10 +137,10 @@ OUTPUT RULES — follow exactly:
   }
 
   private async speak(text: string, speakers: CallSpeaker[]): Promise<{ pcm: Buffer; sampleRate: number }> {
-    const res = await fetch(`${BASE}/models/${this.ttsModel}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": this.opts.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const res = await postWithBackoff(
+      `${BASE}/models/${this.ttsModel}:generateContent`,
+      this.opts.apiKey,
+      {
         contents: [{ parts: [{ text }] }],
         generationConfig: {
           responseModalities: ["AUDIO"],
@@ -126,8 +153,9 @@ OUTPUT RULES — follow exactly:
             },
           },
         },
-      }),
-    });
+      },
+      "gemini-tts",
+    );
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       throw new Error(`Gemini TTS failed (${res.status}): ${detail.slice(0, 300)}`);

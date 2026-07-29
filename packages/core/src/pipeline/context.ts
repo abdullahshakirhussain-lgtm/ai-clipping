@@ -58,6 +58,8 @@ export interface PipelineContext {
     visionContext: boolean;
     /** Slideshow image cadence (see env STORY_IMAGE_SECONDS / STORY_MAX_IMAGES). */
     story: { imageSeconds: number; maxImages: number };
+    /** Parallel Veo calls for animation — the first dial to turn down on 429s. */
+    animConcurrency: number;
   };
 }
 

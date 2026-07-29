@@ -46,11 +46,19 @@ export class GoogleVeoProvider implements VideoProvider {
   private readonly model: string;
   private readonly resolution: string;
   private readonly durationSeconds: number;
+  /**
+   * Asset reference images are a Veo 3.1 / Fast feature; Lite rejects the field
+   * outright. Branch on the documented capability rather than sending it and
+   * letting the retry clean up — relying on the retry is how eight of nine shots
+   * died when Google's rejection wording didn't match the pattern.
+   */
+  private readonly supportsReferenceImages: boolean;
 
   constructor(private readonly opts: GoogleVeoOptions) {
     this.model = opts.model || "veo-3.1-fast-generate-preview";
     this.resolution = opts.resolution || "720p";
     this.durationSeconds = Number(opts.durationSeconds) || 8;
+    this.supportsReferenceImages = !/lite/i.test(this.model);
   }
 
   /**
@@ -93,7 +101,7 @@ export class GoogleVeoProvider implements VideoProvider {
         mimeType: input.image.mimeType || "image/png",
       };
     }
-    if (input.referenceImages?.length) {
+    if (input.referenceImages?.length && this.supportsReferenceImages) {
       instance.referenceImages = input.referenceImages.slice(0, 3).map((png) => ({
         image: { inlineData: { mimeType: "image/png", data: png.toString("base64") } },
         referenceType: "asset",
@@ -117,13 +125,13 @@ export class GoogleVeoProvider implements VideoProvider {
 
     // 1. Kick off the long-running generation.
     //
-    // The Veo preview models do NOT accept the same parameter set — Lite rejects
-    // negativePrompt outright, and which knobs exist has already shifted once
-    // mid-preview. Rather than hard-code a per-model matrix that goes stale,
-    // drop whatever parameter the API names as unsupported and retry: the 400
-    // identifies it precisely ("`negativePrompt` isn't supported by this
-    // model"). Bounded so a genuinely broken request still fails fast.
+    // Two things can go wrong here and both are recoverable:
+    //   - The preview models accept DIFFERENT parameter sets, and which knobs
+    //     exist has already shifted twice mid-preview. Drop whatever field the
+    //     API names as unsupported and retry; the 400 identifies it precisely.
+    //   - Rate limits. A 429 here is transient, not a reason to lose the shot.
     let start: Response;
+    let rateLimitWaits = 0;
     for (let attempt = 0; ; attempt++) {
       start = await fetch(`${BASE}/models/${this.model}:predictLongRunning`, {
         method: "POST",
@@ -133,10 +141,18 @@ export class GoogleVeoProvider implements VideoProvider {
       if (start.ok) break;
 
       const detail = await start.text().catch(() => "");
-      const unsupported = /[`'"]?([A-Za-z_][A-Za-z0-9_]*)[`'"]?\s+(?:isn'?t|is not)\s+supported/i.exec(detail);
-      const field = unsupported?.[1];
+
+      if (isRateLimited(start.status) && rateLimitWaits < MAX_RATE_LIMIT_WAITS) {
+        const wait = retryAfterMs(start.headers, rateLimitWaits++);
+        console.warn(`[veo] ${start.status} starting a shot; waiting ${Math.round(wait / 1000)}s`);
+        await sleep(wait);
+        attempt--; // a rate limit isn't an attempt at a different request shape
+        continue;
+      }
+
+      const field = unsupportedField(detail);
       // The rejected field can live in either half of the request — parameters
-      // (negativePrompt) or the instance (referenceImages on Lite).
+      // (negativePrompt) or the instance (referenceImages).
       const bag = field && field in parameters ? parameters : field && field in instance ? instance : null;
       if (attempt < 4 && field && bag) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -149,15 +165,31 @@ export class GoogleVeoProvider implements VideoProvider {
     const op = (await start.json()) as { name?: string };
     if (!op.name) throw new Error("Veo start returned no operation name");
 
-    // 2. Poll until done. Veo latency is ~11s–6min; cap at 10.
-    const deadline = Date.now() + 10 * 60 * 1000;
+    // 2. Poll until done. Veo latency is ~11s–6min; cap at 10 minutes of actual
+    //    generation. The interval widens as the shot runs long, which roughly
+    //    halves poll volume on slow generations — the whole point being to stay
+    //    well clear of the per-minute quota when a dozen shots are in flight.
+    let deadline = Date.now() + 10 * 60 * 1000;
+    let interval = 8000;
     let done: OpResult;
     for (;;) {
       if (Date.now() > deadline) throw new Error("Veo timed out (>10 min)");
-      await sleep(8000);
+      await sleep(interval);
+      interval = Math.min(interval + 2000, 20000);
       const poll = await fetch(`${BASE}/${op.name}`, { headers });
       if (!poll.ok) {
         const detail = await poll.text().catch(() => "");
+        // The generation is already running and already being billed. Dropping
+        // it because one poll got rate-limited or hit a blip throws away a paid
+        // clip — wait and ask again, and extend the deadline by what we waited
+        // so a rate limit can't masquerade as a timeout.
+        if ((isRateLimited(poll.status) || poll.status >= 500) && rateLimitWaits < MAX_RATE_LIMIT_WAITS) {
+          const wait = retryAfterMs(poll.headers, rateLimitWaits++);
+          console.warn(`[veo] ${poll.status} while polling; waiting ${Math.round(wait / 1000)}s`);
+          await sleep(wait);
+          deadline += wait;
+          continue;
+        }
         throw new Error(`Veo poll failed (${poll.status}): ${detail.slice(0, 200)}`);
       }
       const j = (await poll.json()) as OpResult;
@@ -213,6 +245,29 @@ function veoHint(status: number, detail: string): string {
   return "";
 }
 
+/**
+ * Pull the field name out of an "unsupported parameter" rejection.
+ *
+ * Google's wording varies with the field's plurality and preposition —
+ * "`negativePrompt` isn't supported by this model" vs "Reference images are not
+ * supported for this model". The first version of this matched only the
+ * singular form, so a plural rejection went unhandled and killed eight of nine
+ * shots in one run. A backticked name anywhere in the message wins, since
+ * Google quotes the real parameter when it knows it; otherwise fall back to the
+ * identifier immediately before the phrase. Callers check membership before
+ * deleting, so a near-miss is harmless.
+ */
+export function unsupportedField(detail: string): string | null {
+  if (!/\bnot\s+supported|\bisn'?t\s+supported|\baren'?t\s+supported/i.test(detail)) return null;
+  // BACKTICKS only — Google quotes the offending parameter that way. Matching
+  // any quote style instead picks up the surrounding JSON's own keys ("error",
+  // "message") long before it reaches the field name.
+  const backticked = /`([A-Za-z_][A-Za-z0-9_]*)`/.exec(detail);
+  if (backticked?.[1]) return backticked[1];
+  const bare = /([A-Za-z_][A-Za-z0-9_]*)\s+(?:is|are|isn'?t|aren'?t|was|were)?\s*(?:not\s+)?supported/i.exec(detail);
+  return bare?.[1] ?? null;
+}
+
 interface OpResult {
   done?: boolean;
   error?: unknown;
@@ -240,4 +295,22 @@ function extractVideo(op: OpResult): { uri?: string; bytesBase64?: string } | nu
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** How many times one call may wait out a rate limit before giving up. */
+export const MAX_RATE_LIMIT_WAITS = 6;
+
+export function isRateLimited(status: number): boolean {
+  return status === 429;
+}
+
+/**
+ * How long to wait before retrying: the server's `Retry-After` when it gives
+ * one, otherwise exponential backoff (2s, 4s, 8s… capped at 60s). Capped
+ * because a shot that waits minutes is worse than one that fails and falls back.
+ */
+export function retryAfterMs(headers: { get(name: string): string | null }, attempt: number): number {
+  const header = Number(headers.get("retry-after"));
+  if (Number.isFinite(header) && header > 0) return Math.min(header * 1000, 60_000);
+  return Math.min(2000 * 2 ** attempt, 60_000);
 }

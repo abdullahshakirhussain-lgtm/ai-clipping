@@ -42,20 +42,26 @@ export class AnimService {
   async plan(topic: string, style?: string): Promise<AnimPlan> {
     const chosenStyle = style || DEFAULT_STYLE;
     // Two constraints at once:
-    //   - Each beat must fit ONE ~8s clip, so ~19-22 spoken words per beat at
-    //     ~150wpm keeps the narration and the clip boundaries aligned.
+    //   - Each beat must fit ONE clip, so ~14-16 spoken words per 6s beat at
+    //     ~150wpm keeps the narration and the clip boundaries aligned. A beat
+    //     that overruns its clip freezes on the last frame (see the pad in
+    //     assembleNarratedClips), which is exactly the static look we're fixing.
     //   - The finished video is trimmed to the NARRATION's length, not to
-    //     clips x 8s. So the word floor is what actually decides runtime: at 9
-    //     beats that's 171-198 words, about 68-79 seconds, past the 60s line.
+    //     clips x 6s. So the word floor is what actually decides runtime: at 12
+    //     beats that's 168-198 words, about 67-79 seconds, past the 60s line.
     // minBeats is set to the full count because one beat == one paid clip; a
-    // short spine would silently halve both the runtime and the shot list.
+    // short spine would silently cut both the runtime and the shot list.
     const story = await this.llm.writeStory({
       topic: topic.trim(),
       style: chosenStyle,
       maxBeats: this.maxShots,
       minBeats: this.maxShots,
-      maxWords: this.maxShots * 22,
-      minWords: this.maxShots * 19,
+      // 13-15 words per beat at ~150wpm is 5.2-6.0s — deliberately UNDER the 6s
+      // clip so a beat doesn't outrun its footage. When it does, the assembler
+      // holds the last frame to keep sync, and a frozen tail on every beat is
+      // precisely the static look this is meant to fix.
+      maxWords: this.maxShots * 15,
+      minWords: this.maxShots * 13,
       narrator: "storyteller",
     });
     const { cast, shots } = await this.llm.planAnimationShots({

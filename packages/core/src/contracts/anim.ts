@@ -46,7 +46,9 @@ export const CreateAnimInputSchema = z.object({
   hashtags: z.array(z.string()).max(10).optional(),
   setting: z.string().max(2000).optional(),
   cast: z.string().max(4000).optional(),
-  shots: z.array(AnimShotSchema).min(1).max(12),
+  // Must stay >= ANIM_MAX_SHOTS, or the planner produces a shot list that this
+  // endpoint then rejects — the exact planner/contract mismatch that broke cook.
+  shots: z.array(AnimShotSchema).min(1).max(24),
   style: z.string().max(40).optional(),
   narrator: z.string().max(40).optional(),
   voiceTier: z.enum(["standard", "premium"]).optional(),

@@ -1574,7 +1574,8 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
     await setProgress("Animating", 30);
     let done = 0;
     let firstError: string | null = null;
-    const rendered = await mapWithConcurrency(shots, 2, async (shot, i) => {
+    let substituted = 0;
+    const rendered = await mapWithConcurrency(shots, ctx.config.animConcurrency, async (shot, i) => {
       try {
         const seed = seeds[i];
         const f = join(workDir, `shot-${i}.mp4`);
@@ -1583,10 +1584,18 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
         // the seed frame drew.
         const { video: bytes } = await ctx.animVideo.generate({
           prompt: [
-            `Simple 2D stick-figure animation. ${setting}`.trim(),
-            cast ? `CAST (unchanged in every shot):\n${cast}` : "",
+            // Ask for ANIMATION in the vocabulary animators use. Without this the
+            // model treats the seed still as a photo to add parallax to, which is
+            // the "AI slop" look — a picture that drifts instead of a character
+            // that acts.
+            "2D cel animation, hand-drawn cartoon. TRUE simple stick figures: circle heads, single-line limbs, flat colourful backgrounds.",
+            `WORLD: ${setting}`.trim(),
+            cast ? `CAST (identical in every shot):\n${cast}` : "",
             `ACTION: ${shot.motionPrompt}`,
-            "One continuous shot, no cuts, no camera change, no new characters, no on-screen text.",
+            "ANIMATION CRAFT: full-body acting with real weight — anticipation before each move, follow-through and overlapping action after it, snappy timing with holds on the key poses, squash and stretch on impacts. Poses exaggerated and silhouettes clear. Smooth in-betweens, no stuttering.",
+            // "no camera change" used to live here and was the single biggest
+            // cause of static shots: it told the model to hold still.
+            "One continuous shot, no cuts. No new characters. No on-screen text, words or letters.",
           ]
             .filter(Boolean)
             .join("\n"),
@@ -1622,6 +1631,7 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
             await fs.writeFile(framePath, seed);
             await stillClip(framePath, Math.max(1, slideDurations[i] ?? 8), stillPath, workDir);
             ctx.logger.info({ sourceVideoId, shot: i }, "anim shot substituted with its still frame");
+            substituted++;
             return stillPath;
           } catch (err2) {
             ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err2) }, "still-frame substitute also failed");
@@ -1631,7 +1641,7 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
       }
     });
 
-    // Only fatal if a beat has neither a clip nor a frame to hold.
+    // Fatal if a beat has neither a clip nor a frame to hold...
     const missing = rendered.findIndex((f) => !f);
     if (missing >= 0) {
       await failVideo(
@@ -1640,6 +1650,26 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
         new Error(`anim: shot ${missing + 1}/${shots.length} failed. First error — ${firstError ?? "unknown"}`),
       );
       return;
+    }
+
+    // ...and fatal if MOST of it is stills. Substituting a frame rescues a video
+    // that lost a shot to a safety filter; it must never quietly ship a
+    // slideshow as an animation. A whole run once came back 8/9 stills and was
+    // reported as "animated video generated", which is how a total failure went
+    // unnoticed until the video was watched.
+    if (substituted * 3 > shots.length) {
+      await failVideo(
+        ctx,
+        sourceVideoId,
+        new Error(
+          `anim: ${substituted}/${shots.length} shots fell back to still frames — that's a slideshow, not an animation. ` +
+            `First error — ${firstError ?? "unknown"}`,
+        ),
+      );
+      return;
+    }
+    if (substituted > 0) {
+      ctx.logger.warn({ sourceVideoId, substituted, shots: shots.length }, "anim shipped with some beats held as stills");
     }
 
     // 5. Cut them together under the one narration, captions burned in.

@@ -1097,7 +1097,7 @@ Call submit_frames.`,
       cast?: string;
       shots?: Array<{ imagePrompt?: string; motionPrompt?: string }>;
     }>(
-      `These narrated beats are being turned into an ANIMATED short: each beat becomes one ~8-second generated video clip of stick figures actually moving — walking, reaching, reacting — not a still with a camera drift.
+      `These narrated beats are being turned into an ANIMATED short: each beat becomes one ~6-second generated video clip of stick figures actually moving — walking, reaching, recoiling, collapsing — not a still with a camera drift over it. Six seconds is short: one action, performed fully, with no dead air at either end.
 
 WORLD (every shot lives here): ${input.setting || "unspecified"}
 The art style is TRUE simple stick figures: plain circle heads, single-line limbs, no faces beyond the simplest marks, flat colourful backgrounds. Never detailed or realistic characters.
@@ -1108,7 +1108,16 @@ First give me "cast" — the CAST SHEET. One line per figure who appears in more
 
 Then for each beat give me two things:
 - "imagePrompt": the FIRST FRAME as a still — the composition at the instant the beat begins. Where each figure stands, their pose, what's in frame, the background. No motion words. This still is drawn first and handed to the video model, so it is what keeps the characters looking identical from clip to clip: describe the recurring figures the SAME way every time (same colours, same size, same markings).
-- "motionPrompt": what MOVES over the 8 seconds, in one continuous action. Name the physical motion — "the taller figure walks in from the left and stops beside the crate, then raises one arm". Motion the narration implies, nothing extra. No cuts, no camera changes mid-shot, no new characters appearing.
+- "motionPrompt": the ACTING for this beat — what the figures physically DO across the ~6 seconds. This is the difference between animation and a photo that drifts, so write it like an animator, not like a caption.
+
+HOW TO WRITE motionPrompt — this is the whole job:
+- Give the shot a SHAPE with three parts, in order: the WIND-UP (a small opposite move first — leaning back before lunging, crouching before a jump, shoulders rising before a slump), the ACTION itself, and the SETTLE (what the body does after — stumbling a step, arms swinging past and coming back, a shoulder drop). A move without a wind-up and a settle reads as a puppet snapping between poses.
+- ONE clear action per beat, but describe it as it unfolds in time: "she plants her feet and leans back, then hauls the crate up in one heave and staggers two steps before catching her balance."
+- ACT WITH THE WHOLE BODY. These figures have almost no faces — a couple of marks at most — so every emotion has to be carried by posture, timing and silhouette. Shock is the whole body recoiling and arms flying up, not a facial expression. Defeat is the spine curling and the head dropping. Never write "looks surprised" or "seems angry"; write what the body does.
+- EXAGGERATE. Push the poses past what a real person would do — bigger reach, deeper crouch, wider stagger. Flat, realistic movement on a stick figure reads as stiff and lifeless.
+- Keep the SILHOUETTE readable: limbs held away from the body so the pose is clear against the background, never a tangle of overlapping lines.
+- The camera may move when it helps — a slow push in on a reaction, a pan following someone walking. Say so explicitly when you want it. Just don't cut.
+- Motion the narration implies, nothing extra. No new characters appearing mid-shot.
 
 Rules:
 - Exactly one continuous action per beat. If the narration covers two events, animate the one that carries it.

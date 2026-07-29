@@ -1,4 +1,7 @@
+import { isRateLimited, MAX_RATE_LIMIT_WAITS, retryAfterMs } from "./google-video.js";
 import type { ImageProvider } from "./types.js";
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export interface GoogleImageOptions {
   apiKey: string;
@@ -43,13 +46,25 @@ export class GoogleImageProvider implements ImageProvider {
     }
     parts.push({ text: input.prompt });
 
-    const res = await fetch(`${BASE}/models/${this.model}:generateContent`, {
-      method: "POST",
-      headers: { "x-goog-api-key": this.opts.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ role: "user", parts }] }),
-    });
-    if (!res.ok) {
+    // Cook draws its stills SEQUENTIALLY (each frame is an edit of the one
+    // before it), so a single rate-limited call costs a frame and breaks the
+    // chain that keeps the scene consistent. Wait it out instead.
+    let res: Response;
+    for (let attempt = 0; ; attempt++) {
+      res = await fetch(`${BASE}/models/${this.model}:generateContent`, {
+        method: "POST",
+        headers: { "x-goog-api-key": this.opts.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts }] }),
+      });
+      if (res.ok) break;
+
       const detail = await res.text().catch(() => "");
+      if ((isRateLimited(res.status) || res.status >= 500) && attempt < MAX_RATE_LIMIT_WAITS) {
+        const wait = retryAfterMs(res.headers, attempt);
+        console.warn(`[gemini-image] ${res.status}; waiting ${Math.round(wait / 1000)}s`);
+        await sleep(wait);
+        continue;
+      }
       const hint =
         res.status === 429 || detail.toLowerCase().includes("billing")
           ? "\nHINT: Gemini image models have no free tier — enable billing on the project behind GEMINI_API_KEY."

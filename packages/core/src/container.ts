@@ -246,18 +246,27 @@ function buildImageProvider(env: Env, logger: Logger): ImageProvider {
  * has to hold up); animated stick shorts use Lite at half the price, because
  * flat line art asks much less of the model.
  */
-function buildVideoProvider(env: Env, logger: Logger, model: string, purpose: string): VideoProvider {
+function buildVideoProvider(
+  env: Env,
+  logger: Logger,
+  model: string,
+  purpose: string,
+  durationSeconds: number,
+): VideoProvider {
   // Auto: use Google Veo whenever a Gemini key is present — so the only setup is
   // adding the key. Explicit "google"/"mock" override the auto behaviour.
   const useGoogle = env.VIDEO_PROVIDER === "google" || (env.VIDEO_PROVIDER === "auto" && !!env.GEMINI_API_KEY);
   if (useGoogle) {
     if (!env.GEMINI_API_KEY) throw new Error("VIDEO_PROVIDER=google requires GEMINI_API_KEY");
-    logger.info({ model, resolution: env.VEO_RESOLUTION, purpose }, "using Google Veo video generation (Gemini API, direct)");
+    logger.info(
+      { model, resolution: env.VEO_RESOLUTION, durationSeconds, purpose },
+      "using Google Veo video generation (Gemini API, direct)",
+    );
     return new GoogleVeoProvider({
       apiKey: env.GEMINI_API_KEY,
       model,
       resolution: env.VEO_RESOLUTION,
-      durationSeconds: env.VEO_DURATION_SECONDS,
+      durationSeconds,
     });
   }
   logger.info({ purpose }, "using mock video provider (stub mp4)");
@@ -346,8 +355,10 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const { transcription, llm } = buildAiProviders(env, logger);
   const ttsFor = buildTtsTiers(env, logger);
   const images = buildImageProvider(env, logger);
-  const video = buildVideoProvider(env, logger, env.GEMINI_VEO_MODEL, "cook");
-  const animVideo = buildVideoProvider(env, logger, env.GEMINI_ANIM_MODEL, "animation");
+  // Cook holds an 8s shot of a single continuous cooking action; animation cuts
+  // faster, so it runs shorter clips at the same per-second cost.
+  const video = buildVideoProvider(env, logger, env.GEMINI_VEO_MODEL, "cook", env.VEO_DURATION_SECONDS);
+  const animVideo = buildVideoProvider(env, logger, env.GEMINI_ANIM_MODEL, "animation", env.ANIM_CLIP_SECONDS);
   const sceneImages = buildSceneImageProvider(env, logger);
   const callAudio = buildCallProvider(env, logger);
   const downloader = buildDownloader(env);
@@ -385,6 +396,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
       // Mock LLM returns "" anyway; the flag mainly saves the frame extraction.
       visionContext: env.VISION_CONTEXT && env.AI_DRIVER === "live",
       story: { imageSeconds: env.STORY_IMAGE_SECONDS, maxImages: env.STORY_MAX_IMAGES },
+      animConcurrency: env.ANIM_CONCURRENCY,
     },
   } as PipelineContext;
 

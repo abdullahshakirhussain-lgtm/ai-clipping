@@ -103,7 +103,17 @@ const EnvSchema = z.object({
   // tier: Veo 3.1 Lite is $0.05/s (half of Fast) and still does image-to-video.
   // 9 x 8s = 72s for ~$3.60. Set GEMINI_ANIM_MODEL to Fast if Lite disappoints.
   GEMINI_ANIM_MODEL: z.string().default("veo-3.1-lite-generate-preview"),
-  ANIM_MAX_SHOTS: z.coerce.number().min(2).max(12).default(9),
+  // 12 x 6s = 72s. Cost is per SECOND, so this is the same spend as 9 x 8s while
+  // cutting a third more often — and 6s is short enough that the model has to
+  // actually move the characters instead of drifting for eight seconds.
+  ANIM_MAX_SHOTS: z.coerce.number().min(2).max(24).default(12),
+  // Per-clip length for animation only; cook keeps VEO_DURATION_SECONDS (8).
+  // Must be 4, 6 or 8 — and 8 if you ever raise VEO_RESOLUTION past 720p.
+  ANIM_CLIP_SECONDS: z.coerce.number().min(4).max(8).default(6),
+  // Parallel video calls. Kept low on purpose: Veo Tier 1 allows 50 requests a
+  // minute and each shot also polls, so this is the dial to turn down first if
+  // Google starts pushing back.
+  ANIM_CONCURRENCY: z.coerce.number().min(1).max(6).default(2),
   // Ceiling on narrated BEATS per story (sentences, not images). Long-form runs
   // ~8 minutes, which is roughly 45 sentence-length beats.
   STORY_MAX_BEATS: z.coerce.number().min(4).max(60).default(45),
