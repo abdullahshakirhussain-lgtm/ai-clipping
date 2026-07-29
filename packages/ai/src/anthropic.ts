@@ -41,6 +41,12 @@ export interface AnthropicLlmOptions {
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number(n) || lo));
 
+/** Words → a human runtime, in minutes once "seconds" stops being readable. */
+function describeLength(words: number): string {
+  const sec = Math.round(words / 2.5);
+  return sec < 120 ? `${sec} seconds` : `${(sec / 60).toFixed(1)} minutes`;
+}
+
 const HOOK_TYPES: HookType[] = [
   "question",
   "bold_claim",
@@ -685,7 +691,9 @@ Call submit_metadata with optimized fields.`,
 
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
     const maxBeats = Math.max(5, Math.min(30, input.maxBeats));
-    const maxWords = Math.max(120, Math.min(400, input.maxWords));
+    // Ceiling is 1600 to allow long-form (~8 min at ~150 wpm ≈ 1200 words);
+    // shorts pass a far lower maxWords and are unaffected.
+    const maxWords = Math.max(120, Math.min(1600, input.maxWords));
     // Floors, kept strictly below the ceilings so the two can never invert.
     const minBeats = Math.max(5, Math.min(maxBeats, input.minBeats ?? 5));
     const minWords = Math.max(60, Math.min(maxWords - 10, input.minWords ?? 60));
@@ -787,8 +795,8 @@ Call submit_outline.`,
           required: ["title", "angleOptions", "hookOptions", "hook", "setting", "ending", "spine"],
         },
       },
-      // Bigger budget leaves room for adaptive thinking + the larger output.
-      5000,
+      // Scales with the spine: 45+ beats of facts overflow a fixed 5000.
+      Math.max(5000, maxBeats * 90 + 1500),
       // effort: "high" — the architect is the brain (story pick + arc + on-topic
       // faithfulness); reasoning here is where the quality gain lives.
       { model: this.commentaryModel, effort: "high" },
@@ -824,7 +832,7 @@ ENDING TO LAND ON: ${planEnding || "the story's real final consequence"}
 HOW TO WRITE IT:
 - Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone.
 - Narrator persona: "${narrator}" — shape the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat. Tone is PUNCHY BUT HONEST: big drama, only real facts, never over-promise.
-- LENGTH: the whole spoken narration must run BETWEEN ${minWords} and ${maxWords} words (~150 words/min, so roughly ${Math.round(minWords / 2.5)}-${Math.round(maxWords / 2.5)} seconds). ${minWords} words is a FLOOR, not a suggestion — a story that lands short is not finished, so go back and give the setup and the turn the detail they deserve. Never pad with filler or repetition to reach it: earn the length with concrete specifics — names, dates, amounts, what someone actually said or did.
+- LENGTH: the whole spoken narration must run BETWEEN ${minWords} and ${maxWords} words (~150 words/min, so roughly ${describeLength(minWords)}-${describeLength(maxWords)}). ${minWords} words is a FLOOR, not a suggestion — a story that lands short is not finished, so go back and give the setup and the turn the detail they deserve. Never pad with filler or repetition to reach it: earn the length with concrete specifics — names, dates, amounts, what someone actually said or did.
 
 RETENTION MECHANICS (this is the job):
 - COLD OPEN: the very FIRST WORDS of the whole narration are the opening hook above — starting "It's…", "In…" or "Imagine…". The viewer lands mid-scene (a date, a place, a person in motion), present tense. NEVER announce, name or summarize what the video is about before or after the hook's first line ("This is the story of…" is banned); the scene raises the question by itself.
@@ -882,8 +890,10 @@ Call submit_story.`,
           required: ["title", "script", "description", "hashtags", "setting", "beats"],
         },
       },
-      // Bigger budget leaves room for adaptive thinking + the full narration.
-      6000,
+      // Scales with the script: a long-form narration plus a per-beat image
+      // prompt and delivery note for 45+ beats runs well past a fixed 6000, and
+      // overflowing truncates the tool call into an unusable partial story.
+      Math.max(6000, Math.round(maxWords * 2.2) + maxBeats * 60 + 2000),
       // effort: "medium" — the narrator is execution (spine → coherent prose);
       // reasoning helps it chain beats without the cost of "high".
       { model: this.commentaryModel, effort: "medium" },
@@ -1061,7 +1071,10 @@ Call submit_frames.`,
           required: ["beats"],
         },
       },
-      3000,
+      // Scales with the work: a long-form story can send 40+ beats needing 3
+      // frames each, and a fixed budget would truncate the tail into missing
+      // prompts (which then silently reuse the beat's original frame).
+      Math.max(3000, input.beats.reduce((n, b) => n + b.count, 0) * 60 + 1000),
     );
 
     // Pad/trim to exactly what was asked for: a short answer would silently

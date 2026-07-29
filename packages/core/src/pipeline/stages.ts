@@ -45,6 +45,7 @@ import {
   selectDiverse,
   type ScoringWeights,
 } from "../detection.js";
+import { synthesizeNarration } from "../narration.js";
 import { planImageCadence, planStoryTiming } from "../story-timing.js";
 import type { PipelineContext } from "./context.js";
 
@@ -870,10 +871,10 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       topic: spec.topic,
       style: spec.style,
       maxBeats: spec.maxBeats,
-      maxWords: spec.maxWords ?? 280,
-      // Floor, so the narration clears 60s. Defaulted for specs written before
-      // the field existed (they're read back out of the DB as-is).
-      minWords: spec.minWords ?? 170,
+      maxWords: spec.maxWords ?? 1300,
+      // Floor, so the narration reaches long-form length. Defaulted for specs
+      // written before the field existed (read back out of the DB as-is).
+      minWords: spec.minWords ?? 1050,
       narrator: spec.narrator,
       voiceTags: tts.speaksTags === true,
     });
@@ -887,18 +888,25 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       beats: story.beats,
     });
 
-    // 2a. Record the WHOLE narration in one continuous take (no per-beat seams).
+    // 2a. Record the WHOLE narration as one continuous track (no per-beat seams).
+    //     Synthesized in sentence-aligned chunks and joined: long-form scripts
+    //     run to thousands of words, past what a single TTS request accepts
+    //     (gpt-4o-mini-tts caps at 2000 input tokens), so one call would be
+    //     rejected outright on anything long.
     const narrator = spec.narrator ?? "storyteller";
     const fullText = story.beats.map((b) => b.text).join("\n\n");
     const speakable = tts.speaksTags ? fullText : stripAudioTags(fullText);
-    const voice = await tts.synthesize({
+    const voice = await synthesizeNarration({
+      tts,
       text: speakable,
       instructions: narratorInstruction(narrator),
+      workDir,
+      onChunk: async (doneChunks, total) => {
+        if (total > 1) await setProgress(`Recording the narration (${doneChunks}/${total})`, 25);
+      },
     });
-    const audioFile = join(workDir, `narration.${voice.ext}`);
-    await fs.writeFile(audioFile, voice.audio);
-    const probed = await probe(audioFile);
-    const totalDur = probed.durationSec > 0 ? probed.durationSec : Math.max(4, story.beats.length * 3);
+    const audioFile = voice.audioFile;
+    const totalDur = voice.durationSec > 0 ? voice.durationSec : Math.max(4, story.beats.length * 3);
 
     // 2b. Decide the IMAGE CADENCE before drawing anything. A beat is a whole
     //     sentence and can hold the screen 6-8s — long enough for a short to

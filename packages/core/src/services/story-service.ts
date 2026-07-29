@@ -4,14 +4,17 @@ import type { Dispatcher } from "@clipfactory/queue";
 import type { CreateStoryInput } from "../contracts/story.js";
 
 /** Spoken-word ceiling ≈ 2 minutes at ~150 wpm, with margin so the read lands under. */
-const MAX_WORDS = 280;
-
 /**
- * ~150 wpm, so 170 words ≈ 68 seconds — comfortably past the 60-second line
- * TikTok's Creator Rewards requires. Without a floor the writer is told shorter
- * is better and will happily hand back a 40-second story.
+ * Slideshows are the LONG-FORM format: ~8 minutes, not a short. At ~150 wpm
+ * that's ~1200 spoken words, so the band is 1050-1300 (roughly 7-8.7 minutes).
+ *
+ * The floor matters as much as the ceiling — the writer is otherwise told
+ * shorter is better and will hand back a 40-second story. Narration this long
+ * exceeds a single TTS request, so it is synthesized in sentence-aligned chunks
+ * and joined (see narration.ts).
  */
-const MIN_WORDS = 170;
+const MAX_WORDS = 1300;
+const MIN_WORDS = 1050;
 
 /** Story spec persisted on the SourceVideo (kind=story) and read by the generator. */
 export interface StorySpec {

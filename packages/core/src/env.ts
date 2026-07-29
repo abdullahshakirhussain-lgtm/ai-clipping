@@ -104,15 +104,17 @@ const EnvSchema = z.object({
   // 9 x 8s = 72s for ~$3.60. Set GEMINI_ANIM_MODEL to Fast if Lite disappoints.
   GEMINI_ANIM_MODEL: z.string().default("veo-3.1-lite-generate-preview"),
   ANIM_MAX_SHOTS: z.coerce.number().min(2).max(12).default(9),
-  // Ceiling on narrated BEATS per story (sentences, not images).
-  STORY_MAX_BEATS: z.coerce.number().min(4).max(30).default(18),
+  // Ceiling on narrated BEATS per story (sentences, not images). Long-form runs
+  // ~8 minutes, which is roughly 45 sentence-length beats.
+  STORY_MAX_BEATS: z.coerce.number().min(4).max(60).default(45),
   // Target seconds each image holds the screen. Long-form slideshows need a new
   // picture roughly every 3s to carry emotion; any beat whose narration runs
   // longer is split into extra stills of the same moment, so the writing stays
   // natural sentences instead of being chopped into 8-word fragments.
   STORY_IMAGE_SECONDS: z.coerce.number().min(1.5).max(8).default(3),
-  // Hard ceiling on stills per story (cost cap). 30 x ~$0.006 ≈ $0.18.
-  STORY_MAX_IMAGES: z.coerce.number().min(4).max(60).default(30),
+  // Hard ceiling on stills per story (cost cap). An 8-minute video at one image
+  // every 3s needs ~160; at ~$0.006 each that's ~$1.00 a video.
+  STORY_MAX_IMAGES: z.coerce.number().min(4).max(240).default(170),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),

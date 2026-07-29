@@ -202,6 +202,34 @@ export async function applyPhoneFilter(inputPath: string, outPath: string): Prom
   );
 }
 
+/**
+ * Join narration chunks into one continuous track. Long-form narration has to be
+ * synthesized in pieces (TTS providers cap input length), and the pieces are cut
+ * at sentence boundaries, so a plain concatenation restores the original read.
+ * Re-encoded rather than stream-copied: chunk files can differ in bitrate or
+ * channel layout, which a copy-concat would splice into a corrupt stream.
+ */
+export async function concatAudio(files: string[], outPath: string, workDir: string): Promise<void> {
+  if (files.length === 0) throw new Error("concatAudio: no files");
+  if (files.length === 1) {
+    await run(bin("ffmpeg"), ["-y", "-i", files[0]!, "-c:a", "libmp3lame", "-b:a", "160k", outPath], {
+      cwd: workDir,
+      timeoutMs: 5 * 60 * 1000,
+    });
+    return;
+  }
+  const args: string[] = ["-y"];
+  for (const f of files) args.push("-i", f);
+  const inputs = files.map((_, i) => `[${i}:a]`).join("");
+  args.push(
+    "-filter_complex", `${inputs}concat=n=${files.length}:v=0:a=1[a]`,
+    "-map", "[a]",
+    "-c:a", "libmp3lame", "-b:a", "160k",
+    outPath,
+  );
+  await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 15 * 60 * 1000 });
+}
+
 export interface LoudnessTimeline {
   /** Normalized 0-1 loudness, one sample per second of source. */
   energy: number[];

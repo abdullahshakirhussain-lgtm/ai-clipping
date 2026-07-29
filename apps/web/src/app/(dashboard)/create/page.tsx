@@ -511,7 +511,8 @@ export default function CreatePage() {
           </label>
         </div>
         <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-          Length is automatic — the story runs as long as it needs to feel complete, capped at ~2 minutes.
+          Long-form: the story runs ~7–9 minutes with a new picture roughly every 3 seconds (~170 stills, about
+          $1.00). Narration is recorded in chunks and joined, so length isn&apos;t capped by the voice model.
         </p>
         </>
         )}
