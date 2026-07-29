@@ -245,12 +245,16 @@ export class MockLlmProvider implements LlmProvider {
     );
   }
 
-  async planAnimationShots(input: PlanAnimationInput): Promise<AnimShot[]> {
-    return input.beats.map((b) => ({
-      text: b.text,
-      imagePrompt: `${b.imagePrompt} (mock first frame)`,
-      motionPrompt: `mock motion: the figures act out "${b.text.slice(0, 40)}"`,
-    }));
+  async planAnimationShots(input: PlanAnimationInput): Promise<{ cast: string; shots: AnimShot[] }> {
+    const cast = "MOCK CAST: the tall figure in the brown coat; the shorter figure with the satchel.";
+    return {
+      cast,
+      shots: input.beats.map((b) => ({
+        text: b.text,
+        imagePrompt: `CAST (unchanged in every shot):\n${cast}\n\n${b.imagePrompt} (mock first frame)`,
+        motionPrompt: `mock motion: the figures act out "${b.text.slice(0, 40)}"`,
+      })),
+    };
   }
 
   async planCall(input: PlanCallInput): Promise<CallPlan> {

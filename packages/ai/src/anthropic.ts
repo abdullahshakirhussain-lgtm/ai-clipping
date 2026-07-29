@@ -1087,13 +1087,14 @@ Call submit_frames.`,
     });
   }
 
-  async planAnimationShots(input: PlanAnimationInput): Promise<AnimShot[]> {
-    if (input.beats.length === 0) return [];
+  async planAnimationShots(input: PlanAnimationInput): Promise<{ cast: string; shots: AnimShot[] }> {
+    if (input.beats.length === 0) return { cast: "", shots: [] };
     const listing = input.beats
       .map((b, i) => `${i + 1}. NARRATION: "${b.text}"\n   SCENE: ${b.imagePrompt}`)
       .join("\n");
 
     const result = await this.callTool<{
+      cast?: string;
       shots?: Array<{ imagePrompt?: string; motionPrompt?: string }>;
     }>(
       `These narrated beats are being turned into an ANIMATED short: each beat becomes one ~8-second generated video clip of stick figures actually moving — walking, reaching, reacting — not a still with a camera drift.
@@ -1103,13 +1104,16 @@ The art style is TRUE simple stick figures: plain circle heads, single-line limb
 
 ${listing}
 
-For each beat give me two things:
+First give me "cast" — the CAST SHEET. One line per figure who appears in more than one beat, describing ONLY what is visible: height relative to the others, what they wear, what they carry, hair, any single distinguishing mark. Give each a short visual label you will reuse ("the tall figure in the long brown coat"). No names, no backstory, no personality — just what a viewer sees. This block is repeated verbatim into every shot, and it is the ONLY thing making a figure recognisable from one clip to the next, so make each description concrete and easy to draw the same way twice, and make the figures easy to tell apart from each other.
+
+Then for each beat give me two things:
 - "imagePrompt": the FIRST FRAME as a still — the composition at the instant the beat begins. Where each figure stands, their pose, what's in frame, the background. No motion words. This still is drawn first and handed to the video model, so it is what keeps the characters looking identical from clip to clip: describe the recurring figures the SAME way every time (same colours, same size, same markings).
 - "motionPrompt": what MOVES over the 8 seconds, in one continuous action. Name the physical motion — "the taller figure walks in from the left and stops beside the crate, then raises one arm". Motion the narration implies, nothing extra. No cuts, no camera changes mid-shot, no new characters appearing.
 
 Rules:
 - Exactly one continuous action per beat. If the narration covers two events, animate the one that carries it.
 - Keep the cast tight and consistent; a figure introduced in beat 1 looks the same in beat 7.
+- NEVER WRITE A REAL PERSON'S NAME. The video model refuses any prompt that names or resembles a real person, living or dead, and that refusal wastes the whole shot. The narration says the names out loud; the PICTURES must not. Identify every figure by appearance and role instead — "the tall figure in the long brown coat", "the shorter figure holding the clipboard", "the figure in the peaked cap". Use the SAME description for the same person in every beat, since that description is all that keeps them recognisable. This applies to place-brands and logos too: "a government building", not a named one.
 - No on-screen text, no words, no letters anywhere in frame.
 - Return one entry per beat, in order.
 Call submit_animation.`,
@@ -1119,6 +1123,11 @@ Call submit_animation.`,
         input_schema: {
           type: "object",
           properties: {
+            cast: {
+              type: "string",
+              description:
+                "one visual line per recurring figure, with a reusable label; appearance only, no names",
+            },
             shots: {
               type: "array",
               description: "one per beat, in order",
@@ -1132,7 +1141,7 @@ Call submit_animation.`,
               },
             },
           },
-          required: ["shots"],
+          required: ["cast", "shots"],
         },
       },
       5000,
@@ -1140,14 +1149,22 @@ Call submit_animation.`,
       { model: this.commentaryModel, effort: "medium" },
     );
 
-    return input.beats.map((b, i) => {
+    // The cast sheet is prepended in CODE, not by asking the model to repeat it.
+    // Byte-identical repetition is the point — a model asked to restate a
+    // description each time drifts, and drift is exactly what breaks a character
+    // across clips. Same reason the cook style bible is assembled here.
+    const cast = String(result.cast ?? "").trim();
+    const withCast = (frame: string) => (cast ? `CAST (unchanged in every shot):\n${cast}\n\n${frame}` : frame);
+
+    const shots = input.beats.map((b, i) => {
       const s = result.shots?.[i];
       return {
         text: b.text,
-        imagePrompt: String(s?.imagePrompt ?? b.imagePrompt).trim() || b.imagePrompt,
+        imagePrompt: withCast(String(s?.imagePrompt ?? b.imagePrompt).trim() || b.imagePrompt),
         motionPrompt: String(s?.motionPrompt ?? "").trim() || `slow natural movement matching: ${b.text}`,
       };
     });
+    return { cast, shots };
   }
 
   async planCall(input: PlanCallInput): Promise<CallPlan> {

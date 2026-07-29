@@ -32,6 +32,7 @@ import {
   planClipEdit,
   planReframe,
   probe,
+  stillClip,
   renderClip,
   resolveSfxFile,
   type SfxMix,
@@ -1476,6 +1477,7 @@ interface AnimSpecShape {
   voiceTier?: string;
   music?: string;
   setting?: string;
+  cast?: string;
   shots?: Array<{ text: string; imagePrompt: string; motionPrompt: string }>;
   title?: string;
   description?: string;
@@ -1523,6 +1525,7 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
     await fs.mkdir(workDir, { recursive: true });
     const style = spec.style ?? "stick-scene";
     const setting = spec.setting ?? "";
+    const cast = spec.cast ?? "";
 
     // 1. One continuous narration take (no per-beat seams), same as stories.
     await setProgress("Recording the narration", 8);
@@ -1570,18 +1573,24 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
     const rendered = await mapWithConcurrency(shots, 2, async (shot, i) => {
       try {
         const seed = seeds[i];
+        const f = join(workDir, `shot-${i}.mp4`);
+        // The cast sheet rides along with the motion so the labels the planner
+        // used ("the tall figure in the brown coat") resolve to the same people
+        // the seed frame drew.
         const { video: bytes } = await ctx.animVideo.generate({
           prompt: [
             `Simple 2D stick-figure animation. ${setting}`.trim(),
+            cast ? `CAST (unchanged in every shot):\n${cast}` : "",
             `ACTION: ${shot.motionPrompt}`,
             "One continuous shot, no cuts, no camera change, no new characters, no on-screen text.",
-          ].join("\n"),
+          ]
+            .filter(Boolean)
+            .join("\n"),
           aspectRatio: "9:16",
           ...(seed ? { image: { png: seed } } : {}),
           // The default bars human faces — fatal when the cast IS the subject.
           negativePrompt: "on-screen text, subtitles, watermark, logo, photorealistic, blurry, low quality",
         });
-        const f = join(workDir, `shot-${i}.mp4`);
         await fs.writeFile(f, bytes);
         done++;
         await setProgress(`Animating (${done}/${shots.length})`, 30 + Math.round((done / shots.length) * 50));
@@ -1590,13 +1599,29 @@ export async function runAnimGenerate(ctx: PipelineContext, sourceVideoId: strin
         const reason = err instanceof Error ? err.message : String(err);
         firstError ??= reason;
         ctx.logger.warn({ sourceVideoId, shot: i, reason }, "anim shot failed");
+        // Every beat needs a clip: a hole would desync everything after it from
+        // the narration. Rather than throw away the other (paid) clips, hold
+        // this beat's already-approved frame as a still. Safety filters fire on
+        // one shot's wording, not the whole video, so losing all nine because
+        // shot two mentioned a real name is the wrong trade.
+        const seed = seeds[i];
+        if (seed) {
+          try {
+            const stillPath = join(workDir, `shot-${i}.mp4`);
+            const framePath = join(workDir, `frame-${i}.png`);
+            await fs.writeFile(framePath, seed);
+            await stillClip(framePath, Math.max(1, slideDurations[i] ?? 8), stillPath, workDir);
+            ctx.logger.info({ sourceVideoId, shot: i }, "anim shot substituted with its still frame");
+            return stillPath;
+          } catch (err2) {
+            ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err2) }, "still-frame substitute also failed");
+          }
+        }
         return null;
       }
     });
 
-    // A missing clip would desync every later beat from its narration, so a
-    // failure here is fatal rather than silently dropped (unlike cook, where the
-    // clips are independent).
+    // Only fatal if a beat has neither a clip nor a frame to hold.
     const missing = rendered.findIndex((f) => !f);
     if (missing >= 0) {
       await failVideo(

@@ -126,9 +126,9 @@ export default function CreatePage() {
 
   const [format, setFormat] = useState<"story" | "cook" | "call" | "anim">("story");
   const [animShots, setAnimShots] = useState<AnimShot[]>([]);
-  const [animMeta, setAnimMeta] = useState<{ title: string; description: string; hashtags: string[]; setting: string } | null>(
-    null,
-  );
+  const [animMeta, setAnimMeta] = useState<
+    { title: string; description: string; hashtags: string[]; setting: string; cast: string } | null
+  >(null);
   const [idea, setIdea] = useState("");
   const [call, setCall] = useState<CallSpec | null>(null);
   const [brief, setBrief] = useState("");
@@ -196,10 +196,17 @@ export default function CreatePage() {
         description: string;
         hashtags: string[];
         setting: string;
+        cast: string;
         shots: AnimShot[];
       }>("/anim", { topic: topic.trim(), style }, { onTick: setPlanSec });
       setAnimShots(plan.shots);
-      setAnimMeta({ title: plan.title, description: plan.description, hashtags: plan.hashtags, setting: plan.setting });
+      setAnimMeta({
+        title: plan.title,
+        description: plan.description,
+        hashtags: plan.hashtags,
+        setting: plan.setting,
+        cast: plan.cast,
+      });
       if (plan.shots.length === 0) setMsg("The planner returned no shots — try a different topic.");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Couldn't plan the animation");
@@ -304,6 +311,7 @@ export default function CreatePage() {
           description: animMeta?.description,
           hashtags: animMeta?.hashtags,
           setting: animMeta?.setting,
+          cast: animMeta?.cast,
           shots: animShots,
           style,
           narrator,
@@ -656,6 +664,16 @@ export default function CreatePage() {
                   World — repeated into every frame so the look holds across clips
                 </span>
                 <textarea value={animMeta.setting} onChange={(e) => setAnimMeta({ ...animMeta, setting: e.target.value })} rows={2}
+                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-y" style={{ borderColor: "var(--border)" }} />
+              </label>
+            )}
+            {animMeta && (
+              <label className="block mb-4">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>
+                  Cast — how each figure looks, repeated into every shot. This is what keeps them
+                  recognisable across clips, so keep the descriptions concrete and distinct.
+                </span>
+                <textarea value={animMeta.cast} onChange={(e) => setAnimMeta({ ...animMeta, cast: e.target.value })} rows={3}
                   className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-y" style={{ borderColor: "var(--border)" }} />
               </label>
             )}

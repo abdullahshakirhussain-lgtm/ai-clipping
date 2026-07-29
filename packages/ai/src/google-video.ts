@@ -20,6 +20,19 @@ export interface GoogleVeoOptions {
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 /**
+ * Veo accepted the request, ran it, and then withheld the result — most often
+ * because the prompt named a real person ("we can't create videos with real
+ * people's names or likenesses"). Distinct from a transport error because the
+ * fix is to change the prompt, and it's per-shot rather than systemic.
+ */
+export class VeoContentFilteredError extends Error {
+  constructor(readonly reason: string) {
+    super(`Veo filtered this shot: ${reason}`);
+    this.name = "VeoContentFilteredError";
+  }
+}
+
+/**
  * Google Veo video generation via the Gemini API DIRECTLY (no fal reseller
  * markup — Veo 3.1 Fast @ 720p is ~$0.10/sec vs fal's ~$0.15). Async: submit a
  * long-running operation, poll until done, then download the resulting mp4. Auth
@@ -141,7 +154,16 @@ export class GoogleVeoProvider implements VideoProvider {
 
     // 3. Extract the video: either inline base64 or a file uri to download.
     const v = extractVideo(done);
-    if (!v) throw new Error(`Veo finished but returned no video: ${JSON.stringify(done.response).slice(0, 300)}`);
+    if (!v) {
+      // The commonest "finished but empty" case is a safety filter, not a bug —
+      // surface its stated reason instead of a wall of JSON, and mark it so the
+      // caller can retry with a sanitized prompt rather than treating it as a
+      // transport failure.
+      const rai = (done.response as { generateVideoResponse?: { raiMediaFilteredReasons?: string[] } } | undefined)
+        ?.generateVideoResponse?.raiMediaFilteredReasons;
+      if (rai?.length) throw new VeoContentFilteredError(rai.join(" "));
+      throw new Error(`Veo finished but returned no video: ${JSON.stringify(done.response).slice(0, 300)}`);
+    }
     if (v.bytesBase64) return { video: Buffer.from(v.bytesBase64, "base64"), ext: "mp4" };
 
     const dl = await fetch(v.uri!.includes("alt=media") ? v.uri! : `${v.uri}${v.uri!.includes("?") ? "&" : "?"}alt=media`, {

@@ -25,6 +25,8 @@ export const AnimPlanSchema = z.object({
   description: z.string(),
   hashtags: z.array(z.string()),
   setting: z.string(),
+  /** Fixed appearance line per recurring figure; repeated into every shot. */
+  cast: z.string(),
   shots: z.array(AnimShotSchema),
 });
 export type AnimPlanDto = z.infer<typeof AnimPlanSchema>;
@@ -43,6 +45,7 @@ export const CreateAnimInputSchema = z.object({
   description: z.string().max(2000).optional(),
   hashtags: z.array(z.string()).max(10).optional(),
   setting: z.string().max(2000).optional(),
+  cast: z.string().max(4000).optional(),
   shots: z.array(AnimShotSchema).min(1).max(12),
   style: z.string().max(40).optional(),
   narrator: z.string().max(40).optional(),

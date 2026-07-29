@@ -230,6 +230,28 @@ export async function concatAudio(files: string[], outPath: string, workDir: str
   await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 15 * 60 * 1000 });
 }
 
+/**
+ * Turn a still into a silent video clip of a given length. The last-resort
+ * substitute when one shot of an animation can't be generated: a beat that
+ * holds its (already-approved) frame is far better than throwing away every
+ * other paid clip in the video, and it keeps the beat's slot in the timeline so
+ * nothing after it drifts out of sync with the narration.
+ */
+export async function stillClip(imageFile: string, durationSec: number, outPath: string, workDir: string): Promise<void> {
+  await run(
+    bin("ffmpeg"),
+    [
+      "-y", "-threads", "1",
+      "-loop", "1", "-i", imageFile,
+      "-t", Math.max(0.2, durationSec).toFixed(3),
+      "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=24",
+      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+      outPath,
+    ],
+    { cwd: workDir, timeoutMs: 5 * 60 * 1000 },
+  );
+}
+
 export interface LoudnessTimeline {
   /** Normalized 0-1 loudness, one sample per second of source. */
   energy: number[];

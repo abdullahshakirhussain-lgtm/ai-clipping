@@ -11,6 +11,7 @@ export interface AnimSpec {
   voiceTier: string;
   music: string;
   setting: string;
+  cast: string;
   /** The APPROVED shots — rendered as-is, never re-planned. */
   shots: Array<{ text: string; imagePrompt: string; motionPrompt: string }>;
   title?: string;
@@ -57,7 +58,7 @@ export class AnimService {
       minWords: this.maxShots * 19,
       narrator: "storyteller",
     });
-    const shots = await this.llm.planAnimationShots({
+    const { cast, shots } = await this.llm.planAnimationShots({
       setting: story.setting,
       style: chosenStyle,
       beats: story.beats.map((b) => ({ text: b.text, imagePrompt: b.imagePrompt })),
@@ -67,6 +68,7 @@ export class AnimService {
       description: story.description,
       hashtags: story.hashtags,
       setting: story.setting,
+      cast,
       shots: shots.slice(0, this.maxShots),
     };
   }
@@ -81,6 +83,7 @@ export class AnimService {
       voiceTier: input.voiceTier || "standard",
       music: input.music || "none",
       setting: input.setting ?? "",
+      cast: input.cast ?? "",
       shots: input.shots.map((s) => ({
         text: s.text,
         imagePrompt: s.imagePrompt,

@@ -208,6 +208,14 @@ export interface AnimPlan {
   hashtags: string[];
   /** The locked visual world, threaded into every frame. */
   setting: string;
+  /**
+   * The CAST SHEET: a fixed appearance line per recurring figure, repeated
+   * byte-identically into every shot. This is what makes a character
+   * recognisable across independently generated clips — the video model can't
+   * use a person's name (it refuses real ones outright), so a stable physical
+   * description is the only verbal handle on identity it has.
+   */
+  cast: string;
   shots: AnimShot[];
 }
 
@@ -550,7 +558,7 @@ export interface LlmProvider {
    * the character design stable across clips, and the motion is what the video
    * model actually has to invent.
    */
-  planAnimationShots(input: PlanAnimationInput): Promise<AnimShot[]>;
+  planAnimationShots(input: PlanAnimationInput): Promise<{ cast: string; shots: AnimShot[] }>;
   /**
    * Turn a one-line idea ("rage bait a scammer") into a full call BRIEF —
    * characters with gender/accent/voice/agenda/quirks, escalation beats, the
