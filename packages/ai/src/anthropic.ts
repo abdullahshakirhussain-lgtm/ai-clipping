@@ -916,7 +916,7 @@ For EACH beat give:
           ? ` Embed 1-2 ElevenLabs audio tags inline where the read shifts (acted, not spoken): [pause], [whispers], [excited], [sighs], [laughs], [curious].`
           : ""
       }
-- "imagePrompt": a concrete scene for THIS moment that LIVES INSIDE the setting — show WHERE we are with specific props/architecture/objects from the setting, never a figure in a blank void. The character is a SIMPLE STICK FIGURE, the SAME one every beat; capture their emotion/expression AND the action, e.g. "our stick figure with hands on his head in shock, on a snowy Moscow street with the Kremlin wall behind him". No text/letters in the image.
+- "imagePrompt": DRAW WHAT THIS LINE DESCRIBES. If the narration names a specific place, object, structure, or event — "a hall with fifty doors, each wide enough to march through shoulder to shoulder", "a phalanx of soldiers locking shields", "a clay tablet covered in wedge marks" — that concrete thing IS the picture, rendered with its stated specifics (fifty doors, not "a hall"; shields locked, not "soldiers"). Do NOT default to the character standing in a vague background while the interesting thing goes undrawn — that is the single most common failure. The stick figure appears only when the line is about a person acting/reacting, and even then the described SCENE around them must be specific and correct. Every prompt names the concrete subject first, then the setting's markers, then (optionally) the figure and its expression. No text/letters in the image.
   DRAWABLE-SAFE (image prompts only — the narration is unaffected): the image API refuses graphic content, so NEVER put corpses, bodies, gore, blood, executions, weapons in use, or named real-world figures (Hitler, dictators, criminals) in an imagePrompt. IMPLY the dark beat instead: the empty rowboat, a covered stretcher, boots in the snow, a silhouette behind glass, officials huddled over a briefcase, the aftermath. Suggestion reads better on screen anyway.
 - "delivery": 1-2 sentences on the emotion of this beat (feeds the read's arc).
 
@@ -1103,9 +1103,10 @@ WORLD (every shot lives here): ${input.setting || "unspecified"}
 ${listing}
 
 Rules:
-- The shots cover the SAME narration beat but from GENUINELY DIFFERENT compositions. Vary the shot type across them — e.g. a WIDE establishing shot of the whole scene, a TIGHT CLOSE-UP on the character's face showing the emotion, a DETAIL shot of the key object/action being described. Different framing, different subject, different distance — NOT the same image with a small change.
-- They still read in order and stay true to the beat; do NOT invent new events the narration doesn't mention, and never jump ahead to a later beat.
-- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene, and name the character's expression where a face is shown.
+- Every shot depicts the SPECIFIC thing this beat's narration describes, rendered with its stated details (if the line says "fifty doors", draw fifty; if it says "shields locked", lock them). The base prompt names that subject — keep it central in every shot.
+- Vary the FRAMING across the shots, not the subject: e.g. a WIDE establishing view of the whole place/scene, then a CLOSER angle on the key structure/object/action, then a DETAIL of the most important element. Only make one a close-up on a character's face when the beat is actually ABOUT a person reacting — for scene/place/object beats, keep the described thing on screen, not a random figure. Different distance and angle, same subject — NOT the same image nudged.
+- Stay true to the beat; do NOT invent new events the narration doesn't mention, and never jump ahead to a later beat.
+- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; name a character's expression only when a face is actually shown.
 - Keep every subject centered and simply drawn; no on-screen text.
 - Return exactly the requested number of prompts per beat, in the same beat order.
 Call submit_frames.`,

@@ -127,12 +127,14 @@ const EnvSchema = z.object({
   // ~190; at gpt-image-1-mini medium (~$0.011) that's ~$2/long video (~$0.35 for
   // a short). Longs aren't published yet, so the cost lives with the format.
   STORY_MAX_IMAGES: z.coerce.number().min(4).max(300).default(220),
-  // Slow per-slide push-in so long-form stills breathe like the reference
-  // channels. Off falls back to the cheaper static-card render. (Parsed as a
-  // string enum, not z.coerce.boolean — the latter reads "false" as truthy.)
+  // Slow per-slide push-in. OFF by default: on a fast ~2.5s cadence the zoom read
+  // as an annoying vibration, not a cinematic drift, and the image already
+  // changes often enough to feel alive. Opt in with "true" if you want it back
+  // (the filter is de-jittered via a 2x working scale). String enum, not
+  // z.coerce.boolean — the latter reads "false" as truthy.
   STORY_KEN_BURNS: z
     .enum(["true", "false"])
-    .default("true")
+    .default("false")
     .transform((v) => v === "true"),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),

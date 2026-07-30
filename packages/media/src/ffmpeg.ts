@@ -811,9 +811,15 @@ export async function assembleSlideshow(input: {
             // the first frame's d-expansion satisfy the count before a second
             // input frame is ever pulled. Verified: dur*fps frames, exact length.
             "-y", "-threads", "1", "-loop", "1", "-i", slides[i]!.imageFile,
+            // De-jitter: zoompan rounds x/y to whole pixels each frame, which on a
+            // 1:1 canvas shows up as a visible shake. Cover-crop to 2x the output,
+            // run zoompan there, and scale down — the per-frame rounding is now
+            // half a pixel at final size, so the push reads smooth instead of vibrating.
             "-vf",
-            `${coverCrop},zoompan=z='min(zoom+${step}\\,1.06)':d=${frames}:` +
-              `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=${fps},format=yuv420p`,
+            `scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,crop=${width * 2}:${height * 2},setsar=1,` +
+              `zoompan=z='min(zoom+${step}\\,1.06)':d=${frames}:` +
+              `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width * 2}x${height * 2}:fps=${fps},` +
+              `scale=${width}:${height},format=yuv420p`,
             "-frames:v", String(frames),
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
             "-threads", "1", join(workDir, seg),
