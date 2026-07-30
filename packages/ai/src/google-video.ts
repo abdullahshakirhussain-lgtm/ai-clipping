@@ -250,8 +250,9 @@ function veoHint(status: number, detail: string): string {
   // RPM / 10 concurrent on Tier 1.
   if (status === 429 || d.includes("exceeded your current quota") || d.includes("rate limit")) {
     return (
-      "\nHINT: this is a Veo RATE/QUOTA limit, not billing. Veo 3.1 preview models allow only ~10 requests/min and 10 concurrent on Tier 1. " +
-      "Lower ANIM_CONCURRENCY (to 1) and/or ANIM_MAX_SHOTS, wait for the per-minute window to clear, or raise your API tier. Check ai.dev/rate-limit to see which quota is at zero."
+      "\nHINT: this is a Veo RATE/QUOTA limit, not billing. Veo 3.1 PREVIEW on Tier 1 is only 2 requests/MIN and 10 requests/DAY (confirmed on ai.dev/rate-limit 2026-07-30). " +
+      "The DAILY cap is the wall: a multi-shot animation cannot fit in 10 Veo videos/day, so it will fail on Tier 1 no matter how concurrency/backoff is tuned. " +
+      "Real fixes: raise to Tier 2 ($250 cumulative spend + 30 days) for a higher quota, or move animation off Veo to a provider without a per-day cap (e.g. LTX-2.3 on fal). The daily quota resets midnight Pacific."
     );
   }
   if (d.includes("billing")) {
