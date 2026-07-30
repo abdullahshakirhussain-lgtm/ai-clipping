@@ -124,60 +124,41 @@ export class AnthropicLlmProvider implements LlmProvider {
     };
 
     // Reasoning path: adaptive thinking + effort lets the model plan the story
-    // (angle selection, arc, topic-faithfulness) before writing — the biggest
-    // quality lever for the writers. Forced tool_choice is incompatible with
-    // thinking, so we use "auto" and instruct the model to call the tool; if it
-    // reasons but skips the tool, or an account/model rejects the params, we
-    // fall through to the guaranteed forced-tool call below (never breaks prod).
+    // (angle selection, arc, topic-faithfulness) BEFORE writing — the biggest
+    // quality lever for the writers.
+    //
+    // We FORCE the tool here (tool_choice: "tool"), not "auto". The old code used
+    // "auto" on the belief that forced tool_choice is incompatible with thinking
+    // — true for legacy budget_tokens thinking, but NOT for adaptive thinking on
+    // the first-party API (only Bedrock still requires thinking disabled with a
+    // forced tool). Under "auto" the model routinely thought and then answered in
+    // prose WITHOUT emitting the tool_use block, so the reasoning pass silently
+    // fell through to the dumb forced-tool call below on most stories — that was
+    // the "reasoning call returned no tool_use" log, and the real quality ceiling.
+    // Forcing the tool while thinking gives reasoning AND a guaranteed structured
+    // result in one call. If a model/account rejects the combo (e.g. Bedrock), we
+    // still degrade to the plain forced-tool call below.
     if (opts?.effort) {
       try {
-        const first = await this.client.messages.create({
-          model,
-          max_tokens: maxTokens,
-          thinking: { type: "adaptive" },
-          output_config: { effort: opts.effort },
-          tools: [tool],
-          tool_choice: { type: "auto" },
-          messages,
-        });
-        const out = pickToolUse(first);
+        const out = pickToolUse(
+          await this.client.messages.create({
+            model,
+            max_tokens: maxTokens,
+            thinking: { type: "adaptive" },
+            output_config: { effort: opts.effort },
+            tools: [tool],
+            tool_choice: { type: "tool", name: tool.name },
+            messages,
+          }),
+        );
         if (out) return out;
-        // It reasoned but stopped before calling the tool (thinking + text, no
-        // tool_use). Don't discard that reasoning by restarting cold — that's
-        // what dropped story quality and let the opening ramble. Replay the
-        // model's own visible answer as an assistant turn and force the tool, so
-        // the structured result is built ON TOP of what it already worked out.
-        // (Thinking is incompatible with a forced tool_choice, and raw thinking
-        // blocks need signatures to replay, so we carry only the TEXT forward.)
-        console.warn(`[story] reasoning call returned no tool_use (effort=${opts.effort}); nudging it to call the tool`);
-        const reasonedText = first.content
-          .filter((b): b is Anthropic.TextBlock => b.type === "text")
-          .map((b) => b.text)
-          .join("\n")
-          .trim();
-        if (reasonedText) {
-          try {
-            const followup = await this.client.messages.create({
-              model,
-              max_tokens: maxTokens,
-              tools: [tool],
-              tool_choice: { type: "tool", name: tool.name },
-              messages: [
-                ...messages,
-                { role: "assistant", content: reasonedText },
-                { role: "user", content: `Good. Now call ${tool.name} with that result.` },
-              ],
-            });
-            const out2 = pickToolUse(followup);
-            if (out2) return out2;
-          } catch (err2) {
-            console.warn(`[story] tool-nudge round failed: ${(err2 instanceof Error ? err2.message : String(err2)).slice(0, 160)}`);
-          }
-        }
-        console.warn(`[story] falling back to plain forced-tool call (reasoning did not engage)`);
+        // Forced tool_choice should always yield a tool_use; a miss means an empty
+        // completion (e.g. hit max_tokens mid-think). Fall through to retry plain.
+        console.warn(`[story] forced-tool reasoning call returned no tool_use (effort=${opts.effort}); retrying without thinking`);
       } catch (err) {
-        // effort/thinking not supported here — degrade to the plain call, but
-        // surface it: a silent fallback would hide that reasoning never engaged.
+        // The thinking + forced-tool combo isn't accepted here (Bedrock, or an
+        // account/model that rejects it) — degrade to the plain call, but surface
+        // it: a silent fallback would hide that reasoning never engaged.
         console.warn(`[story] reasoning params rejected (effort=${opts.effort}): ${(err instanceof Error ? err.message : String(err)).slice(0, 160)}`);
       }
     }
