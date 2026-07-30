@@ -47,7 +47,7 @@ import {
   type ScoringWeights,
 } from "../detection.js";
 import { synthesizeNarration } from "../narration.js";
-import { planStoryTiming } from "../story-timing.js";
+import { planImageCadence, planStoryTiming } from "../story-timing.js";
 import type { PipelineContext } from "./context.js";
 
 const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
@@ -815,6 +815,8 @@ async function applyCommentary(
 
 interface StorySpec {
   topic: string;
+  /** "scenario" (immersive explainer, default) or "story" (dramatic true story). */
+  mode?: "scenario" | "story";
   style: string;
   voiceTier: string;
   narrator?: string;
@@ -904,6 +906,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     const tts = ctx.ttsFor(spec.voiceTier);
     const storyInput = {
       topic: spec.topic,
+      mode: spec.mode ?? "scenario",
       style: spec.style,
       maxBeats: spec.maxBeats,
       maxWords: spec.maxWords ?? 1300,
@@ -954,31 +957,54 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     const audioFile = voice.audioFile;
     const totalDur = voice.durationSec > 0 ? voice.durationSec : Math.max(4, story.beats.length * 3);
 
-    // 2b. ONE distinct image per beat. Each beat is a whole narrated moment and
-    //     the writer already gives it a concrete, on-topic imagePrompt. We used
-    //     to split long beats into several near-duplicate stills "of the same
-    //     moment" — which is precisely the "same picture, stupid minor changes"
-    //     look. The reference channels change to a genuinely NEW composition each
-    //     beat; so we draw one image per beat and let the beat count drive the
-    //     cadence (~50 beats over ~8 min ≈ a new picture every ~10s).
+    // 2b. SHOT CADENCE — same for long and short, only the aspect differs. A
+    //     swipe feed punishes a static frame, so the image changes every
+    //     ~STORY_IMAGE_SECONDS (~2.5s) for BOTH formats. The NARRATION beat stays
+    //     a natural sentence; a beat longer than one shot is split into several
+    //     VISUALLY DISTINCT shots (wide establishing → close-up reaction →
+    //     detail), NOT the same picture nudged — that distinction is the whole
+    //     point (see expandImagePrompts). Captions still time per beat.
     const beatDurations = planStoryTiming(
       story.beats.map((b) => ({ text: stripAudioTags(b.text) })),
       totalDur,
       voice.words,
     ).slideDurations;
+    const cadence = planImageCadence(beatDurations, ctx.config.story.imageSeconds, ctx.config.story.maxImages);
 
-    // 2c. Draw them, bounded concurrency (progress per image). Orientation + size
-    //     follow the chosen aspect so the composition FILLS the frame (landscape
-    //     for long-form 16:9, portrait for 9:16 shorts) instead of being cropped.
+    // One cheap LLM call turns each multi-shot beat into that many DISTINCT
+    // successive shots. On failure every shot falls back to the beat's own
+    // prompt (repeated frames rather than a failed video).
+    const needsSplit = cadence.filter((s) => s.subIndex === 0 && s.subCount > 1);
+    let expanded = new Map<number, string[]>();
+    if (needsSplit.length > 0) {
+      try {
+        const lists = await ctx.llm.expandImagePrompts({
+          setting: story.setting,
+          beats: needsSplit.map((s) => ({
+            text: stripAudioTags(story.beats[s.beatIndex]!.text),
+            imagePrompt: story.beats[s.beatIndex]!.imagePrompt,
+            count: s.subCount,
+          })),
+        });
+        expanded = new Map(needsSplit.map((s, i) => [s.beatIndex, lists[i] ?? []]));
+      } catch (err) {
+        ctx.logger.warn({ sourceVideoId, reason: String(err) }, "shot expansion failed; using the beat prompt per shot");
+      }
+    }
+    const shotPrompts = cadence.map((s) => expanded.get(s.beatIndex)?.[s.subIndex] ?? story.beats[s.beatIndex]!.imagePrompt);
+
+    // 2c. Draw one image per SHOT, bounded concurrency (progress per image).
+    //     Orientation + size follow the aspect so the composition FILLS the frame
+    //     (landscape 16:9 vs portrait 9:16) instead of being cropped.
     const orientation = spec.aspect === "16:9" ? "landscape" : "portrait";
     const imageSize = spec.imageSize ?? (orientation === "landscape" ? "1536x1024" : "1024x1536");
     await setProgress("Drawing the images", 30);
     let done = 0;
-    const images = await mapWithConcurrency(story.beats, 3, async (beat, i) => {
+    const images = await mapWithConcurrency(shotPrompts, 3, async (prompt, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
         const { image } = await ctx.images.generate({
-          prompt: styledImagePrompt(beat.imagePrompt, spec.style, story.setting, orientation),
+          prompt: styledImagePrompt(prompt, spec.style, story.setting, orientation),
           size: imageSize,
         });
         await fs.writeFile(imgFile, image);
@@ -988,7 +1014,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         // chance: an empty establishing shot of the story's WORLD — no people,
         // no beat specifics — still on-topic via the setting, instead of a
         // jarring blank card.
-        ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err) }, "image gen failed; retrying with a neutral scene");
+        ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err) }, "image gen failed; retrying with a neutral scene");
         try {
           const neutral = styledImagePrompt(
             "a wide establishing scene of the story's world, no people",
@@ -999,21 +1025,22 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
           const { image } = await ctx.images.generate({ prompt: neutral, size: imageSize });
           await fs.writeFile(imgFile, image);
         } catch (err2) {
-          ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err2) }, "image gen failed twice; using plain card");
+          ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err2) }, "image gen failed twice; using plain card");
           await fs.writeFile(imgFile, plainCardPng());
         }
       }
       done++;
-      await setProgress(`Drawing the images (${done}/${story.beats.length})`, 30 + Math.round((done / story.beats.length) * 55));
+      await setProgress(`Drawing the images (${done}/${shotPrompts.length})`, 30 + Math.round((done / shotPrompts.length) * 55));
       return imgFile;
     });
 
-    // 3. Slides and captions both time against the SAME narration — one image per
-    //    beat, so they stay in sync. Canvas dimensions follow the aspect.
+    // 3. Slides follow the fine SHOT cadence; captions stay per BEAT (whole
+    //    sentences). Both time against the same narration, so they stay in sync
+    //    even though there are more images than beats. Canvas follows the aspect.
     await setProgress("Putting it together", 90);
     const captionBeats = story.beats.map((b) => ({ text: stripAudioTags(b.text) }));
     const { captionSegments } = planStoryTiming(captionBeats, totalDur, voice.words);
-    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: beatDurations[i]! }));
+    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: cadence[i]!.durationSec }));
     const [width, height] = spec.aspect === "16:9" ? [1920, 1080] : [1080, 1920];
     const assName = `${sourceVideoId}.ass`;
     const ass = buildAss(captionSegments, 0, totalDur, spec.captionStyle ?? video.captionStyle, 3, spec.captionPosition, {

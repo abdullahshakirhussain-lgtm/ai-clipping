@@ -143,6 +143,12 @@ export interface StoryBeat {
 
 export interface WriteStoryInput {
   topic: string;
+  /**
+   * "scenario" (default) = immersive second-person explainer of how something
+   * actually was (no dramatic twist needed). "story" = a specific dramatic true
+   * story with a hook and a turn. Shapes both the architect and narrator passes.
+   */
+  mode?: "scenario" | "story";
   /** Style preset key (doodle | whiteboard | flat-vector | notebook-sketch). */
   style: string;
   /** CEILING on images/beats (cost + cadence cap); the writer uses as many as the story needs. */

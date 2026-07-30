@@ -1,8 +1,23 @@
 import { buildAss } from "@clipfactory/media";
 import { styledImagePrompt } from "@clipfactory/ai";
 import { describe, expect, it, vi } from "vitest";
+import { CreateStoryInputSchema } from "./contracts/story.js";
 import { lengthPreset, StoryService } from "./services/story-service.js";
 import { looksLikeColdOpen } from "./pipeline/stages.js";
+
+describe("CreateStoryInput defaults", () => {
+  it("defaults to the scenario mode and long form", () => {
+    const parsed = CreateStoryInputSchema.parse({ topic: "ancient Roman hygiene" });
+    expect(parsed.mode).toBe("scenario");
+    expect(parsed.length).toBe("long");
+  });
+
+  it("accepts an explicit story mode + short form", () => {
+    const parsed = CreateStoryInputSchema.parse({ topic: "the Antwerp diamond heist", mode: "story", length: "short" });
+    expect(parsed.mode).toBe("story");
+    expect(parsed.length).toBe("short");
+  });
+});
 
 describe("lengthPreset — one knob drives the whole shape", () => {
   it("long-form is 16:9, landscape image size, long word band", () => {

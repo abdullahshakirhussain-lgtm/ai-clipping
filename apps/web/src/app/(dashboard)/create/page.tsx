@@ -145,6 +145,7 @@ export default function CreatePage() {
   const [planning, setPlanning] = useState(false);
   const [planSec, setPlanSec] = useState(0);
   const [topic, setTopic] = useState("");
+  const [mode, setMode] = useState<"scenario" | "story">("scenario");
   const [length, setLength] = useState<"long" | "short">("long");
   const [style, setStyle] = useState("stick-scene");
   const [narrator, setNarrator] = useState("storyteller");
@@ -352,6 +353,7 @@ export default function CreatePage() {
       } else {
         await apiSend("/story", "POST", {
           topic: topic.trim(),
+          mode,
           length,
           style,
           narrator,
@@ -468,6 +470,14 @@ export default function CreatePage() {
         )}
 
         <div className="grid grid-cols-2 gap-4 mb-4">
+          <label className="block">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Type</span>
+            <select value={mode} onChange={(e) => setMode(e.target.value as "scenario" | "story")}
+              className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
+              <option value="scenario">Scenario (&quot;imagine you&apos;re a…&quot;)</option>
+              <option value="story">True story (with a twist)</option>
+            </select>
+          </label>
           <label className="block">
             <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Format length</span>
             <select value={length} onChange={(e) => setLength(e.target.value as "long" | "short")}

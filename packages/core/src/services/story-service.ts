@@ -38,6 +38,8 @@ export function lengthPreset(length: StoryLength, longMaxBeats: number): LengthP
 /** Story spec persisted on the SourceVideo (kind=story) and read by the generator. */
 export interface StorySpec {
   topic: string;
+  /** "scenario" (immersive explainer, default) or "story" (dramatic true story). */
+  mode: "scenario" | "story";
   length: StoryLength;
   /** "16:9" (long) or "9:16" (short) — drives image, assembly and caption canvas. */
   aspect: "16:9" | "9:16";
@@ -87,6 +89,7 @@ export class StoryService {
     const preset = lengthPreset(input.length, this.maxBeats);
     const spec: StorySpec = {
       topic: input.topic.trim(),
+      mode: input.mode,
       length: input.length,
       aspect: preset.aspect,
       imageSize: preset.imageSize,

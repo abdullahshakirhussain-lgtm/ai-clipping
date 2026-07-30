@@ -16,12 +16,24 @@ export const MUSIC_MOODS = ["none", "calm", "tense", "upbeat", "epic"] as const;
 export const STORY_LENGTHS = ["long", "short"] as const;
 
 /**
+ * `scenario` (default) is the reference-channel format: an immersive, second-
+ * person "Imagine you're a…" walk through how something actually was (a day in
+ * the life, what happened if you got sick, how they did X without Y). It doesn't
+ * need a dramatic twist — just escalating, surprising, concrete detail. The
+ * scenario SPACE is enormous (era × aspect-of-life × frame), which is what keeps
+ * ideas from repeating. `story` keeps the older dramatic-true-story mode (a
+ * specific event with a hook and a turn) as an option.
+ */
+export const STORY_MODES = ["scenario", "story"] as const;
+
+/**
  * Create a generated story video. `length` picks the shape (long 16:9 vs short
  * 9:16); the AI then writes the most complete, interesting story it can within
  * that shape's word band.
  */
 export const CreateStoryInputSchema = z.object({
   topic: z.string().min(3).max(300),
+  mode: z.enum(STORY_MODES).default("scenario"),
   length: z.enum(STORY_LENGTHS).default("long"),
   style: z.enum(STORY_STYLES).default("stick-scene"),
   /** Voice tier: standard (OpenAI) or premium (ElevenLabs). */

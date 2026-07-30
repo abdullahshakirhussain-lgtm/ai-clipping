@@ -247,8 +247,11 @@ export class MockLlmProvider implements LlmProvider {
   }
 
   async expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]> {
+    // Distinct SHOT TYPES (not the same frame nudged), cycling wide → close-up →
+    // detail, so the mock exercises the real fast-cadence path.
+    const shots = ["wide establishing shot", "tight close-up on the character's face", "detail shot of the key object"];
     return input.beats.map((b) =>
-      Array.from({ length: b.count }, (_, k) => `${b.imagePrompt} (moment ${k + 1} of ${b.count})`),
+      Array.from({ length: b.count }, (_, k) => `${shots[k % shots.length]}: ${b.imagePrompt}`),
     );
   }
 

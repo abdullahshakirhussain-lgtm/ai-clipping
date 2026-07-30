@@ -701,31 +701,41 @@ Call submit_metadata with optimized fields.`,
   }
 
   async suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]> {
-    // Steer away from what's already been made, and vary the entry point each
-    // press — without both, the model orbits the same handful of "safe" hooks.
-    const avoidBlock = input.avoid?.length
-      ? `\n\nDo NOT repeat or lightly reword any of these already-used topics — go somewhere genuinely different (different people, eras, domains):\n${input.avoid.map((t) => `- ${t}`).join("\n")}`
-      : "";
-    const lenses = [
-      "unsolved mysteries and disappearances",
-      "audacious heists and scams",
-      "scientific accidents and lucky discoveries",
-      "espionage and wartime deception",
-      "survival against the odds",
-      "forgotten people who changed history",
-      "hoaxes that fooled everyone",
-      "strange deaths and medical oddities",
+    // The old suggester hunted for "a specific dramatic true story" — a shallow
+    // well that loops within a dozen presses. The reference-channel format is an
+    // immersive SCENARIO ("Imagine you're a Roman soldier the night before a
+    // battle…", "What happened if you got sick in the Middle Ages"), and that
+    // space is enormous: era × aspect-of-life × frame. Sampling a few random
+    // seeds each call spreads suggestions across it so they don't repeat.
+    const eras = [
+      "the Stone Age", "ancient Egypt", "ancient Rome", "ancient Greece", "the Viking age",
+      "medieval Europe", "feudal Japan", "the Aztec empire", "the Ottoman empire", "Qing-dynasty China",
+      "the Victorian era", "the American frontier (1800s)", "the age of sail", "WWII on the home front", "ancient Mesopotamia",
     ];
-    const lens = lenses[Math.floor(Math.random() * lenses.length)]!;
+    const aspects = [
+      "food and eating", "medicine and getting sick", "hygiene and the toilet", "death and burial", "war and battle",
+      "love, sex and marriage", "money and trade", "crime and punishment", "work and a typical day", "childhood and school",
+      "travel and navigation", "law and justice", "entertainment and games", "religion and the afterlife", "disease and plague",
+    ];
+    const pick = <T,>(a: T[], n: number) => [...a].sort(() => Math.random() - 0.5).slice(0, n);
+    const seedEras = pick(eras, 4).join(", ");
+    const seedAspects = pick(aspects, 5).join(", ");
+    const avoidBlock = input.avoid?.length
+      ? `\n\nDo NOT repeat or lightly reword any of these already-used ideas — go to a different era/aspect entirely:\n${input.avoid.map((t) => `- ${t}`).join("\n")}`
+      : "";
     const result = await this.callTool<{ topics?: string[] }>(
-      `Propose ${input.count} short-form video story topics that would genuinely stop a scroll${
+      `Propose ${input.count} SCENARIO ideas for immersive, second-person history explainer videos${
         input.category ? ` for a "${input.category}" channel` : ""
-      }. Each is a specific, surprising, TRUE-leaning story hook — a person, event, scam, discovery, or "wait, that really happened?" moment — not a broad theme. 6-12 words each. No numbering.${
-        input.category ? "" : ` Lean into this angle for variety this time: ${lens}.`
-      }${avoidBlock}\n\nCall submit_topics.`,
+      } — the kind that opens "Imagine you're a…" and reveals how something in the past actually was.
+
+Each idea pairs an ERA with an ASPECT OF LIFE, framed as a curiosity that makes someone go "wait, really?". Good shapes: "A day in the life of [person in an era]", "What happened if you [did X] in [era]", "How people [did X] before [Y]", "What [aspect] was actually like in [era]".
+
+For variety THIS time, lean on these eras — ${seedEras} — and these aspects — ${seedAspects} — but you may mix in others. Each idea 6-12 words, concrete and specific, no numbering.${avoidBlock}
+
+Call submit_topics.`,
       {
         name: "submit_topics",
-        description: "Submit candidate story topics.",
+        description: "Submit candidate scenario ideas.",
         input_schema: {
           type: "object",
           properties: { topics: { type: "array", items: { type: "string" } } },
@@ -750,6 +760,28 @@ Call submit_metadata with optimized fields.`,
     const minBeats = Math.max(5, Math.min(maxBeats, input.minBeats ?? 5));
     const minWords = Math.max(60, Math.min(maxWords - 10, input.minWords ?? 60));
     const narrator = input.narrator ?? "storyteller";
+    const isScenario = (input.mode ?? "scenario") === "scenario";
+
+    // Mode-specific instructions injected into the two shared prompts below. Both
+    // modes keep the same craft (cold open, concrete named detail, chaining, no
+    // cringe closer); they differ in SHAPE — a scenario is an immersive walk
+    // through how something WAS (escalating "wait, really?" reveals, no dramatic
+    // twist required), a story is one specific event with a hook and a turn.
+    const architectRole = isScenario
+      ? `You are the SCENARIO ARCHITECT for an immersive, second-person history explainer (TikTok/Reels/Shorts/YouTube). The subject is: "${input.topic}".`
+      : `You are the STORY ARCHITECT for a short-form (TikTok/Reels/Shorts) story video. The topic is: "${input.topic}".`;
+    const architectStep1 = isScenario
+      ? `STEP 1 — FRAME THE SCENARIO. "${input.topic}" is a window into how life actually was. Pick ONE concrete vantage point to live inside for the whole video — a specific person in a specific time and place (a Roman legionary the morning of battle; a servant in a Victorian townhouse; a child in a Stone-Age camp). Then list, in "angleOptions", 3 different vantage points you considered. The whole video walks through THIS scenario and keeps revealing surprising, concrete, TRUE detail — it does NOT need a dramatic twist; the payoff is accumulated "wait, that's how it really was?!" fascination.`
+      : `STEP 1 — BRAINSTORM 3 ANGLES, THEN PICK ONE. A topic is not a story. Think of 3 genuinely DIFFERENT true story angles, each unmistakably about "${input.topic}" (different people / events / moments). Judge them on: strongest hook, clearest arc, a real TURN (a reversal, a "wait, what?"), and how squarely on-topic they are. Then pick the SINGLE best — an angle with no real turn is disqualified. List the 3 one-line angle premises you weighed in "angleOptions".`;
+    const architectEnding = isScenario
+      ? `4. "ending": the single most vivid or surprising concrete detail to CLOSE on — the last "huh, wild" beat, stated plainly. Not a moral, not a summary, not "and that's how it was" — just the strongest remaining detail, landed and done.`
+      : `4. "ending": the story's REAL final fact or consequence — the last thing that actually happened, stated as plain fact. It must resolve the question the cold open raised, but it is NOT a punchline: no moral, no call-to-action, no rhetorical question, no crafted closing line.`;
+    const architectSpineRoles = isScenario
+      ? `   - "role": its job — hook / reveal / escalate / turn-of-the-screw / close.`
+      : `   - "role": its job in the arc — hook / rehook / setup / rising / turn / payoff.`;
+    const narratorFraming = isScenario
+      ? `You are the NARRATOR of an immersive second-person history explainer about "${input.topic}". Put the viewer INSIDE the scenario ("you") and walk them through it, each beat revealing another concrete, surprising, TRUE detail of how it actually was. It does not need a plot twist — escalating fascination is the engine.`
+      : `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.`;
 
     // ── Pass 1: architect the TRUE story spine (real facts + arc + a factual
     // ending). Planning the backbone up front is what makes the finished
@@ -765,19 +797,17 @@ Call submit_metadata with optimized fields.`,
       ending?: string;
       spine?: Array<{ role?: string; fact?: string }>;
     }>(
-      `You are the STORY ARCHITECT for a short-form (TikTok/Reels/Shorts) story video. The topic is: "${input.topic}".
+      `${architectRole}
 
 STAY ON TOPIC — this is non-negotiable. The finished video MUST be unmistakably about "${input.topic}". Someone who searched "${input.topic}" has to think "yes, this is exactly that", never "wait, why is this about something else".
-- If "${input.topic}" names a SPECIFIC person, event, place, or thing, tell THAT story directly. Do NOT swap it for a lesser-known tangent that merely touches it.
-- Only if "${input.topic}" is genuinely BROAD (a whole category, field, era, or concept) do you narrow to one specific true story inside it — and even then the topic's core subject must be CENTRAL to the story, not a loose association.
 
-STEP 1 — BRAINSTORM 3 ANGLES, THEN PICK ONE. A topic is not a story. Think of 3 genuinely DIFFERENT true story angles, each unmistakably about "${input.topic}" (different people / events / moments — not three retellings of the same one). Judge them on: strongest hook, clearest arc, a real TURN (a reversal, a "wait, what?"), and how squarely on-topic they are. Then pick the SINGLE best — an angle with no real turn is disqualified. This choice is 60% of the video's quality; be ruthless. Everything below (hook, setting, ending, spine) is for that ONE chosen angle. List the 3 one-line angle premises you weighed in "angleOptions".
+${architectStep1}
 
 Work only from what you actually know: real names, dates, places, numbers, the telling human detail. No vague filler, no "some say", no invented facts. Tone is PUNCHY BUT HONEST — the drama is allowed to be big, but every claim must be real and the hook must be a promise the ending truly keeps. Never over-promise.
 
 Output:
 
-0. "angleOptions": the 3 distinct true-story angles you considered (one line each), all on-topic for "${input.topic}".
+0. "angleOptions": the 3 distinct ${isScenario ? "vantage points" : "true-story angles"} you considered (one line each), all on-topic for "${input.topic}".
 
 1. "hookOptions": exactly 3 candidate opening lines for the CHOSEN angle. HARD RULE — every option MUST literally begin with one of these fixed stems (fill the brackets; the stem's opening words stay exactly as written):
    - "It's [date/year]. [A person] is [mid-action]…"  (e.g. "It's August 10th, 1998. A night guard in Stockholm is starting his last round.")
@@ -790,10 +820,10 @@ Output:
 
 3. "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS story — real place, era, architecture, objects, clothing, weather, palette (for a Moscow story: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, fur ushanka hats and heavy coats, overcast winter sky"). If there's a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka"). Never generic — this anchors every frame.
 
-4. "ending": the story's REAL final fact or consequence — the last thing that actually happened, stated as plain fact. It must resolve the question the cold open raised, but it is NOT a punchline: no moral, no call-to-action, no rhetorical question, no crafted closing line.
+${architectEnding}
 
-5. "spine": the ordered beats — ${minBeats === maxBeats ? `EXACTLY ${maxBeats}` : `at least ${minBeats}, up to ${maxBeats}`}, one per key story moment. Each beat has:
-   - "role": its job in the arc — hook / rehook / setup / rising / turn / payoff.
+5. "spine": the ordered beats — ${minBeats === maxBeats ? `EXACTLY ${maxBeats}` : `at least ${minBeats}, up to ${maxBeats}`}, one per key ${isScenario ? "moment of the scenario" : "story moment"}. Each beat has:
+${architectSpineRoles}
    - "fact": the concrete real thing that happens in this beat, one line — and every fact NAMES its people and places outright (real names, dates, amounts): "Glyndwr Michael, a homeless Welshman, dies in London in January 1943", never "a man dies". No bare he/they/the man in a spine fact.
    KEEP THE CAST TIGHT: give NAMES only to the 1-3 people the story actually returns to, and the first fact that names someone must say who they are ("a British spy, Ewen Montagu"). Everyone who appears only once stays a role, never a name (a coroner, a fisherman) — a name the viewer meets once and never again just confuses.
    The spine is a CHAIN, not a list: each fact must follow causally from the one before (this happened, SO that happened). Structure it for retention: beat 1 = "hook" (the cold open above); an early "rehook" (~beat 2-3) that opens a second loop before curiosity dips; the stakes/tension RISE every beat with no flat middle; a clear "turn" around 60-70%; the LAST beat is "payoff" — the story's final real event, where the narration simply stops. NO wrap-up or resolution beat after it. Use only as many beats as the true story needs — don't pad.
@@ -873,7 +903,7 @@ Call submit_outline.`,
       setting?: string;
       beats?: Array<{ text?: string; imagePrompt?: string; delivery?: string }>;
     }>(
-      `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.
+      `${narratorFraming}
 
 OPENING HOOK — beat 1's "text" MUST START with these exact words, and NOTHING may come before them (no topic introduction, no setup sentence, no title read-out): ${planHook || 'cold-open inside the scene, starting literally with "It\'s [date]…", "In a small town in…" or "Imagine…" — never announce what the story is about'}
 VISUAL WORLD (setting): ${planSetting || "(derive a concrete, on-topic world)"}
@@ -1085,16 +1115,16 @@ Call submit_cook.`,
       .join("\n");
 
     const result = await this.callTool<{ beats?: Array<{ prompts?: string[] }> }>(
-      `These story beats each stay on screen too long for one picture. Split each one into the requested number of SUCCESSIVE MOMENTS of that same beat, so the viewer sees the action progress instead of a frozen frame.
+      `Each beat below stays on screen too long for a single picture. Cut it into the requested number of DISTINCT SHOTS — the way a video editor covers one moment from different angles — so the screen keeps changing and never looks like the same picture nudged.
 
-WORLD (every frame lives here): ${input.setting || "unspecified"}
+WORLD (every shot lives here): ${input.setting || "unspecified"}
 
 ${listing}
 
 Rules:
-- The frames are consecutive instants of the SAME beat, in order: before → during → after. Something must visibly CHANGE between them — a pose, a gesture, a position, an expression, what's in frame.
-- Do NOT introduce new events the narration doesn't mention, and never jump ahead to a later beat.
-- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the frames match.
+- The shots cover the SAME narration beat but from GENUINELY DIFFERENT compositions. Vary the shot type across them — e.g. a WIDE establishing shot of the whole scene, a TIGHT CLOSE-UP on the character's face showing the emotion, a DETAIL shot of the key object/action being described. Different framing, different subject, different distance — NOT the same image with a small change.
+- They still read in order and stay true to the beat; do NOT invent new events the narration doesn't mention, and never jump ahead to a later beat.
+- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene, and name the character's expression where a face is shown.
 - Keep every subject centered and simply drawn; no on-screen text.
 - Return exactly the requested number of prompts per beat, in the same beat order.
 Call submit_frames.`,

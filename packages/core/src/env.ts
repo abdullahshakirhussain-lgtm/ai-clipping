@@ -118,11 +118,15 @@ const EnvSchema = z.object({
   // Ceiling on narrated BEATS per story (sentences, not images). Long-form runs
   // ~8 minutes, which is roughly 45 sentence-length beats.
   STORY_MAX_BEATS: z.coerce.number().min(4).max(60).default(50),
-  // One DISTINCT image per beat now (no more splitting a beat into near-duplicate
-  // stills), so these two are legacy cadence knobs kept only for back-compat with
-  // older specs; the beat count sets the cadence. Cost ≈ maxBeats images/video.
-  STORY_IMAGE_SECONDS: z.coerce.number().min(1.5).max(8).default(3),
-  STORY_MAX_IMAGES: z.coerce.number().min(4).max(240).default(60),
+  // Seconds each SHOT holds — the same fast cadence for BOTH long and short (a
+  // swipe feed punishes a static frame). A narration beat that runs longer than
+  // this is split into that many VISUALLY DISTINCT shots (wide → close-up →
+  // detail), never the same image nudged. ~2.5s ≈ short ~32 imgs, long ~190.
+  STORY_IMAGE_SECONDS: z.coerce.number().min(1.5).max(8).default(2.5),
+  // Hard ceiling on images per video (cost cap). Long at 2.5s over ~8 min needs
+  // ~190; at gpt-image-1-mini medium (~$0.011) that's ~$2/long video (~$0.35 for
+  // a short). Longs aren't published yet, so the cost lives with the format.
+  STORY_MAX_IMAGES: z.coerce.number().min(4).max(300).default(220),
   // Slow per-slide push-in so long-form stills breathe like the reference
   // channels. Off falls back to the cheaper static-card render. (Parsed as a
   // string enum, not z.coerce.boolean — the latter reads "false" as truthy.)
