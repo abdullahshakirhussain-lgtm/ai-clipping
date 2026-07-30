@@ -869,6 +869,50 @@ export function looksLikeColdOpen(text: string): boolean {
   return /^(it'?s\b|in\b|imagine\b|by\b|on (a|the)\b|deep\b|somewhere\b|\d)/.test(t);
 }
 
+/**
+ * Strip a tacked-on cringe closer from the LAST beat. The writer prompt already
+ * bans them exhaustively and the model still invents new ones — scenario mode
+ * especially, because an explainer has no "final event" so it reaches for a
+ * summary, and that reach IS the cringe. So we catch it deterministically here,
+ * the mirror of {@link looksLikeColdOpen} at the other end: drop trailing
+ * sentences that read as reflection/moral/rhetorical-question (up to 2), keep at
+ * least one real sentence, and if the last beat empties, drop it so the prior
+ * beat ends the video. Returns a new beats array; never mutates the input.
+ */
+export function stripCringeEnding<T extends { text: string }>(beats: T[]): T[] {
+  if (beats.length === 0) return beats;
+  const opener =
+    /^(and so|in the end|ultimately|perhaps|maybe|to this day|even (today|now)|and that|so the next time|little did|which( just)? goes|one thing('s| is)|we (may|'ll) never|in a way|turns out|who knows|and yet|for all)\b/i;
+  const contains =
+    /\b(reminder|testament|legacy|goes to show|makes you (wonder|think)|let that sink in|rest is history|forever changed|changed everything|history remembers|mind.?blown|stays with you|never the same|we'll never know)\b/i;
+  const isCringe = (s: string) => {
+    const t = s.trim();
+    return t.endsWith("?") || opener.test(t) || contains.test(t);
+  };
+  // Split into sentences, keeping their trailing punctuation.
+  const splitSentences = (text: string) => text.match(/[^.!?]+[.!?]*\s*/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
+
+  const out = beats.map((b) => ({ ...b }));
+  for (let removed = 0; removed < 2 && out.length > 0; ) {
+    const last = out[out.length - 1]!;
+    const sentences = splitSentences(last.text);
+    if (sentences.length === 0) {
+      out.pop();
+      continue;
+    }
+    if (!isCringe(sentences[sentences.length - 1]!)) break;
+    sentences.pop();
+    removed++;
+    if (sentences.length === 0) {
+      out.pop(); // whole last beat was a cringe closer — the prior beat now ends it
+    } else {
+      last.text = sentences.join(" ");
+      break; // trailing sentence cleaned; leave the rest of the beat intact
+    }
+  }
+  return out.length > 0 ? out : beats; // never strip everything to nothing
+}
+
 export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
   const moved = await ctx.repos.sourceVideos.transition(
     sourceVideoId,
@@ -930,6 +974,15 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       ctx.logger.warn({ sourceVideoId, open: story.beats[0]!.text.slice(0, 80) }, "story opened with preamble; regenerating once");
       const retry = await ctx.llm.writeStory(storyInput);
       if (retry.beats.length > 0) story = retry;
+    }
+    // Deterministically strip a tacked-on cringe closer — the writer's blocklist
+    // never fully holds. Rebuild the script so the stored copy matches what's
+    // actually narrated + captioned.
+    const cleaned = stripCringeEnding(story.beats);
+    if (cleaned.length !== story.beats.length || cleaned.at(-1)?.text !== story.beats.at(-1)?.text) {
+      ctx.logger.info({ sourceVideoId, was: story.beats.at(-1)?.text.slice(-80) }, "stripped a cringe ending");
+      story.beats = cleaned;
+      story.script = cleaned.map((b) => b.text).join("\n\n");
     }
     // Persist the script immediately so it's viewable even while images render.
     await setProgress("Recording the narration", 25, {

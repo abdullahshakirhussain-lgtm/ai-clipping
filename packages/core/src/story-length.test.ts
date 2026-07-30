@@ -3,7 +3,7 @@ import { styledImagePrompt } from "@clipfactory/ai";
 import { describe, expect, it, vi } from "vitest";
 import { CreateStoryInputSchema } from "./contracts/story.js";
 import { lengthPreset, StoryService } from "./services/story-service.js";
-import { looksLikeColdOpen } from "./pipeline/stages.js";
+import { looksLikeColdOpen, stripCringeEnding } from "./pipeline/stages.js";
 
 describe("CreateStoryInput defaults", () => {
   it("defaults to the scenario mode and long form", () => {
@@ -89,6 +89,45 @@ describe("looksLikeColdOpen — reject the preamble intro", () => {
     expect(looksLikeColdOpen("In this video, we'll explore a wild discovery.")).toBe(false);
     expect(looksLikeColdOpen("Today we're talking about a famous heist.")).toBe(false);
     expect(looksLikeColdOpen("")).toBe(false);
+  });
+});
+
+describe("stripCringeEnding — kill the tacked-on closer the blocklist misses", () => {
+  const beat = (text: string) => ({ text });
+
+  it("strips a trailing rhetorical question but keeps the real final fact", () => {
+    const out = stripCringeEnding([beat("The camp fell silent."), beat("The fire burned out by dawn. But what were they really afraid of?")]);
+    expect(out.at(-1)!.text).toBe("The fire burned out by dawn.");
+  });
+
+  it("strips a reflective/summary opener", () => {
+    const out = stripCringeEnding([beat("They sealed the tomb and left."), beat("And so a whole civilization slipped out of memory.")]);
+    // The whole last beat was the closer → it's dropped, prior beat ends.
+    expect(out).toHaveLength(1);
+    expect(out[0]!.text).toBe("They sealed the tomb and left.");
+  });
+
+  it("strips a cringe-phrase sentence tacked onto the last beat", () => {
+    const out = stripCringeEnding([beat("The last scribe died alone. It's a reminder that empires are fragile.")]);
+    expect(out[0]!.text).toContain("The last scribe died");
+    expect(out[0]!.text).not.toMatch(/reminder/i);
+  });
+
+  it("leaves a clean factual ending untouched", () => {
+    const beats = [beat("Rome burned for six days."), beat("Nero rebuilt the district as his own palace grounds.")];
+    expect(stripCringeEnding(beats).at(-1)!.text).toBe("Nero rebuilt the district as his own palace grounds.");
+  });
+
+  it("never strips the narration down to nothing", () => {
+    const beats = [beat("And that just goes to show how strange it all was.")];
+    expect(stripCringeEnding(beats)).toEqual(beats); // one cringe-only beat → keep it rather than ship an empty video
+  });
+
+  it("does not mutate the input array", () => {
+    const beats = [beat("A fact."), beat("It makes you wonder, doesn't it?")];
+    const before = beats[1]!.text;
+    stripCringeEnding(beats);
+    expect(beats[1]!.text).toBe(before);
   });
 });
 

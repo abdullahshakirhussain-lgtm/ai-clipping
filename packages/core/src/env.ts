@@ -57,7 +57,9 @@ const EnvSchema = z.object({
   OPENAI_IMAGE_MODEL: z.string().default("gpt-image-1-mini"),
   // Quality tier for the OpenAI image model. "low" keeps a 15-beat story at
   // ~$0.09; "medium" (~$0.22) is sharper; "high"/"auto" cost far more.
-  OPENAI_IMAGE_QUALITY: z.enum(["auto", "low", "medium", "high"]).default("low"),
+  // medium, not low: low renders soft, vague detail — a big part of why
+  // environments (e.g. a bunker interior) read as generic instead of accurate.
+  OPENAI_IMAGE_QUALITY: z.enum(["auto", "low", "medium", "high"]).default("medium"),
   FAL_KEY: z.string().optional().default(""),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/schnell"),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────

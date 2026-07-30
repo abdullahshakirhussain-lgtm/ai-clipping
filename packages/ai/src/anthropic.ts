@@ -763,6 +763,12 @@ Call submit_topics.`,
     const narratorFraming = isScenario
       ? `You are the NARRATOR of an immersive second-person history explainer about "${input.topic}". Put the viewer INSIDE the scenario ("you") and walk them through it, each beat revealing another concrete, surprising, TRUE detail of how it actually was. It does not need a plot twist — escalating fascination is the engine.`
       : `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.`;
+    // Scenario mode has no "final event", so the model reaches for a summary to
+    // close — which is exactly the banned cringe closer. Tell it to stop on a
+    // concrete sensory image instead. (A backstop; the pipeline also strips one.)
+    const narratorEnding = isScenario
+      ? `\n- SCENARIO ENDING: a scenario has no single final event, so DO NOT wrap up, zoom out, or reflect. End MID-SCENE on one concrete sensory detail — the last thing you'd SEE, HEAR, or FEEL in that moment (the candle guttering out, the smell of wet earth, boots on the duckboards). The pull to summarize ("and that was life in…", "it makes you wonder…") IS the banned closer. Stop on the image, not a comment on it.`
+      : ``;
 
     // ── Pass 1: architect the TRUE story spine (real facts + arc + a factual
     // ending). Planning the backbone up front is what makes the finished
@@ -799,7 +805,7 @@ Output:
 
 2. "hook": the single STRONGEST of your 3 cold opens — the scene hardest to scroll away from, and one this true story can actually pay off. It MUST start with one of the stems above.
 
-3. "setting": ONE compact line (comma-separated, ~30-45 words) of the CONCRETE, unmistakable visual markers of THIS story — real place, era, architecture, objects, clothing, weather, palette (for a Moscow story: "snowy Moscow, red-brick Kremlin walls, onion-domed cathedral, Cyrillic street signs, grey Soviet apartment blocks, fur ushanka hats and heavy coats, overcast winter sky"). If there's a main character, pin their FIXED look here ("recurring: a young man in a brown coat and grey ushanka"). Never generic — this anchors every frame.
+3. "setting": a period-correct VISUAL BIBLE (~60-90 words) that anchors every frame. Name the 2-4 KEY PLACES this ${isScenario ? "scenario" : "story"} actually visits, and for EACH give its DEFINING, historically-accurate signifiers — materials, structure, scale, the specific objects and clothing of the era — precise enough that a viewer who knows the period can't nitpick it. ACCURACY IS THE POINT: "a bunker" is a fail; "a WWI front-line dugout: timber-braced low earth ceiling, sandbag walls, wooden duckboard floor, a guttering candle, men crammed on a narrow bench, rifles stacked" is right. NO anachronisms (no modern objects in a past era). Also pin the palette/weather/light, and any recurring character's FIXED look ("recurring: a young man in a brown coat and grey ushanka"). Concrete and specific, never generic — this is what makes the world unmistakable and immersive.
 
 ${architectEnding}
 
@@ -908,7 +914,7 @@ RETENTION MECHANICS (this is the job):
 ENDING RULES (critical — this is what's been going wrong):
 - The narration ends ON the story's final fact (the "ending" above): the LAST SENTENCE is simply the last thing that happened, stated plainly. Then it STOPS.
 - NO END PUNCH of any kind: no punchline, kicker, button, callback line, clever flourish, or summary sentence. Do NOT "craft" a closing line at all — the final event IS the closing line. If it feels abrupt, that is correct.
-- BANNED closers — NEVER end the narration with any of these: a call-to-action or "follow for more"/hashtag-speak; a tacked-on moral or life lesson; "let that sink in", "makes you wonder", "and the rest is history", "and that's the story of…", "mind = blown", "little did they know"; or a rhetorical question. The last line is part of the STORY, not a comment on it.
+- BANNED closers — NEVER end the narration with any of these: a call-to-action or "follow for more"/hashtag-speak; a tacked-on moral or life lesson; "let that sink in", "makes you wonder", "and the rest is history", "and that's the story of…", "mind = blown", "little did they know"; or a rhetorical question. The last line is part of the STORY, not a comment on it.${narratorEnding}
 
 For EACH beat give:
 - "text": the spoken narration (1-3 sentences — use the third when the beat needs its connective tissue or a telling detail).${
@@ -916,7 +922,11 @@ For EACH beat give:
           ? ` Embed 1-2 ElevenLabs audio tags inline where the read shifts (acted, not spoken): [pause], [whispers], [excited], [sighs], [laughs], [curious].`
           : ""
       }
-- "imagePrompt": DRAW WHAT THIS LINE DESCRIBES. If the narration names a specific place, object, structure, or event — "a hall with fifty doors, each wide enough to march through shoulder to shoulder", "a phalanx of soldiers locking shields", "a clay tablet covered in wedge marks" — that concrete thing IS the picture, rendered with its stated specifics (fifty doors, not "a hall"; shields locked, not "soldiers"). Do NOT default to the character standing in a vague background while the interesting thing goes undrawn — that is the single most common failure. The stick figure appears only when the line is about a person acting/reacting, and even then the described SCENE around them must be specific and correct. Every prompt names the concrete subject first, then the setting's markers, then (optionally) the figure and its expression. No text/letters in the image.
+- "imagePrompt": DRAW WHAT THIS LINE DESCRIBES. If the narration names a specific place, object, structure, or event — "a hall with fifty doors, each wide enough to march through shoulder to shoulder", "a phalanx of soldiers locking shields", "a clay tablet covered in wedge marks" — that concrete thing IS the picture, rendered with its stated specifics (fifty doors, not "a hall"; shields locked, not "soldiers"). Do NOT default to the character standing in a vague background while the interesting thing goes undrawn — that is the single most common failure. The stick figure appears only when the line is about a person acting/reacting, and even then the described SCENE around them must be specific and correct. Every prompt names the concrete subject first, then the setting's markers, then (optionally) the figure and its expression. ACCURACY: pull the DEFINING, period-correct features from the setting so the place is unmistakably itself and can't be nitpicked — the right materials, structures and objects for that exact era, no anachronisms.${
+        isScenario
+          ? " IMMERSION: favour second-person / over-the-shoulder / POV framing that drops the viewer INSIDE the scene — \"from inside the dugout looking out toward the doors\", \"over your own shoulder as the shields lock into a wall\" — so they feel they are there, not watching from outside."
+          : ""
+      } No text/letters in the image.
   DRAWABLE-SAFE (image prompts only — the narration is unaffected): the image API refuses graphic content, so NEVER put corpses, bodies, gore, blood, executions, weapons in use, or named real-world figures (Hitler, dictators, criminals) in an imagePrompt. IMPLY the dark beat instead: the empty rowboat, a covered stretcher, boots in the snow, a silhouette behind glass, officials huddled over a briefcase, the aftermath. Suggestion reads better on screen anyway.
 - "delivery": 1-2 sentences on the emotion of this beat (feeds the read's arc).
 
