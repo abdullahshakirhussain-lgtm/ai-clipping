@@ -1,5 +1,5 @@
 import { buildAss } from "@clipfactory/media";
-import { styledImagePrompt } from "@clipfactory/ai";
+import { asArray, strList, styledImagePrompt } from "@clipfactory/ai";
 import { describe, expect, it, vi } from "vitest";
 import { CreateStoryInputSchema } from "./contracts/story.js";
 import { lengthPreset, StoryService } from "./services/story-service.js";
@@ -89,6 +89,23 @@ describe("looksLikeColdOpen — reject the preamble intro", () => {
     expect(looksLikeColdOpen("In this video, we'll explore a wild discovery.")).toBe(false);
     expect(looksLikeColdOpen("Today we're talking about a famous heist.")).toBe(false);
     expect(looksLikeColdOpen("")).toBe(false);
+  });
+});
+
+describe("model-output array coercion (tool schemas are hints, not guarantees)", () => {
+  it("asArray keeps arrays, drops non-arrays to []", () => {
+    expect(asArray([1, 2])).toEqual([1, 2]);
+    expect(asArray("nope")).toEqual([]); // a stray string is NOT split into chars
+    expect(asArray(undefined)).toEqual([]);
+    expect(asArray({ 0: "x" })).toEqual([]);
+  });
+
+  it("strList splits a delimited string so 'hashtags as a string' doesn't crash", () => {
+    // The exact failure: the model returned hashtags as "#history #victorian".
+    expect(strList("#history #victorian, #mining")).toEqual(["#history", "#victorian", "#mining"]);
+    expect(strList(["#a", "#b"])).toEqual(["#a", "#b"]);
+    expect(strList(undefined)).toEqual([]);
+    expect(() => strList("x").map((s) => s.trim())).not.toThrow();
   });
 });
 

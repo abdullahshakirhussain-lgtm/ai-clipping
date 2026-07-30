@@ -41,6 +41,22 @@ export interface AnthropicLlmOptions {
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number(n) || lo));
 
+/**
+ * Tool schemas are hints, not guarantees (no `strict: true`), so the model
+ * sometimes returns an array field as a single value — e.g. `hashtags` as the
+ * string "#history #victorian". `?? []` doesn't catch a truthy non-array, so
+ * `.map` then throws. These coerce defensively: `asArray` for structured lists
+ * (beats, spine, characters), `strList` for string lists that may arrive as a
+ * delimited string (hashtags, hooks, topics).
+ */
+export const asArray = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+export const strList = (v: unknown): string[] =>
+  Array.isArray(v)
+    ? v.map(String)
+    : typeof v === "string"
+      ? v.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+      : [];
+
 /** Words → a human runtime, in minutes once "seconds" stops being readable. */
 function describeLength(words: number): string {
   const sec = Math.round(words / 2.5);
@@ -352,7 +368,7 @@ Call submit_review with the indices to KEEP.`,
       },
       1024,
     );
-    return (result.keep ?? []).map(Number).filter((n) => Number.isInteger(n));
+    return asArray<unknown>(result.keep).map(Number).filter((n) => Number.isInteger(n));
   }
 
   async planEnhancements(input: PlanEnhancementsInput): Promise<SfxCue[]> {
@@ -675,8 +691,8 @@ Call submit_metadata with optimized fields.`,
     return {
       title: String(p.title ?? input.hook).slice(0, 120),
       description: String(p.description ?? ""),
-      hashtags: (p.hashtags ?? []).map(String).slice(0, 6),
-      hookVariants: (p.hookVariants ?? [input.hook]).map(String).slice(0, 3),
+      hashtags: strList(p.hashtags).slice(0, 6),
+      hookVariants: (strList(p.hookVariants).length ? strList(p.hookVariants) : [input.hook]).slice(0, 3),
       model: this.model,
     };
   }
@@ -726,7 +742,7 @@ Call submit_topics.`,
       1024,
       { temperature: 1 },
     );
-    return (result.topics ?? []).map(String).map((s) => s.trim()).filter(Boolean).slice(0, input.count);
+    return strList(result.topics).map((s) => s.trim()).filter(Boolean).slice(0, input.count);
   }
 
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
@@ -885,7 +901,7 @@ Call submit_outline.`,
       { model: this.commentaryModel, effort: "high" },
     );
 
-    const spine = (outline.spine ?? [])
+    const spine = asArray<{ role?: string; fact?: string }>(outline.spine)
       .map((s) => ({ role: String(s.role ?? "").trim(), fact: String(s.fact ?? "").trim() }))
       .filter((s) => s.fact);
     const planSetting = String(outline.setting ?? "").trim();
@@ -986,7 +1002,7 @@ Call submit_story.`,
       { model: this.commentaryModel, effort: "medium" },
     );
 
-    const cleanBeats = (result.beats ?? [])
+    const cleanBeats = asArray<{ text?: string; imagePrompt?: string; delivery?: string }>(result.beats)
       .filter((b) => String(b.text ?? "").trim() && String(b.imagePrompt ?? "").trim())
       .map((b) => ({
         text: String(b.text).trim(),
@@ -997,7 +1013,7 @@ Call submit_story.`,
       title: String(result.title ?? outline.title ?? input.topic).slice(0, 120),
       script: String(result.script ?? cleanBeats.map((b) => b.text).join(" ")),
       description: String(result.description ?? ""),
-      hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
+      hashtags: strList(result.hashtags).slice(0, 6),
       setting: String(result.setting ?? "").trim() || planSetting,
       beats: cleanBeats,
     };
@@ -1105,7 +1121,7 @@ Call submit_cook.`,
     return {
       title: String(result.title ?? input.dish).slice(0, 120),
       description: String(result.description ?? ""),
-      hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
+      hashtags: strList(result.hashtags).slice(0, 6),
       shots,
     };
   }
@@ -1168,7 +1184,7 @@ Call submit_frames.`,
     // Pad/trim to exactly what was asked for: a short answer would silently
     // desync the slide list from the timing plan.
     return input.beats.map((b, i) => {
-      const got = (result.beats?.[i]?.prompts ?? []).map(String).map((s) => s.trim()).filter(Boolean);
+      const got = asArray<unknown>(result.beats?.[i]?.prompts).map(String).map((s) => s.trim()).filter(Boolean);
       const out: string[] = [];
       for (let k = 0; k < b.count; k++) out.push(got[k] ?? got[got.length - 1] ?? b.imagePrompt);
       return out;
@@ -1381,7 +1397,7 @@ Call submit_call.`,
     // TTS caps at two), and the response schema requires two — a short list from
     // the model would otherwise fail serialization and surface as an opaque 500
     // instead of a usable brief.
-    const raw = (result.characters ?? []).slice(0, 2);
+    const raw = asArray<NonNullable<typeof result.characters>[number]>(result.characters).slice(0, 2);
     while (raw.length < 2) raw.push({});
     const characters: CallCharacter[] = raw.map((c, i) => {
       const gender = c.gender === "female" ? "female" : c.gender === "male" ? "male" : i === 0 ? "male" : "female";
@@ -1407,22 +1423,22 @@ Call submit_call.`,
 
     // Non-empty: the schema requires at least one beat, and an empty list would
     // fail serialization rather than degrade.
-    const beats = (result.escalation ?? []).map(String).filter(Boolean).slice(0, 6);
+    const beats = asArray<unknown>(result.escalation).map(String).filter(Boolean).slice(0, 6);
     const escalation = beats.length > 0 ? beats : ["the call opens politely and steadily gets worse"];
 
     return {
       title: String(result.title ?? input.idea).slice(0, 120),
       description: String(result.description ?? ""),
-      hashtags: (result.hashtags ?? []).map(String).slice(0, 6),
+      hashtags: strList(result.hashtags).slice(0, 6),
       premise: String(result.premise ?? input.idea),
       setup: String(result.setup ?? ""),
       characters,
       escalation,
-      ragebait: (result.ragebait ?? []).map(String).filter(Boolean).slice(0, 5),
+      ragebait: asArray<unknown>(result.ragebait).map(String).filter(Boolean).slice(0, 5),
       ending: String(result.ending ?? ""),
       durationSeconds: seconds,
       direction: String(result.direction ?? ""),
-      imagePrompts: (result.imagePrompts ?? []).map(String).filter(Boolean).slice(0, 4),
+      imagePrompts: asArray<unknown>(result.imagePrompts).map(String).filter(Boolean).slice(0, 4),
     };
   }
 
@@ -1444,6 +1460,6 @@ Call submit_hooks with 3 improved hooks.`,
       },
       512,
     );
-    return (result.hooks ?? []).map(String).slice(0, 3);
+    return asArray<unknown>(result.hooks).map(String).slice(0, 3);
   }
 }
