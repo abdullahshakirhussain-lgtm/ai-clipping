@@ -7,6 +7,8 @@
 export const STYLE_PRESETS: Record<string, string> = {
   "stick-scene":
     "Minimalist 2D cartoon in a clean flat style. ANY people are TRUE stick figures ONLY: a plain thin black outline body, a bare circle head, single straight lines for arms and legs, stick hands — NO muscles, NO clothing detail, NO shading, NO rendered faces beyond dot eyes + eyebrows + a simple mouth showing the emotion. They must look like an xkcd / whiteboard doodle, NOT a detailed or realistic cartoon character — if a figure looks like a drawn person rather than a stick figure, it is wrong. The SCENE is the focus and must clearly and accurately show what is described — the specific place, structures, and objects (a hall of many doors, a phalanx of shields, a river valley) — but drawn SIMPLY: bold clean outlines, flat bright colors, minimal shading, no photorealism and no fussy detail. Simple stick figures inside a simple, clearly-readable colorful world.",
+  explainer:
+    "Clean flat 2D vector EXPLAINER graphic, like a modern stick-figure history channel. Bold black outlines, flat bright colors, minimal shading, a plain white or single flat-color background. The picture is the SIMPLEST clear graphic for the idea: a bold ICON for an object (fire, spear, pot, lightbulb, DNA strand); a clean LABELLED DIAGRAM for a fact, number, comparison or process (a timeline, a before/after, a cross-section, a bar chart, a map, a family tree, a two-column comparison); a simple VISUAL METAPHOR for an abstract idea (a brick wall shattering = a barrier broken; a glowing star passing from one head to another = an idea shared); and a TRUE simple stick figure (circle head, single-line limbs, dot-eyes-and-mouth face showing the feeling) ONLY when the beat is about a person. Small RED accents — arrows, circles, X marks, highlights — point the eye at what matters. Never a detailed or realistic scene; think whiteboard-clear, not painterly.",
   doodle:
     "bright colorful hand-drawn cartoon doodle; characters are simple expressive stick figures (NOT detailed people) with big emotive faces — large eyes, open mouths, eyebrows; thick bold outlines, cheerful colors, simple flat shapes, colorful background that shows the setting",
   whiteboard:
@@ -44,5 +46,8 @@ export function styledImagePrompt(
 ): string {
   const world = setting && setting.trim() ? ` Setting: ${setting.trim()}.` : "";
   const frame = orientation === "landscape" ? "Horizontal 16:9 widescreen" : "Vertical 9:16";
-  return `${imagePrompt.trim()}.${world} Style: ${styleAnchor(style)}. ${frame}, subject centered, no text.`;
+  // ONE single picture per image. The image model otherwise sometimes returns a
+  // collage / triptych / comic strip — several small panels, some clipped by the
+  // frame edge ("spilling out"). Forbid that outright.
+  return `${imagePrompt.trim()}.${world} Style: ${styleAnchor(style)}. ${frame}, subject centered, no text. ONE single picture — a SINGLE composition with one main subject, fully inside the frame. NO panels, NO split-screen, NO collage, NO grid or strip of multiple images, nothing clipped or spilling past the edges.`;
 }

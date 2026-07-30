@@ -758,6 +758,13 @@ Call submit_topics.`,
     const minWords = Math.max(60, Math.min(maxWords - 10, input.minWords ?? 60));
     const narrator = input.narrator ?? "storyteller";
     const isScenario = (input.mode ?? "scenario") === "scenario";
+    // The "explainer" style renders each beat as a clean icon/diagram/metaphor
+    // (the stick-figure history-channel look), NOT a drawn scene — so the writer
+    // must describe the beat as the simplest clear GRAPHIC, not a place.
+    const isExplainer = input.style === "explainer";
+    const explainerShot = isExplainer
+      ? ` GRAPHIC TYPE (this is an EXPLAINER — do NOT describe a detailed scene): render each beat as the SIMPLEST clear graphic — a bold ICON for a thing (fire, spear, DNA strand); a clean DIAGRAM for a fact, comparison or process (a timeline as dots on a line, a before/after split, a cross-section, a bar chart, a simple map, a two-column comparison) drawn as SHAPES AND ARROWS ONLY with NO written labels or numbers (the narration says those — and the image model can't spell); a simple VISUAL METAPHOR for an abstract idea (a wall shattering = a barrier broken; a star passing between two heads = an idea shared); or a plain stick figure ONLY when the beat is about a person. Name which of these it is and what's in it. Use small red arrows/circles/X to point at what matters.`
+      : ``;
 
     // Mode-specific instructions injected into the two shared prompts below. Both
     // modes keep the same craft (cold open, concrete named detail, chaining, no
@@ -768,7 +775,7 @@ Call submit_topics.`,
       ? `You are the SCENARIO ARCHITECT for an immersive, second-person history explainer (TikTok/Reels/Shorts/YouTube). The subject is: "${input.topic}".`
       : `You are the STORY ARCHITECT for a short-form (TikTok/Reels/Shorts) story video. The topic is: "${input.topic}".`;
     const architectStep1 = isScenario
-      ? `STEP 1 — FRAME ONE SCENARIO AND HOLD IT. "${input.topic}" is a window into how life actually was. Pick ONE concrete vantage point — a specific person in a specific time and place (a Roman legionary the morning of battle; a servant in a Victorian townhouse; a child trapper in an 1841 coal mine). List 3 vantage points you weighed in "angleOptions", then commit to ONE. THREE HARD RULES, because the usual failure is a script that sprawls:
+      ? `STEP 1 — FRAME ONE SCENARIO AS A REAL PERSON, AND HOLD IT. "${input.topic}" is a window into how life actually was — but "generic" is the enemy. Anchor the whole video to ONE REAL, SPECIFIC, NAMED PERSON the viewer BECOMES. Where the history hands you a documented individual, use them by name (you ARE Sarah Gooder, an eight-year-old trapper; you ARE a named legionary from a real account). Where no single record fits, build ONE representative person out of real documented detail — a real name, a real place, a real year — and commit to them; never a faceless "a person" or "people back then". The viewer lives THIS one person's actual day/experience in second person ("you"), start to finish. List 3 such people you weighed in "angleOptions", then commit to ONE. THREE HARD RULES, because the usual failure is a script that sprawls:
    - ONE POINT OF VIEW, WHOLE VIDEO. The entire thing is lived from that one vantage in SECOND PERSON ("you"). NEVER cut away to "a real person did this" / "X, aged 8, testified that…" — that shatters the immersion and turns it into a museum plaque. Real names, dates and testimony are still used, but WOVEN INTO the walk ("a girl your age, Sarah Gooder, would later tell the inspectors she sang only when she had a light") — you never leave the vantage point to cite them from outside.
    - ONE THREAD, NOT A SURVEY. Follow a single lived arc through this one experience (e.g. one shift: the descent → the dark → the door → the gas → the disaster that ends it → the law). Do NOT try to cover the whole topic — resist the pull to list every related person, place and event. Better to go deep on one thread than wide across ten.
    - TIGHT CAST. Name at most ONE real person, and only if the thread genuinely returns to them; everyone else is a role ("a seventeen-year-old hurrier", "the overseer"), never a name met once and dropped.
@@ -782,7 +789,7 @@ The payoff is accumulated "wait, that's how it really was?!" — no dramatic twi
       : `   - "role": its job in the arc — hook / rehook / setup / rising / turn / payoff.`;
     const narratorFraming = isScenario
       ? `You are the NARRATOR of an immersive second-person history explainer about "${input.topic}". Put the viewer INSIDE the scenario ("you") and walk them through it, each beat revealing another concrete, surprising, TRUE detail of how it actually was. It does not need a plot twist — escalating fascination is the engine. THREE RULES YOU MUST HOLD:
-1. STAY IN "YOU" EVERY BEAT. Never break the immersion to cite a witness from outside ("a real girl did this — Sarah, aged 8, told the Commission…"). Weave real names/testimony INTO the second-person walk instead ("a girl your age, Sarah Gooder, would tell the inspectors she sang only when she had a light"). If a beat starts sounding like a documentary or a plaque, rewrite it back into "you".
+1. YOU ARE THE REAL PERSON FROM THE SPINE — stay in "you" EVERY beat. The vantage character is a specific, named, real (or real-detail representative) person, and the viewer IS them; live their actual experience. Never break out to cite them from the outside ("a real girl did this — Sarah, aged 8, told the Commission…"); if it's your own character, it's "you", and other real names/testimony get woven INTO your walk ("the inspector writing all this down would record that girls like you sang only when you had a light"). If a beat starts sounding like a documentary or a museum plaque, rewrite it back into "you".
 2. ONE THREAD. Follow the single lived arc from the spine; do NOT wander off to survey every related person or event. Name at most one real person; everyone else is a role.
 3. CAUSAL CHAIN. Every beat follows from the one before — never jump to an unrelated danger or fact (if a beat is about gas, the next isn't suddenly about a flood unless you connect them).`
       : `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.`;
@@ -956,7 +963,7 @@ For EACH beat give:
         isScenario
           ? " IMMERSION: favour second-person / over-the-shoulder / POV framing that drops the viewer INSIDE the scene — \"from inside the dugout looking out toward the doors\", \"over your own shoulder as the shields lock into a wall\" — so they feel they are there, not watching from outside."
           : ""
-      } No text/letters in the image.
+      }${explainerShot} No text/letters in the image.
   DRAWABLE-SAFE (image prompts only — the narration is unaffected): the image API refuses graphic content, so NEVER put corpses, bodies, gore, blood, executions, weapons in use, or named real-world figures (Hitler, dictators, criminals) in an imagePrompt. IMPLY the dark beat instead: the empty rowboat, a covered stretcher, boots in the snow, a silhouette behind glass, officials huddled over a briefcase, the aftermath. Suggestion reads better on screen anyway.
 - "delivery": 1-2 sentences on the emotion of this beat (feeds the read's arc).
 

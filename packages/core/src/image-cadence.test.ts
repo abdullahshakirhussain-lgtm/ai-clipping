@@ -13,13 +13,14 @@ describe("planImageCadence", () => {
     expect(perBeat([3, 2.5, 3], 3, 30)).toEqual([1, 1, 1]);
   });
 
-  it("splits a long beat so no still sits far past the target", () => {
-    // A 9s sentence at a 3s target should become three frames of ~3s.
+  it("splits a long beat into two shots (the per-beat cap)", () => {
+    // A 9s sentence at a 3s target wants 3, but the cap is now 2 — the model
+    // can't reliably make more than 2 genuinely-distinct shots of one beat.
     const slides = planImageCadence([9], 3, 30);
-    expect(slides).toHaveLength(3);
-    for (const s of slides) expect(s.durationSec).toBeCloseTo(3, 5);
-    expect(slides.map((s) => s.subIndex)).toEqual([0, 1, 2]);
-    expect(slides.every((s) => s.subCount === 3)).toBe(true);
+    expect(slides).toHaveLength(2);
+    for (const s of slides) expect(s.durationSec).toBeCloseTo(4.5, 5);
+    expect(slides.map((s) => s.subIndex)).toEqual([0, 1]);
+    expect(slides.every((s) => s.subCount === 2)).toBe(true);
   });
 
   it("preserves total screen time exactly — the video length must not move", () => {
@@ -35,9 +36,9 @@ describe("planImageCadence", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
-  it("caps one runaway beat instead of letting it eat the budget", () => {
-    // 40s on a single beat would want 13 frames; the per-beat cap is 4.
-    expect(perBeat([40], 3, 30)).toEqual([4]);
+  it("caps one runaway beat at 2 shots instead of letting it eat the budget", () => {
+    // 40s on a single beat would want ~13 frames; the per-beat cap is now 2.
+    expect(perBeat([40], 3, 30)).toEqual([2]);
   });
 
   it("spends a tight budget on the longest beats first", () => {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const STORY_STYLES = ["stick-scene", "doodle", "whiteboard", "flat-vector", "notebook-sketch"] as const;
+export const STORY_STYLES = ["stick-scene", "explainer", "doodle", "whiteboard", "flat-vector", "notebook-sketch"] as const;
 export const STORY_NARRATOR_KEYS = ["storyteller", "hyped", "deadpan-documentary", "conspiratorial"] as const;
 export const CAPTION_STYLE_KEYS = ["bold-center", "yellow-pop", "clean-bottom"] as const;
 export const CAPTION_POSITIONS = ["top", "middle", "bottom"] as const;

@@ -97,9 +97,10 @@ export function planImageCadence(
   if (n === 0) return [];
   const target = Math.max(0.5, targetSec);
 
-  // Ideal split per beat, capped at 4 stills so one runaway beat can't eat the
-  // whole budget (and so the prompt expansion stays a small ask).
-  const want = slideDurations.map((d) => Math.max(1, Math.min(4, Math.round(d / target))));
+  // Ideal split per beat, capped at 2 stills. The model can reliably make ONE
+  // beat into 2 genuinely-distinct shots; asking for 3-4 is where it starts
+  // returning generic or repeated variations (and padding then duplicates them).
+  const want = slideDurations.map((d) => Math.max(1, Math.min(2, Math.round(d / target))));
 
   // Trim to budget: repeatedly take a still back from whichever beat currently
   // has the SHORTEST time-per-still, i.e. the one that needs it least.

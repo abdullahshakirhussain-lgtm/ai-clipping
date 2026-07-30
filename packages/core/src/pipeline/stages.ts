@@ -1046,14 +1046,27 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     }
     const shotPrompts = cadence.map((s) => expanded.get(s.beatIndex)?.[s.subIndex] ?? story.beats[s.beatIndex]!.imagePrompt);
 
-    // 2c. Draw one image per SHOT, bounded concurrency (progress per image).
+    // Collapse consecutive IDENTICAL shot prompts into one longer slide. The
+    // splitter (and its padding when the model returns fewer prompts than asked)
+    // sometimes yields the same prompt twice in a row; drawing it twice is the
+    // "repeated pictures" artifact. Render one image and hold it for the combined
+    // time instead.
+    const mergedShots: Array<{ prompt: string; durationSec: number }> = [];
+    cadence.forEach((s, i) => {
+      const prompt = shotPrompts[i]!;
+      const last = mergedShots[mergedShots.length - 1];
+      if (last && last.prompt === prompt) last.durationSec += s.durationSec;
+      else mergedShots.push({ prompt, durationSec: s.durationSec });
+    });
+
+    // 2c. Draw one image per (de-duplicated) SHOT, bounded concurrency.
     //     Orientation + size follow the aspect so the composition FILLS the frame
     //     (landscape 16:9 vs portrait 9:16) instead of being cropped.
     const orientation = spec.aspect === "16:9" ? "landscape" : "portrait";
     const imageSize = spec.imageSize ?? (orientation === "landscape" ? "1536x1024" : "1024x1536");
     await setProgress("Drawing the images", 30);
     let done = 0;
-    const images = await mapWithConcurrency(shotPrompts, 3, async (prompt, i) => {
+    const images = await mapWithConcurrency(mergedShots.map((m) => m.prompt), 3, async (prompt, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
         const { image } = await ctx.images.generate({
@@ -1083,7 +1096,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         }
       }
       done++;
-      await setProgress(`Drawing the images (${done}/${shotPrompts.length})`, 30 + Math.round((done / shotPrompts.length) * 55));
+      await setProgress(`Drawing the images (${done}/${mergedShots.length})`, 30 + Math.round((done / mergedShots.length) * 55));
       return imgFile;
     });
 
@@ -1093,7 +1106,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     await setProgress("Putting it together", 90);
     const captionBeats = story.beats.map((b) => ({ text: stripAudioTags(b.text) }));
     const { captionSegments } = planStoryTiming(captionBeats, totalDur, voice.words);
-    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: cadence[i]!.durationSec }));
+    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: mergedShots[i]!.durationSec }));
     const [width, height] = spec.aspect === "16:9" ? [1920, 1080] : [1080, 1920];
     const assName = `${sourceVideoId}.ass`;
     const ass = buildAss(captionSegments, 0, totalDur, spec.captionStyle ?? video.captionStyle, 3, spec.captionPosition, {
