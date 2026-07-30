@@ -768,23 +768,102 @@ export async function assembleSlideshow(input: {
   captionsFileName?: string;
   outPath: string;
   workDir: string;
+  /** Output frame size. Defaults to 9:16 (1080x1920); pass 1920x1080 for long-form. */
+  width?: number;
+  height?: number;
+  /**
+   * Slow per-slide push-in (Ken Burns) so stills breathe like the reference
+   * channels instead of sitting dead. Off keeps the cheaper static-card path.
+   */
+  kenBurns?: boolean;
 }): Promise<void> {
   const { slides, workDir } = input;
   if (slides.length === 0) throw new Error("assembleSlideshow: no slides");
+  const width = input.width ?? 1080;
+  const height = input.height ?? 1920;
+  const fps = 25;
+  // COVER + CENTER-CROP (not pad): image models return off-aspect images
+  // (gpt's 1024x1536 / 1536x1024); padding leaves bars. Scaling to cover and
+  // cropping the overflow gives true full-bleed frames; prompts keep the subject
+  // centered so the crop is safe.
+  const coverCrop = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1`;
 
-  // 1. Scale each image to a uniform 1080x1920 card ONCE. Doing the scale here —
-  //    not per output frame across a 1-2 minute video — is the bulk of the cost;
-  //    uniform sizes then let us use the lightweight concat demuxer (one input,
-  //    no N parallel looped decoders) instead of a heavy filter_complex.
-  //    COVER + CENTER-CROP (not pad): image models return 2:3 portraits
-  //    (e.g. gpt's 1024x1536), and padding to 9:16 leaves white bars top and
-  //    bottom. Scaling to cover and cropping the ~8% overflow off each side
-  //    gives true full-bleed frames; prompts keep the subject centered so the
-  //    crop is safe. Exact-9:16 sources (fal 720x1280) crop nothing.
+  if (input.kenBurns) {
+    // Ken Burns: render each still to a short clip with a slow zoom, then concat.
+    // Sequential + single-threaded, matching the static path's care for
+    // constrained containers (firing N zoompans at once exhausts thread/PID
+    // limits). Pre-cover-crop, then zoompan at the target size so there's no
+    // per-frame rescale jitter. The zoom creeps ~6% over the slide's life.
+    const segs: string[] = [];
+    for (let i = 0; i < slides.length; i++) {
+      const dur = Math.max(0.5, slides[i]!.durationSec);
+      const frames = Math.max(2, Math.round(dur * fps));
+      const step = (0.06 / frames).toFixed(6); // reach ~1.06x by the last frame
+      const seg = `seg-${i}.mp4`;
+      try {
+        await run(
+          bin("ffmpeg"),
+          [
+            // ONE looped input frame, output capped with -frames:v. Do NOT put
+            // -t on the loop: zoompan's d=frames expands EACH input frame, so a
+            // -t-fed stream of `frames` input frames would multiply to frames²
+            // (a 2s clip balloons to ~100s). Capping output frames instead lets
+            // the first frame's d-expansion satisfy the count before a second
+            // input frame is ever pulled. Verified: dur*fps frames, exact length.
+            "-y", "-threads", "1", "-loop", "1", "-i", slides[i]!.imageFile,
+            "-vf",
+            `${coverCrop},zoompan=z='min(zoom+${step}\\,1.06)':d=${frames}:` +
+              `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=${fps},format=yuv420p`,
+            "-frames:v", String(frames),
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
+            "-threads", "1", join(workDir, seg),
+          ],
+          { cwd: workDir, timeoutMs: 3 * 60 * 1000 },
+        );
+      } catch {
+        // Any bad frame degrades to a still card of the right size, not a dead render.
+        await run(
+          bin("ffmpeg"),
+          [
+            "-y", "-threads", "1", "-f", "lavfi", "-t", dur.toFixed(3),
+            "-i", `color=white:size=${width}x${height}:rate=${fps}`,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p",
+            "-threads", "1", join(workDir, seg),
+          ],
+          { cwd: workDir, timeoutMs: 60 * 1000 },
+        );
+      }
+      segs.push(seg);
+    }
+    const lines = ["ffconcat version 1.0", ...segs.map((f) => `file '${f}'`)];
+    const listName = "segs.txt";
+    await writeFile(join(workDir, listName), lines.join("\n"), "utf8");
+    const vf = ["format=yuv420p"];
+    if (input.captionsFileName) vf.push(`subtitles=${input.captionsFileName}`);
+    await run(
+      bin("ffmpeg"),
+      [
+        "-y",
+        "-f", "concat", "-safe", "0", "-i", listName,
+        "-i", input.audioFile,
+        "-filter_complex", `[0:v]${vf.join(",")}[vo]`,
+        "-map", "[vo]", "-map", "1:a",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "160k",
+        "-shortest", "-movflags", "+faststart",
+        input.outPath,
+      ],
+      { cwd: workDir, timeoutMs: 12 * 60 * 1000 },
+    );
+    return;
+  }
+
+  // Static path. 1. Scale each image to a uniform card ONCE. Doing the scale
+  //    here — not per output frame across a multi-minute video — is the bulk of
+  //    the cost; uniform sizes then let us use the lightweight concat demuxer
+  //    (one input, no N parallel looped decoders) instead of a heavy filter_complex.
   //    SEQUENTIAL + single-threaded: firing all N scales at once, each spawning
-  //    PNG encoder threads, exhausts thread/PID limits on constrained containers
-  //    (EAGAIN / ff_frame_thread_encoder_init failed). Each scale is a single
-  //    frame, so sequential is still quick.
+  //    encoder threads, exhausts thread/PID limits on constrained containers.
   const scaled: string[] = [];
   for (let i = 0; i < slides.length; i++) {
     try {
@@ -792,7 +871,7 @@ export async function assembleSlideshow(input: {
         bin("ffmpeg"),
         [
           "-y", "-threads", "1", "-i", slides[i]!.imageFile,
-          "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1",
+          "-vf", coverCrop,
           "-frames:v", "1", "-threads", "1", join(workDir, `slide-${i}.png`),
         ],
         { cwd: workDir, timeoutMs: 60 * 1000 },
@@ -803,7 +882,7 @@ export async function assembleSlideshow(input: {
       await run(
         bin("ffmpeg"),
         [
-          "-y", "-threads", "1", "-f", "lavfi", "-i", "color=white:size=1080x1920",
+          "-y", "-threads", "1", "-f", "lavfi", "-i", `color=white:size=${width}x${height}`,
           "-frames:v", "1", "-threads", "1", join(workDir, `slide-${i}.png`),
         ],
         { cwd: workDir, timeoutMs: 60 * 1000 },
@@ -826,7 +905,7 @@ export async function assembleSlideshow(input: {
   // 3. One encode: stills → constant fps → burned captions + the single audio.
   //    ultrafast + tune stillimage is ideal for a slideshow and far quicker than
   //    veryfast on limited CPU; static frames still compress tiny.
-  const vf = ["fps=25", "format=yuv420p"];
+  const vf = [`fps=${fps}`, "format=yuv420p"];
   if (input.captionsFileName) vf.push(`subtitles=${input.captionsFileName}`);
   await run(
     bin("ffmpeg"),

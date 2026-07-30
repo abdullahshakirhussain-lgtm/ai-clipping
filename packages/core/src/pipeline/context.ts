@@ -56,8 +56,8 @@ export interface PipelineContext {
     detection: DetectionConfig;
     /** Derive who/what a video is about from sampled frames' on-screen text. */
     visionContext: boolean;
-    /** Slideshow image cadence (see env STORY_IMAGE_SECONDS / STORY_MAX_IMAGES). */
-    story: { imageSeconds: number; maxImages: number };
+    /** Slideshow knobs. `kenBurns` adds a slow per-slide push-in (STORY_KEN_BURNS). */
+    story: { imageSeconds: number; maxImages: number; kenBurns: boolean };
     /** Parallel Veo calls for animation — the first dial to turn down on 429s. */
     animConcurrency: number;
   };

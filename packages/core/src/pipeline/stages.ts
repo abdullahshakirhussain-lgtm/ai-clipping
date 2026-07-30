@@ -47,7 +47,7 @@ import {
   type ScoringWeights,
 } from "../detection.js";
 import { synthesizeNarration } from "../narration.js";
-import { planImageCadence, planStoryTiming } from "../story-timing.js";
+import { planStoryTiming } from "../story-timing.js";
 import type { PipelineContext } from "./context.js";
 
 const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
@@ -821,6 +821,10 @@ interface StorySpec {
   maxBeats: number;
   maxWords?: number;
   minWords?: number;
+  /** "16:9" (long) or "9:16" (short). Absent on pre-length specs → treated as 9:16. */
+  aspect?: "16:9" | "9:16";
+  /** OpenAI image size matching the aspect (e.g. "1536x1024" | "1024x1536"). */
+  imageSize?: string;
   category?: string;
   captionStyle?: string;
   captionPosition?: "top" | "middle" | "bottom";
@@ -833,6 +837,36 @@ interface StorySpec {
  * the images + captions against that audio (exact word timings when available),
  * assembles a seamless slideshow, and lands it as a ready-to-review Clip.
  */
+/**
+ * Cheap floor-check that beat 1 actually opens at the story instead of a
+ * preamble. The writer is told to start with one of the mandated cold-open stems
+ * ("It's [date]…", "In [place]…", "Imagine…"); anything else — a topic
+ * announcement, "This is the story of…", "Did you know…", "In this video…" — is
+ * the throat-clearing intro we want to reject. Not a grammar check, just enough
+ * to catch the obvious misses that read as a slow 30-50s open.
+ */
+export function looksLikeColdOpen(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  const banned = [
+    "this is the story",
+    "this is a story",
+    "did you know",
+    "in this video",
+    "today we",
+    "today i",
+    "today,",
+    "let me tell you",
+    "have you ever",
+    "welcome",
+    "the story of",
+    "the most",
+  ];
+  if (banned.some((b) => t.startsWith(b))) return false;
+  // Accept the mandated stems, or any open that drops straight into a date/scene.
+  return /^(it'?s\b|in\b|imagine\b|by\b|on (a|the)\b|deep\b|somewhere\b|\d)/.test(t);
+}
+
 export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
   const moved = await ctx.repos.sourceVideos.transition(
     sourceVideoId,
@@ -868,7 +902,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     // 1. Script → beats. This is the whole product; everything else is assembly.
     await setProgress("Writing the script", 10);
     const tts = ctx.ttsFor(spec.voiceTier);
-    const story = await ctx.llm.writeStory({
+    const storyInput = {
       topic: spec.topic,
       style: spec.style,
       maxBeats: spec.maxBeats,
@@ -878,10 +912,21 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       minWords: spec.minWords ?? 1050,
       narrator: spec.narrator,
       voiceTags: tts.speaksTags === true,
-    });
+    };
+    let story = await ctx.llm.writeStory(storyInput);
     if (story.beats.length === 0) {
       await failVideo(ctx, sourceVideoId, new Error("story writer returned no beats"));
       return;
+    }
+    // Enforce the cold open. The writer is told beat 1 must drop the viewer
+    // mid-scene ("It's…/In…/Imagine…") and never announce the topic, but when the
+    // reasoning pass doesn't engage it sometimes opens with a preamble — the
+    // "50-second introduction" the user hit. If beat 1 reads like throat-clearing,
+    // regenerate ONCE; a second miss ships as-is rather than looping on spend.
+    if (!looksLikeColdOpen(story.beats[0]!.text)) {
+      ctx.logger.warn({ sourceVideoId, open: story.beats[0]!.text.slice(0, 80) }, "story opened with preamble; regenerating once");
+      const retry = await ctx.llm.writeStory(storyInput);
+      if (retry.beats.length > 0) story = retry;
     }
     // Persist the script immediately so it's viewable even while images render.
     await setProgress("Recording the narration", 25, {
@@ -909,51 +954,33 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     const audioFile = voice.audioFile;
     const totalDur = voice.durationSec > 0 ? voice.durationSec : Math.max(4, story.beats.length * 3);
 
-    // 2b. Decide the IMAGE CADENCE before drawing anything. A beat is a whole
-    //     sentence and can hold the screen 6-8s — long enough for a short to
-    //     feel static. Beats that run long are split into several stills of the
-    //     same moment, so the narration stays natural sentences while the
-    //     picture changes roughly every STORY_IMAGE_SECONDS.
+    // 2b. ONE distinct image per beat. Each beat is a whole narrated moment and
+    //     the writer already gives it a concrete, on-topic imagePrompt. We used
+    //     to split long beats into several near-duplicate stills "of the same
+    //     moment" — which is precisely the "same picture, stupid minor changes"
+    //     look. The reference channels change to a genuinely NEW composition each
+    //     beat; so we draw one image per beat and let the beat count drive the
+    //     cadence (~50 beats over ~8 min ≈ a new picture every ~10s).
     const beatDurations = planStoryTiming(
       story.beats.map((b) => ({ text: stripAudioTags(b.text) })),
       totalDur,
       voice.words,
     ).slideDurations;
-    const cadence = planImageCadence(beatDurations, ctx.config.story.imageSeconds, ctx.config.story.maxImages);
 
-    // One cheap LLM call expands only the beats that need extra frames.
-    const needsSplit = cadence.filter((s) => s.subIndex === 0 && s.subCount > 1);
-    let expanded = new Map<number, string[]>();
-    if (needsSplit.length > 0) {
-      try {
-        const lists = await ctx.llm.expandImagePrompts({
-          setting: story.setting,
-          beats: needsSplit.map((s) => ({
-            text: stripAudioTags(story.beats[s.beatIndex]!.text),
-            imagePrompt: story.beats[s.beatIndex]!.imagePrompt,
-            count: s.subCount,
-          })),
-        });
-        expanded = new Map(needsSplit.map((s, i) => [s.beatIndex, lists[i] ?? []]));
-      } catch (err) {
-        // Not fatal: every slide falls back to its beat's original prompt, which
-        // just means repeated frames rather than a failed video.
-        ctx.logger.warn({ sourceVideoId, reason: String(err) }, "image-prompt expansion failed; reusing beat prompts");
-      }
-    }
-
-    const slidePrompts = cadence.map((s) => {
-      const beat = story.beats[s.beatIndex]!;
-      return expanded.get(s.beatIndex)?.[s.subIndex] ?? beat.imagePrompt;
-    });
-
-    // 2c. Draw them, with bounded concurrency (progress per image).
+    // 2c. Draw them, bounded concurrency (progress per image). Orientation + size
+    //     follow the chosen aspect so the composition FILLS the frame (landscape
+    //     for long-form 16:9, portrait for 9:16 shorts) instead of being cropped.
+    const orientation = spec.aspect === "16:9" ? "landscape" : "portrait";
+    const imageSize = spec.imageSize ?? (orientation === "landscape" ? "1536x1024" : "1024x1536");
     await setProgress("Drawing the images", 30);
     let done = 0;
-    const images = await mapWithConcurrency(slidePrompts, 3, async (prompt, i) => {
+    const images = await mapWithConcurrency(story.beats, 3, async (beat, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
-        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(prompt, spec.style, story.setting) });
+        const { image } = await ctx.images.generate({
+          prompt: styledImagePrompt(beat.imagePrompt, spec.style, story.setting, orientation),
+          size: imageSize,
+        });
         await fs.writeFile(imgFile, image);
       } catch (err) {
         // Grim beat prompts (corpses, dictators, plagues — normal for the
@@ -967,8 +994,9 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
             "a wide establishing scene of the story's world, no people",
             spec.style,
             story.setting,
+            orientation,
           );
-          const { image } = await ctx.images.generate({ prompt: neutral });
+          const { image } = await ctx.images.generate({ prompt: neutral, size: imageSize });
           await fs.writeFile(imgFile, image);
         } catch (err2) {
           ctx.logger.warn({ sourceVideoId, beat: i, reason: String(err2) }, "image gen failed twice; using plain card");
@@ -976,19 +1004,22 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         }
       }
       done++;
-      await setProgress(`Drawing the images (${done}/${slidePrompts.length})`, 30 + Math.round((done / slidePrompts.length) * 55));
+      await setProgress(`Drawing the images (${done}/${story.beats.length})`, 30 + Math.round((done / story.beats.length) * 55));
       return imgFile;
     });
 
-    // 3. Captions stay per-BEAT (whole sentences), while the slides follow the
-    //    finer image cadence — the two are timed against the same narration, so
-    //    they stay in sync even though there are more images than beats.
+    // 3. Slides and captions both time against the SAME narration — one image per
+    //    beat, so they stay in sync. Canvas dimensions follow the aspect.
     await setProgress("Putting it together", 90);
     const captionBeats = story.beats.map((b) => ({ text: stripAudioTags(b.text) }));
     const { captionSegments } = planStoryTiming(captionBeats, totalDur, voice.words);
-    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: cadence[i]!.durationSec }));
+    const slides = images.map((imageFile, i) => ({ imageFile, durationSec: beatDurations[i]! }));
+    const [width, height] = spec.aspect === "16:9" ? [1920, 1080] : [1080, 1920];
     const assName = `${sourceVideoId}.ass`;
-    const ass = buildAss(captionSegments, 0, totalDur, spec.captionStyle ?? video.captionStyle, 3, spec.captionPosition);
+    const ass = buildAss(captionSegments, 0, totalDur, spec.captionStyle ?? video.captionStyle, 3, spec.captionPosition, {
+      width,
+      height,
+    });
     if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
 
     let outPath = join(workDir, "story.mp4");
@@ -998,6 +1029,9 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       captionsFileName: ass.trim() ? assName : undefined,
       outPath,
       workDir,
+      width,
+      height,
+      kenBurns: ctx.config.story.kenBurns,
     });
 
     // 3b. Optional background-music bed (skips cleanly if no track is present).

@@ -395,7 +395,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
       },
       // Mock LLM returns "" anyway; the flag mainly saves the frame extraction.
       visionContext: env.VISION_CONTEXT && env.AI_DRIVER === "live",
-      story: { imageSeconds: env.STORY_IMAGE_SECONDS, maxImages: env.STORY_MAX_IMAGES },
+      story: { imageSeconds: env.STORY_IMAGE_SECONDS, maxImages: env.STORY_MAX_IMAGES, kenBurns: env.STORY_KEN_BURNS },
       animConcurrency: env.ANIM_CONCURRENCY,
     },
   } as PipelineContext;

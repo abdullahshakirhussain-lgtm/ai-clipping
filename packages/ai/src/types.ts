@@ -229,6 +229,8 @@ export interface PlanAnimationInput {
 export interface SuggestTopicsInput {
   category?: string;
   count: number;
+  /** Recently-used topics to steer AWAY from, so suggestions don't repeat. */
+  avoid?: string[];
 }
 
 // ── Cook Studio (generated cook-in-the-wild videos) ──────────────────────────

@@ -131,19 +131,50 @@ export class AnthropicLlmProvider implements LlmProvider {
     // fall through to the guaranteed forced-tool call below (never breaks prod).
     if (opts?.effort) {
       try {
-        const out = pickToolUse(
-          await this.client.messages.create({
-            model,
-            max_tokens: maxTokens,
-            thinking: { type: "adaptive" },
-            output_config: { effort: opts.effort },
-            tools: [tool],
-            tool_choice: { type: "auto" },
-            messages,
-          }),
-        );
+        const first = await this.client.messages.create({
+          model,
+          max_tokens: maxTokens,
+          thinking: { type: "adaptive" },
+          output_config: { effort: opts.effort },
+          tools: [tool],
+          tool_choice: { type: "auto" },
+          messages,
+        });
+        const out = pickToolUse(first);
         if (out) return out;
-        console.warn(`[story] reasoning call returned no tool_use (effort=${opts.effort}); falling back to plain call`);
+        // It reasoned but stopped before calling the tool (thinking + text, no
+        // tool_use). Don't discard that reasoning by restarting cold — that's
+        // what dropped story quality and let the opening ramble. Replay the
+        // model's own visible answer as an assistant turn and force the tool, so
+        // the structured result is built ON TOP of what it already worked out.
+        // (Thinking is incompatible with a forced tool_choice, and raw thinking
+        // blocks need signatures to replay, so we carry only the TEXT forward.)
+        console.warn(`[story] reasoning call returned no tool_use (effort=${opts.effort}); nudging it to call the tool`);
+        const reasonedText = first.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("\n")
+          .trim();
+        if (reasonedText) {
+          try {
+            const followup = await this.client.messages.create({
+              model,
+              max_tokens: maxTokens,
+              tools: [tool],
+              tool_choice: { type: "tool", name: tool.name },
+              messages: [
+                ...messages,
+                { role: "assistant", content: reasonedText },
+                { role: "user", content: `Good. Now call ${tool.name} with that result.` },
+              ],
+            });
+            const out2 = pickToolUse(followup);
+            if (out2) return out2;
+          } catch (err2) {
+            console.warn(`[story] tool-nudge round failed: ${(err2 instanceof Error ? err2.message : String(err2)).slice(0, 160)}`);
+          }
+        }
+        console.warn(`[story] falling back to plain forced-tool call (reasoning did not engage)`);
       } catch (err) {
         // effort/thinking not supported here — degrade to the plain call, but
         // surface it: a silent fallback would hide that reasoning never engaged.
@@ -670,10 +701,28 @@ Call submit_metadata with optimized fields.`,
   }
 
   async suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]> {
+    // Steer away from what's already been made, and vary the entry point each
+    // press — without both, the model orbits the same handful of "safe" hooks.
+    const avoidBlock = input.avoid?.length
+      ? `\n\nDo NOT repeat or lightly reword any of these already-used topics — go somewhere genuinely different (different people, eras, domains):\n${input.avoid.map((t) => `- ${t}`).join("\n")}`
+      : "";
+    const lenses = [
+      "unsolved mysteries and disappearances",
+      "audacious heists and scams",
+      "scientific accidents and lucky discoveries",
+      "espionage and wartime deception",
+      "survival against the odds",
+      "forgotten people who changed history",
+      "hoaxes that fooled everyone",
+      "strange deaths and medical oddities",
+    ];
+    const lens = lenses[Math.floor(Math.random() * lenses.length)]!;
     const result = await this.callTool<{ topics?: string[] }>(
       `Propose ${input.count} short-form video story topics that would genuinely stop a scroll${
         input.category ? ` for a "${input.category}" channel` : ""
-      }. Each is a specific, surprising, TRUE-leaning story hook — a person, event, scam, discovery, or "wait, that really happened?" moment — not a broad theme. 6-12 words each. No numbering. Call submit_topics.`,
+      }. Each is a specific, surprising, TRUE-leaning story hook — a person, event, scam, discovery, or "wait, that really happened?" moment — not a broad theme. 6-12 words each. No numbering.${
+        input.category ? "" : ` Lean into this angle for variety this time: ${lens}.`
+      }${avoidBlock}\n\nCall submit_topics.`,
       {
         name: "submit_topics",
         description: "Submit candidate story topics.",
@@ -690,7 +739,10 @@ Call submit_metadata with optimized fields.`,
   }
 
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {
-    const maxBeats = Math.max(5, Math.min(30, input.maxBeats));
+    // Ceiling 60: long-form is now ONE distinct illustration per beat (no more
+    // splitting a beat into near-duplicate stills), so ~50 beats over ~8 minutes
+    // is a new picture every ~10s. The old cap of 30 would have starved it.
+    const maxBeats = Math.max(5, Math.min(60, input.maxBeats));
     // Ceiling is 1600 to allow long-form (~8 min at ~150 wpm ≈ 1200 words);
     // shorts pass a far lower maxWords and are unaffected.
     const maxWords = Math.max(120, Math.min(1600, input.maxWords));

@@ -89,6 +89,13 @@ const POSITION_MAP: Record<CaptionPosition, { alignment: number; marginV: number
   bottom: { alignment: 2, marginV: 260 },
 };
 
+/** Caption canvas. Defaults to 9:16 (1080x1920); pass 1920x1080 for long-form. */
+export interface CaptionResolution {
+  width: number;
+  height: number;
+}
+const DEFAULT_RESOLUTION: CaptionResolution = { width: 1080, height: 1920 };
+
 export function buildAss(
   segments: CaptionSegment[],
   clipStart: number,
@@ -96,10 +103,20 @@ export function buildAss(
   styleName = "bold-center",
   wordsPerChunk = 3,
   position?: CaptionPosition,
+  resolution: CaptionResolution = DEFAULT_RESOLUTION,
 ): string {
   const style = CAPTION_STYLES[styleName] ?? CAPTION_STYLES["bold-center"]!;
+  // Font sizes and margins are authored for a 1920-tall (9:16) canvas. On a
+  // 1080-tall (16:9) canvas the same absolute values would render oversized, so
+  // scale everything by the height ratio to keep captions the same FRACTION of
+  // the frame regardless of aspect.
+  const hScale = resolution.height / DEFAULT_RESOLUTION.height;
+  const px = (v: number) => Math.max(1, Math.round(v * hScale));
   // Position, when given, wins over the style's default placement.
-  const place = position ? POSITION_MAP[position] : { alignment: style.alignment, marginV: style.marginV };
+  const rawPlace = position ? POSITION_MAP[position] : { alignment: style.alignment, marginV: style.marginV };
+  const place = { alignment: rawPlace.alignment, marginV: px(rawPlace.marginV) };
+  const fontSize = px(style.fontSize);
+  const outline = px(style.outline);
   const events: Array<{ start: number; end: number; text: string }> = [];
 
   for (const seg of segments) {
@@ -125,15 +142,16 @@ export function buildAss(
     }
   }
 
+  const marginH = px(60);
   const header = `[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: ${resolution.width}
+PlayResY: ${resolution.height}
 WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${style.fontName},${style.fontSize},${style.primaryColour},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${style.outline},1,${place.alignment},60,60,${place.marginV},1
+Style: Default,${style.fontName},${fontSize},${style.primaryColour},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${outline},1,${place.alignment},${marginH},${marginH},${place.marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

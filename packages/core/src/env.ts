@@ -117,15 +117,19 @@ const EnvSchema = z.object({
   ANIM_CONCURRENCY: z.coerce.number().min(1).max(6).default(1),
   // Ceiling on narrated BEATS per story (sentences, not images). Long-form runs
   // ~8 minutes, which is roughly 45 sentence-length beats.
-  STORY_MAX_BEATS: z.coerce.number().min(4).max(60).default(45),
-  // Target seconds each image holds the screen. Long-form slideshows need a new
-  // picture roughly every 3s to carry emotion; any beat whose narration runs
-  // longer is split into extra stills of the same moment, so the writing stays
-  // natural sentences instead of being chopped into 8-word fragments.
+  STORY_MAX_BEATS: z.coerce.number().min(4).max(60).default(50),
+  // One DISTINCT image per beat now (no more splitting a beat into near-duplicate
+  // stills), so these two are legacy cadence knobs kept only for back-compat with
+  // older specs; the beat count sets the cadence. Cost ≈ maxBeats images/video.
   STORY_IMAGE_SECONDS: z.coerce.number().min(1.5).max(8).default(3),
-  // Hard ceiling on stills per story (cost cap). An 8-minute video at one image
-  // every 3s needs ~160; at ~$0.006 each that's ~$1.00 a video.
-  STORY_MAX_IMAGES: z.coerce.number().min(4).max(240).default(170),
+  STORY_MAX_IMAGES: z.coerce.number().min(4).max(240).default(60),
+  // Slow per-slide push-in so long-form stills breathe like the reference
+  // channels. Off falls back to the cheaper static-card render. (Parsed as a
+  // string enum, not z.coerce.boolean — the latter reads "false" as truthy.)
+  STORY_KEN_BURNS: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
 
   DOWNLOAD_DRIVER: z.enum(["mock", "ytdlp"]).default("mock"),
   MOCK_VIDEO_DURATION_SEC: z.coerce.number().default(180),

@@ -209,9 +209,16 @@ export class MockLlmProvider implements LlmProvider {
     // Offline stub: pick a mid count within the cap (the writer floats this live).
     const n = Math.max(5, Math.min(input.maxBeats, 8));
     const beats = Array.from({ length: n }, (_, i) => ({
-      text: input.voiceTags
-        ? `[curious] Beat ${i + 1} of the story about ${input.topic}. [pause] Something surprising happens.`
-        : `Beat ${i + 1} of the story about ${input.topic}. Something surprising happens here.`,
+      // Beat 1 is a valid cold open (starts with a mandated stem) so the
+      // pipeline's opening check passes; the rest just build tension.
+      text:
+        i === 0
+          ? input.voiceTags
+            ? `[curious] Imagine standing right in the middle of ${input.topic}. [pause] Something is about to go very wrong.`
+            : `Imagine standing right in the middle of ${input.topic}. Something is about to go very wrong.`
+          : input.voiceTags
+            ? `[curious] Beat ${i + 1} of the story about ${input.topic}. [pause] Something surprising happens.`
+            : `Beat ${i + 1} of the story about ${input.topic}. Something surprising happens here.`,
       imagePrompt: `Beat ${i + 1}: our recurring character reacting to ${input.topic} within the scene.`,
       delivery: i === 0 ? "Open with curiosity, slow and inviting." : `Build tension, beat ${i + 1}.`,
     }));

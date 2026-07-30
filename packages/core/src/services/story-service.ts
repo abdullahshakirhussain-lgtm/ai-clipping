@@ -3,22 +3,46 @@ import type { LlmProvider } from "@clipfactory/ai";
 import type { Dispatcher } from "@clipfactory/queue";
 import type { CreateStoryInput } from "../contracts/story.js";
 
-/** Spoken-word ceiling ≈ 2 minutes at ~150 wpm, with margin so the read lands under. */
 /**
- * Slideshows are the LONG-FORM format: ~8 minutes, not a short. At ~150 wpm
- * that's ~1200 spoken words, so the band is 1050-1300 (roughly 7-8.7 minutes).
+ * Everything that differs between a long-form 16:9 explainer and a vertical
+ * Short. `length` is the single knob the user picks; these are the derived shape.
  *
- * The floor matters as much as the ceiling — the writer is otherwise told
- * shorter is better and will hand back a 40-second story. Narration this long
- * exceeds a single TTS request, so it is synthesized in sentence-aligned chunks
- * and joined (see narration.ts).
+ * LONG is the ~8-minute format: at ~150 wpm that's ~1200 words (band 1050-1300).
+ * Each beat becomes ONE distinct illustration, so ~50 beats ≈ a new picture every
+ * ~10s — matching the reference channels. Narration this long exceeds a single
+ * TTS request, so it's synthesized in sentence-aligned chunks and joined
+ * (narration.ts). SHORT is a 9:16 clip of ~70-90s (150-220 words, ~14 beats),
+ * comfortably over the 60s monetization line.
+ *
+ * The word FLOOR matters as much as the ceiling: the writer is otherwise told
+ * shorter is better and hands back a stub.
  */
-const MAX_WORDS = 1300;
-const MIN_WORDS = 1050;
+export type StoryLength = "long" | "short";
+
+export interface LengthPreset {
+  aspect: "16:9" | "9:16";
+  /** OpenAI image size matching the aspect (landscape 3:2 vs portrait 2:3). */
+  imageSize: string;
+  maxBeats: number;
+  minWords: number;
+  maxWords: number;
+}
+
+/** `long`'s maxBeats is filled from the env cap at construction (see below). */
+export function lengthPreset(length: StoryLength, longMaxBeats: number): LengthPreset {
+  return length === "short"
+    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 14, minWords: 150, maxWords: 220 }
+    : { aspect: "16:9", imageSize: "1536x1024", maxBeats: longMaxBeats, minWords: 1050, maxWords: 1300 };
+}
 
 /** Story spec persisted on the SourceVideo (kind=story) and read by the generator. */
 export interface StorySpec {
   topic: string;
+  length: StoryLength;
+  /** "16:9" (long) or "9:16" (short) — drives image, assembly and caption canvas. */
+  aspect: "16:9" | "9:16";
+  /** OpenAI image size matching the aspect. */
+  imageSize: string;
   style: string;
   voiceTier: string;
   narrator: string;
@@ -47,19 +71,31 @@ export class StoryService {
   ) {}
 
   async suggestTopics(category?: string): Promise<string[]> {
-    return this.llm.suggestStoryTopics({ category, count: 8 });
+    // Pass the recently-used topics so the model doesn't keep proposing the same
+    // handful — the repetition the user hit came from sending no history at all.
+    const recent = await this.repos.sourceVideos.list();
+    const avoid = recent
+      .filter((v) => v.kind === "story")
+      .map((v) => v.title)
+      .filter((t): t is string => !!t)
+      .slice(0, 20);
+    return this.llm.suggestStoryTopics({ category, count: 8, avoid });
   }
 
   async create(input: CreateStoryInput): Promise<{ sourceVideoId: string }> {
     const campaignId = await this.getOrCreateStoryCampaignId();
+    const preset = lengthPreset(input.length, this.maxBeats);
     const spec: StorySpec = {
       topic: input.topic.trim(),
+      length: input.length,
+      aspect: preset.aspect,
+      imageSize: preset.imageSize,
       style: input.style,
       voiceTier: input.voiceTier,
       narrator: input.narrator,
-      maxBeats: this.maxBeats,
-      maxWords: MAX_WORDS,
-      minWords: MIN_WORDS,
+      maxBeats: preset.maxBeats,
+      maxWords: preset.maxWords,
+      minWords: preset.minWords,
       category: input.category?.trim() || undefined,
       captionStyle: input.captionStyle,
       captionPosition: input.captionPosition,
