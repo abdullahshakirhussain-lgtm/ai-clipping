@@ -752,7 +752,11 @@ Call submit_topics.`,
       ? `You are the SCENARIO ARCHITECT for an immersive, second-person history explainer (TikTok/Reels/Shorts/YouTube). The subject is: "${input.topic}".`
       : `You are the STORY ARCHITECT for a short-form (TikTok/Reels/Shorts) story video. The topic is: "${input.topic}".`;
     const architectStep1 = isScenario
-      ? `STEP 1 — FRAME THE SCENARIO. "${input.topic}" is a window into how life actually was. Pick ONE concrete vantage point to live inside for the whole video — a specific person in a specific time and place (a Roman legionary the morning of battle; a servant in a Victorian townhouse; a child in a Stone-Age camp). Then list, in "angleOptions", 3 different vantage points you considered. The whole video walks through THIS scenario and keeps revealing surprising, concrete, TRUE detail — it does NOT need a dramatic twist; the payoff is accumulated "wait, that's how it really was?!" fascination.`
+      ? `STEP 1 — FRAME ONE SCENARIO AND HOLD IT. "${input.topic}" is a window into how life actually was. Pick ONE concrete vantage point — a specific person in a specific time and place (a Roman legionary the morning of battle; a servant in a Victorian townhouse; a child trapper in an 1841 coal mine). List 3 vantage points you weighed in "angleOptions", then commit to ONE. THREE HARD RULES, because the usual failure is a script that sprawls:
+   - ONE POINT OF VIEW, WHOLE VIDEO. The entire thing is lived from that one vantage in SECOND PERSON ("you"). NEVER cut away to "a real person did this" / "X, aged 8, testified that…" — that shatters the immersion and turns it into a museum plaque. Real names, dates and testimony are still used, but WOVEN INTO the walk ("a girl your age, Sarah Gooder, would later tell the inspectors she sang only when she had a light") — you never leave the vantage point to cite them from outside.
+   - ONE THREAD, NOT A SURVEY. Follow a single lived arc through this one experience (e.g. one shift: the descent → the dark → the door → the gas → the disaster that ends it → the law). Do NOT try to cover the whole topic — resist the pull to list every related person, place and event. Better to go deep on one thread than wide across ten.
+   - TIGHT CAST. Name at most ONE real person, and only if the thread genuinely returns to them; everyone else is a role ("a seventeen-year-old hurrier", "the overseer"), never a name met once and dropped.
+The payoff is accumulated "wait, that's how it really was?!" — no dramatic twist required, but every beat must CAUSALLY follow the last (no swapping to an unrelated danger or fact).`
       : `STEP 1 — BRAINSTORM 3 ANGLES, THEN PICK ONE. A topic is not a story. Think of 3 genuinely DIFFERENT true story angles, each unmistakably about "${input.topic}" (different people / events / moments). Judge them on: strongest hook, clearest arc, a real TURN (a reversal, a "wait, what?"), and how squarely on-topic they are. Then pick the SINGLE best — an angle with no real turn is disqualified. List the 3 one-line angle premises you weighed in "angleOptions".`;
     const architectEnding = isScenario
       ? `4. "ending": the single most vivid or surprising concrete detail to CLOSE on — the last "huh, wild" beat, stated plainly. Not a moral, not a summary, not "and that's how it was" — just the strongest remaining detail, landed and done.`
@@ -761,7 +765,10 @@ Call submit_topics.`,
       ? `   - "role": its job — hook / reveal / escalate / turn-of-the-screw / close.`
       : `   - "role": its job in the arc — hook / rehook / setup / rising / turn / payoff.`;
     const narratorFraming = isScenario
-      ? `You are the NARRATOR of an immersive second-person history explainer about "${input.topic}". Put the viewer INSIDE the scenario ("you") and walk them through it, each beat revealing another concrete, surprising, TRUE detail of how it actually was. It does not need a plot twist — escalating fascination is the engine.`
+      ? `You are the NARRATOR of an immersive second-person history explainer about "${input.topic}". Put the viewer INSIDE the scenario ("you") and walk them through it, each beat revealing another concrete, surprising, TRUE detail of how it actually was. It does not need a plot twist — escalating fascination is the engine. THREE RULES YOU MUST HOLD:
+1. STAY IN "YOU" EVERY BEAT. Never break the immersion to cite a witness from outside ("a real girl did this — Sarah, aged 8, told the Commission…"). Weave real names/testimony INTO the second-person walk instead ("a girl your age, Sarah Gooder, would tell the inspectors she sang only when she had a light"). If a beat starts sounding like a documentary or a plaque, rewrite it back into "you".
+2. ONE THREAD. Follow the single lived arc from the spine; do NOT wander off to survey every related person or event. Name at most one real person; everyone else is a role.
+3. CAUSAL CHAIN. Every beat follows from the one before — never jump to an unrelated danger or fact (if a beat is about gas, the next isn't suddenly about a flood unless you connect them).`
       : `You are the NARRATOR. Turn this planned story about "${input.topic}" into finished spoken narration, beat by beat.`;
     // Scenario mode has no "final event", so the model reaches for a summary to
     // close — which is exactly the banned cringe closer. Tell it to stop on a
@@ -769,6 +776,13 @@ Call submit_topics.`,
     const narratorEnding = isScenario
       ? `\n- SCENARIO ENDING: a scenario has no single final event, so DO NOT wrap up, zoom out, or reflect. End MID-SCENE on one concrete sensory detail — the last thing you'd SEE, HEAR, or FEEL in that moment (the candle guttering out, the smell of wet earth, boots on the duckboards). The pull to summarize ("and that was life in…", "it makes you wonder…") IS the banned closer. Stop on the image, not a comment on it.`
       : ``;
+    // The spine's retention shape differs by mode: a story builds to a dramatic
+    // turn+payoff; a scenario is ONE escalating lived thread with no twist. The
+    // story shape was leaking into scenarios and pulling them toward a "climax"
+    // (a survey ending on a disaster) instead of one coherent experience.
+    const spineStructure = isScenario
+      ? `Structure it as ONE escalating LIVED THREAD, all inside the single vantage point: beat 1 = the cold open above (you, mid-scene); each later beat raises the stakes or strangeness of THIS experience and follows causally from the one before; NEVER branch off to survey other people, places or events, and never cut to citing a witness from outside. There is no dramatic "twist" — the engine is accumulating "that's how it really was" detail. The LAST beat lands on the single most vivid concrete detail of the moment and stops.`
+      : `Structure it for retention: beat 1 = "hook" (the cold open above); an early "rehook" (~beat 2-3) that opens a second loop before curiosity dips; the stakes/tension RISE every beat with no flat middle; a clear "turn" around 60-70%; the LAST beat is "payoff" — the story's final real event, where the narration simply stops.`;
 
     // ── Pass 1: architect the TRUE story spine (real facts + arc + a factual
     // ending). Planning the backbone up front is what makes the finished
@@ -813,7 +827,7 @@ ${architectEnding}
 ${architectSpineRoles}
    - "fact": the concrete real thing that happens in this beat, one line — and every fact NAMES its people and places outright (real names, dates, amounts): "Glyndwr Michael, a homeless Welshman, dies in London in January 1943", never "a man dies". No bare he/they/the man in a spine fact.
    KEEP THE CAST TIGHT: give NAMES only to the 1-3 people the story actually returns to, and the first fact that names someone must say who they are ("a British spy, Ewen Montagu"). Everyone who appears only once stays a role, never a name (a coroner, a fisherman) — a name the viewer meets once and never again just confuses.
-   The spine is a CHAIN, not a list: each fact must follow causally from the one before (this happened, SO that happened). Structure it for retention: beat 1 = "hook" (the cold open above); an early "rehook" (~beat 2-3) that opens a second loop before curiosity dips; the stakes/tension RISE every beat with no flat middle; a clear "turn" around 60-70%; the LAST beat is "payoff" — the story's final real event, where the narration simply stops. NO wrap-up or resolution beat after it. Use only as many beats as the true story needs — don't pad.
+   The spine is a CHAIN, not a list: each fact must follow causally from the one before (this happened, SO that happened). ${spineStructure} NO wrap-up or resolution beat after it. Use only as many beats as the true story needs — don't pad.
 
 Call submit_outline.`,
       {
