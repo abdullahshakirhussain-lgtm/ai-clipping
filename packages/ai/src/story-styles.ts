@@ -1,3 +1,5 @@
+import { STYLE_REFS } from "./style-refs.generated.js";
+
 /**
  * Locked visual styles for Story Studio. The anchor is appended to EVERY beat's
  * image prompt so all frames in one video share a look — the main lever for
@@ -21,6 +23,18 @@ export const STYLE_PRESETS: Record<string, string> = {
 
 export const DEFAULT_STYLE = "stick-scene";
 
+/**
+ * Fixed style-reference exemplar for a style, as a Buffer — fed to gpt-image's
+ * edits endpoint so the look is enforced by EXAMPLE, not a text description
+ * (which mini collapses). Null when no exemplar has been generated for the style
+ * yet; the caller then falls back to the text anchor. See style-refs.generated.ts
+ * and scripts/gen-style-exemplars.ts.
+ */
+export function styleRefBuffer(style: string): Buffer | null {
+  const b64 = STYLE_REFS[style];
+  return b64 ? Buffer.from(b64, "base64") : null;
+}
+
 /** Resolve a style key to its anchor, falling back to the default. */
 export function styleAnchor(style: string): string {
   return STYLE_PRESETS[style] ?? STYLE_PRESETS[DEFAULT_STYLE]!;
@@ -43,11 +57,18 @@ export function styledImagePrompt(
   style: string,
   setting?: string,
   orientation: ImageOrientation = "portrait",
+  hasStyleRef = false,
 ): string {
   const world = setting && setting.trim() ? ` Setting: ${setting.trim()}.` : "";
   const frame = orientation === "landscape" ? "Horizontal 16:9 widescreen" : "Vertical 9:16";
+  // When a style-reference image is attached (edits endpoint), tell the model to
+  // copy the reference's LOOK but not its content — otherwise it edits the
+  // exemplar instead of drawing the new subject.
+  const refLine = hasStyleRef
+    ? " Match the ART STYLE of the reference image exactly — its line work, colour palette and level of detail — but draw the NEW subject described above; do NOT reuse the reference's content, characters or composition."
+    : "";
   // ONE single picture per image. The image model otherwise sometimes returns a
   // collage / triptych / comic strip — several small panels, some clipped by the
   // frame edge ("spilling out"). Forbid that outright.
-  return `${imagePrompt.trim()}.${world} Style: ${styleAnchor(style)}. ${frame}, subject centered, no text. ONE single picture — a SINGLE composition with one main subject, fully inside the frame. NO panels, NO split-screen, NO collage, NO grid or strip of multiple images, nothing clipped or spilling past the edges.`;
+  return `${imagePrompt.trim()}.${world} Style: ${styleAnchor(style)}.${refLine} ${frame}, subject centered, no text. ONE single picture — a SINGLE composition with one main subject, fully inside the frame. NO panels, NO split-screen, NO collage, NO grid or strip of multiple images, nothing clipped or spilling past the edges.`;
 }

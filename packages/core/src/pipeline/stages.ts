@@ -4,6 +4,7 @@ import {
   narratorInstruction,
   solidPng,
   styledImagePrompt,
+  styleRefBuffer,
   type CommentaryLine,
   type CommentaryMode,
   type CommentaryRole,
@@ -1064,14 +1065,23 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     //     (landscape 16:9 vs portrait 9:16) instead of being cropped.
     const orientation = spec.aspect === "16:9" ? "landscape" : "portrait";
     const imageSize = spec.imageSize ?? (orientation === "landscape" ? "1536x1024" : "1024x1536");
+    // Enforce the chosen style by EXAMPLE: feed a fixed style-reference exemplar
+    // to the image model on every frame (edits endpoint) so it copies the look
+    // instead of interpreting a text description — a description gpt-image-1-mini
+    // collapses to one default style. Null (no exemplar generated yet) falls back
+    // to the text anchor. Same exemplar every beat → one locked look, no content
+    // carryover between frames.
+    const styleRef = styleRefBuffer(spec.style);
+    const hasRef = !!styleRef;
     await setProgress("Drawing the images", 30);
     let done = 0;
     const images = await mapWithConcurrency(mergedShots.map((m) => m.prompt), 3, async (prompt, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
         const { image } = await ctx.images.generate({
-          prompt: styledImagePrompt(prompt, spec.style, story.setting, orientation),
+          prompt: styledImagePrompt(prompt, spec.style, story.setting, orientation, hasRef),
           size: imageSize,
+          ...(styleRef ? { referenceImage: styleRef } : {}),
         });
         await fs.writeFile(imgFile, image);
       } catch (err) {
@@ -1087,8 +1097,13 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
             spec.style,
             story.setting,
             orientation,
+            hasRef,
           );
-          const { image } = await ctx.images.generate({ prompt: neutral, size: imageSize });
+          const { image } = await ctx.images.generate({
+            prompt: neutral,
+            size: imageSize,
+            ...(styleRef ? { referenceImage: styleRef } : {}),
+          });
           await fs.writeFile(imgFile, image);
         } catch (err2) {
           ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err2) }, "image gen failed twice; using plain card");
