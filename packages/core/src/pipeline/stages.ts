@@ -1157,6 +1157,10 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     const thumbPath = join(workDir, "thumb.jpg");
     await extractSmartThumbnail(outPath, thumbPath);
 
+    // The video's NAME is the topic that drove the script — the thing the user
+    // picked/typed — not the model's invented `story.title`, which reads as
+    // clickbait that has nothing to do with the script. One source of truth.
+    const displayTitle = spec.topic.trim() || story.title;
     const [clip] = await ctx.repos.clips.createMany([
       {
         sourceVideoId,
@@ -1167,7 +1171,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         // content (nothing to vet), and distribution only routes APPROVED clips —
         // a review status here made story clips silently un-queueable.
         status: ClipStatus.APPROVED,
-        detectionReason: story.title,
+        detectionReason: displayTitle,
         detectionSource: "story",
         captionStyle: video.captionStyle,
         captionPosition: video.captionPosition,
@@ -1187,10 +1191,10 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       error: null,
     });
     await ctx.repos.clips.upsertEnhancement(clip!.id, {
-      title: story.title,
+      title: displayTitle,
       description: story.description,
       hashtags: story.hashtags,
-      hooks: { variants: [story.title], selectedIndex: 0 } as never,
+      hooks: { variants: [displayTitle], selectedIndex: 0 } as never,
       qualityScore: 80,
       viralScore: 80,
       estimatedEngagement: 80,
