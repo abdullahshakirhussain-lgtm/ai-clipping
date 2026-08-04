@@ -25,6 +25,12 @@ const EnvSchema = z.object({
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-5"),
   /** Model for commentary writing only (two-pass). Opus is wittier; ~5x text cost. */
   COMMENTARY_MODEL: z.string().default("claude-opus-4-8"),
+  // Cheap text tasks (topic suggestions + the tight image-prompt pass) route to
+  // DeepSeek V4 Flash when a key is set — ~1/50th the Opus text cost. Narration
+  // itself always stays on the Opus writer. Empty key → these fall back to Anthropic.
+  DEEPSEEK_API_KEY: z.string().optional().default(""),
+  DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
+  DEEPSEEK_BASE_URL: z.string().default("https://api.deepseek.com/v1"),
   // ── Wave 3 (cloud): transcription provider. "groq" = Whisper (no diarization);
   //    "deepgram" = word-level + speaker labels. Needs DEEPGRAM_API_KEY.
   TRANSCRIBE_PROVIDER: z.enum(["groq", "deepgram"]).default("groq"),

@@ -3,6 +3,8 @@ export * from "./mock.js";
 export * from "./groq.js";
 export * from "./deepgram.js";
 export * from "./anthropic.js";
+export * from "./deepseek.js";
+export * from "./story-prompts.js";
 export * from "./openai-tts.js";
 export * from "./openai-image.js";
 export * from "./fal-image.js";

@@ -196,6 +196,28 @@ export interface ExpandImagePromptsInput {
   beats: Array<{ text: string; imagePrompt: string; count: number }>;
 }
 
+export interface RefineImagePromptsInput {
+  topic: string;
+  /** The story's locked visual world, threaded into every prompt. */
+  setting: string;
+  /** Style key (e.g. "stick-openai") — the caller appends the art anchor after. */
+  style: string;
+  /** The finished beats, in order. Only the spoken line is needed. */
+  beats: Array<{ text: string; imagePrompt?: string }>;
+}
+
+/**
+ * The cheap text tasks — topic brainstorming and the dedicated tight-image-prompt
+ * pass — that can run on a budget model (DeepSeek V4 Flash) instead of the Opus
+ * writer. Any {@link LlmProvider} also satisfies this, so it's the graceful
+ * fallback when no cheap model is configured.
+ */
+export interface CheapTextProvider {
+  suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]>;
+  /** One tight, on-topic image prompt per beat, in order (length === beats.length). */
+  refineImagePrompts(input: RefineImagePromptsInput): Promise<string[]>;
+}
+
 // ── Animated stick shorts (one generated clip per narrated beat) ────────────
 
 /** One ~8s animated beat: the narration, its first frame, and what moves. */
@@ -568,6 +590,12 @@ export interface LlmProvider {
    * prompt back.
    */
   expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]>;
+  /**
+   * Dedicated pass that rewrites the finished beats into one tight, accurate
+   * on-topic image prompt each — the "tighter + more consistent images" pass.
+   * Part of {@link CheapTextProvider} so it can run on a budget model.
+   */
+  refineImagePrompts(input: RefineImagePromptsInput): Promise<string[]>;
   /**
    * Turn narrated beats into ANIMATION shots: a first-frame still prompt plus
    * the motion that plays over it. Split in two because the still is what keeps

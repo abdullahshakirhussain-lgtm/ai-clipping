@@ -1,5 +1,5 @@
 import type { Repositories } from "@clipfactory/db";
-import type { LlmProvider } from "@clipfactory/ai";
+import type { CheapTextProvider, LlmProvider } from "@clipfactory/ai";
 import type { Dispatcher } from "@clipfactory/queue";
 import type { CreateStoryInput } from "../contracts/story.js";
 
@@ -66,12 +66,19 @@ export interface StorySpec {
  * video lands in the Library like any clip.
  */
 export class StoryService {
+  /** Suggestions run on the cheap provider (DeepSeek) when configured; falls back
+   *  to the main LLM when `cheapText` is omitted. */
+  private readonly cheapText: CheapTextProvider;
+
   constructor(
     private readonly repos: Repositories,
     private readonly llm: LlmProvider,
     private readonly dispatcher: Dispatcher,
     private readonly maxBeats: number,
-  ) {}
+    cheapText?: CheapTextProvider,
+  ) {
+    this.cheapText = cheapText ?? llm;
+  }
 
   async suggestTopics(category?: string): Promise<string[]> {
     // Pass the recently-used topics so the model doesn't keep proposing the same
@@ -82,7 +89,7 @@ export class StoryService {
       .map((v) => v.title)
       .filter((t): t is string => !!t)
       .slice(0, 20);
-    return this.llm.suggestStoryTopics({ category, count: 8, avoid });
+    return this.cheapText.suggestStoryTopics({ category, count: 8, avoid });
   }
 
   async create(input: CreateStoryInput): Promise<{ sourceVideoId: string }> {

@@ -1,5 +1,6 @@
 import type {
   CallAudioProvider,
+  CheapTextProvider,
   ImageProvider,
   LlmProvider,
   TranscriptionProvider,
@@ -23,6 +24,12 @@ export interface PipelineContext {
   dispatcher: Dispatcher;
   transcription: TranscriptionProvider;
   llm: LlmProvider;
+  /**
+   * Cheap text tasks (topic suggestions + the tight image-prompt pass) — DeepSeek
+   * V4 Flash when configured, else falls back to `llm`. The narration writer stays
+   * on `llm` (Opus); only these mechanical tasks run cheap.
+   */
+  cheapText: CheapTextProvider;
   /**
    * Voice for the commentary track by clip tier: "premium" → ElevenLabs v3
    * when configured (manual per-clip upgrade, paid credits), anything else →

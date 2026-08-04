@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveVoice, voiceCatalogue } from "./call-brief.js";
+import { buildImagePromptsInstruction, buildTopicsInstruction } from "./story-prompts.js";
 import { planVisionBatches } from "./types.js";
 import type {
   AnimShot,
@@ -27,6 +28,7 @@ import type {
   PlanCommentaryInput,
   PlanEnhancementsInput,
   RefineHighlightsInput,
+  RefineImagePromptsInput,
   SfxCue,
   SfxSound,
   TranscriptSegment,
@@ -698,42 +700,10 @@ Call submit_metadata with optimized fields.`,
   }
 
   async suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]> {
-    // The old suggester hunted for "a specific dramatic true story" — a shallow
-    // well that loops within a dozen presses. The reference-channel format is an
-    // immersive SCENARIO ("Imagine you're a Roman soldier the night before a
-    // battle…", "What happened if you got sick in the Middle Ages"), and that
-    // space is enormous: era × aspect-of-life × frame. Sampling a few random
-    // seeds each call spreads suggestions across it so they don't repeat.
-    const eras = [
-      "the Stone Age", "ancient Egypt", "ancient Rome", "ancient Greece", "the Viking age",
-      "medieval Europe", "feudal Japan", "the Aztec empire", "the Ottoman empire", "Qing-dynasty China",
-      "the Victorian era", "the American frontier (1800s)", "the age of sail", "WWII on the home front", "ancient Mesopotamia",
-    ];
-    const aspects = [
-      "food and eating", "medicine and getting sick", "hygiene and the toilet", "death and burial", "war and battle",
-      "love, sex and marriage", "money and trade", "crime and punishment", "work and a typical day", "childhood and school",
-      "travel and navigation", "law and justice", "entertainment and games", "religion and the afterlife", "disease and plague",
-    ];
-    const pick = <T,>(a: T[], n: number) => [...a].sort(() => Math.random() - 0.5).slice(0, n);
-    const seedEras = pick(eras, 4).join(", ");
-    const seedAspects = pick(aspects, 5).join(", ");
-    const avoidBlock = input.avoid?.length
-      ? `\n\nDo NOT repeat or lightly reword any of these already-used ideas — go to a different era/aspect entirely:\n${input.avoid.map((t) => `- ${t}`).join("\n")}`
-      : "";
+    // Prompt is shared with the DeepSeek path (story-prompts.ts) so the two never
+    // drift; this is the Anthropic/fallback route when no cheap model is set.
     const result = await this.callTool<{ topics?: string[] }>(
-      `Propose ${input.count} SCENARIO ideas for immersive, second-person history explainer videos${
-        input.category ? ` for a "${input.category}" channel` : ""
-      } — the kind that opens "Imagine you're a…" and reveals how something in the past actually was.
-
-Each idea pairs an ERA with an ASPECT OF LIFE, framed as a simple curiosity. Good shapes: "A day in the life of [person in an era]", "What happened if you [did X] in [era]", "How people [did X] before [Y]", "What [aspect] was actually like in [era]".
-
-MIX MAINSTREAM WITH NICHE: about HALF the ideas should be broadly interesting to anyone — familiar, "everyone wonders about this" topics (what a school day was like long ago, how people kept food from spoiling, how they told the time, what happened when you got a toothache) — and about half can be more niche/surprising. Do NOT make them all obscure; a wall of ultra-niche ideas is a fail.
-
-PLAIN WORDING — the idea itself must be in everyday language a normal person instantly gets. NO historical jargon or specialist terms in the idea ("What Florentine sumptuary law forbade" is bad; "What you were and weren't allowed to wear" is good). If someone would need to look up a word in the idea, reword it.
-
-For variety THIS time, lean on these eras — ${seedEras} — and these aspects — ${seedAspects} — but you may mix in others. Each idea 6-12 words, concrete and specific, no numbering.${avoidBlock}
-
-Call submit_topics.`,
+      `${buildTopicsInstruction(input)}\n\nCall submit_topics.`,
       {
         name: "submit_topics",
         description: "Submit candidate scenario ideas.",
@@ -747,6 +717,26 @@ Call submit_topics.`,
       { temperature: 1 },
     );
     return strList(result.topics).map((s) => s.trim()).filter(Boolean).slice(0, input.count);
+  }
+
+  async refineImagePrompts(input: RefineImagePromptsInput): Promise<string[]> {
+    if (input.beats.length === 0) return [];
+    const result = await this.callTool<{ prompts?: string[] }>(
+      `${buildImagePromptsInstruction(input)}\n\nCall submit_image_prompts with exactly ${input.beats.length} prompts, in beat order.`,
+      {
+        name: "submit_image_prompts",
+        description: "Submit one tight image prompt per beat, in order.",
+        input_schema: {
+          type: "object",
+          properties: { prompts: { type: "array", items: { type: "string" } } },
+          required: ["prompts"],
+        },
+      },
+      Math.max(1024, input.beats.length * 60 + 512),
+      { model: this.model, effort: "low" },
+    );
+    const prompts = asArray<unknown>(result.prompts).map((p) => String(p ?? "").trim());
+    return input.beats.map((b, i) => prompts[i] || b.imagePrompt?.trim() || b.text.trim());
   }
 
   async writeStory(input: WriteStoryInput): Promise<StoryScript> {

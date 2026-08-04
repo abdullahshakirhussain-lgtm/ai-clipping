@@ -2,6 +2,7 @@ import { join } from "node:path";
 import {
   AnthropicLlmProvider,
   DeepgramTranscriptionProvider,
+  DeepSeekProvider,
   ElevenLabsTtsProvider,
   GroqWhisperProvider,
   FalImageProvider,
@@ -17,6 +18,7 @@ import {
   OpenAiImageProvider,
   OpenAiTtsProvider,
   type CallAudioProvider,
+  type CheapTextProvider,
   type ImageProvider,
   type LlmProvider,
   type TranscriptionProvider,
@@ -168,6 +170,26 @@ function buildAiProviders(env: Env, logger: Logger): {
     transcription: new MockTranscriptionProvider(env.MOCK_VIDEO_DURATION_SEC),
     llm: new MockLlmProvider(),
   };
+}
+
+/**
+ * Cheap text tasks (topic suggestions + the tight image-prompt pass) run on
+ * DeepSeek V4 Flash when a key is set — ~1/50th the Opus text cost. With no key,
+ * they fall back to the main LLM (which also satisfies CheapTextProvider), so the
+ * feature degrades gracefully with zero config. The narration writer is never
+ * routed here.
+ */
+function buildCheapText(env: Env, logger: Logger, llm: LlmProvider): CheapTextProvider {
+  if (env.DEEPSEEK_API_KEY) {
+    logger.info({ model: env.DEEPSEEK_MODEL }, "cheap text tasks: DeepSeek (suggestions + image prompts)");
+    return new DeepSeekProvider({
+      apiKey: env.DEEPSEEK_API_KEY,
+      model: env.DEEPSEEK_MODEL,
+      baseUrl: env.DEEPSEEK_BASE_URL,
+    });
+  }
+  logger.info("cheap text tasks: no DeepSeek key — falling back to the main LLM");
+  return llm;
 }
 
 function buildTtsProvider(env: Env, logger: Logger): TtsProvider {
@@ -353,6 +375,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const repos = createRepositories(prisma);
   const storage = buildStorage(env, logger);
   const { transcription, llm } = buildAiProviders(env, logger);
+  const cheapText = buildCheapText(env, logger, llm);
   const ttsFor = buildTtsTiers(env, logger);
   const images = buildImageProvider(env, logger);
   // Cook holds an 8s shot of a single continuous cooking action; animation cuts
@@ -374,6 +397,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     storage,
     transcription,
     llm,
+    cheapText,
     ttsFor,
     images,
     sceneImages,
@@ -429,7 +453,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     discovery: new DiscoveryService(repos, buildFeedProviders(env, logger), videos, logger, {
       maxAgeHours: env.DISCOVERY_MAX_AGE_H,
     }),
-    story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS),
+    story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS, cheapText),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
     calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
     anim: new AnimService(repos, llm, dispatcher, env.ANIM_MAX_SHOTS),

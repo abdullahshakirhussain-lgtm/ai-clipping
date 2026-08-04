@@ -1029,6 +1029,23 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       story.beats = cleaned;
       story.script = cleaned.map((b) => b.text).join("\n\n");
     }
+    // Tighter, more consistent images: a dedicated CHEAP pass (DeepSeek when
+    // configured, else the main LLM) rewrites each beat into one accurate, on-topic
+    // prompt that draws exactly what the line says and keeps the character look
+    // consistent. Best-effort — any failure keeps the writer's original prompts.
+    try {
+      const tight = await ctx.cheapText.refineImagePrompts({
+        topic: spec.topic,
+        setting: story.setting,
+        style: spec.style,
+        beats: story.beats.map((b) => ({ text: b.text, imagePrompt: b.imagePrompt })),
+      });
+      if (tight.length === story.beats.length) {
+        story.beats = story.beats.map((b, i) => ({ ...b, imagePrompt: tight[i]!.trim() || b.imagePrompt }));
+      }
+    } catch (err) {
+      ctx.logger.warn({ sourceVideoId, reason: String(err) }, "image-prompt refine failed; keeping writer prompts");
+    }
     // Persist the script immediately so it's viewable even while images render.
     await setProgress("Recording the narration", 25, {
       script: story.script,

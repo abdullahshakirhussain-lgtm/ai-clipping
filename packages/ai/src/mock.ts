@@ -14,6 +14,7 @@ import type {
   DetectHighlightsInput,
   ImageProvider,
   PlanCookInput,
+  RefineImagePromptsInput,
   StoryScript,
   SuggestTopicsInput,
   VideoProvider,
@@ -253,6 +254,11 @@ export class MockLlmProvider implements LlmProvider {
     return input.beats.map((b) =>
       Array.from({ length: b.count }, (_, k) => `${shots[k % shots.length]}: ${b.imagePrompt}`),
     );
+  }
+
+  async refineImagePrompts(input: RefineImagePromptsInput): Promise<string[]> {
+    // Offline stub: draw exactly the line, in the story's world.
+    return input.beats.map((b) => `${b.text.trim()} — ${input.setting}`.trim());
   }
 
   async planAnimationShots(input: PlanAnimationInput): Promise<{ cast: string; shots: AnimShot[] }> {
