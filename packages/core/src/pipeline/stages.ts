@@ -4,7 +4,6 @@ import {
   narratorInstruction,
   solidPng,
   styledImagePrompt,
-  styleRefBuffer,
   type CommentaryLine,
   type CommentaryMode,
   type CommentaryRole,
@@ -19,11 +18,14 @@ import {
   assembleSlideshow,
   buildAss,
   type CaptionWord,
+  compositeFigure,
+  concatClips,
   type EditPlan,
   extractAudio,
   extractFrames,
   extractSmartThumbnail,
   mixMusic,
+  renderStickman,
   resolveMusicFile,
   findLoudnessPeaks,
   type FreezeInsert,
@@ -50,6 +52,7 @@ import {
 import { synthesizeNarration } from "../narration.js";
 import { planImageCadence, planStoryTiming } from "../story-timing.js";
 import type { PipelineContext } from "./context.js";
+import { getOutro } from "./outro.js";
 
 const clipKey = (clipId: string) => `clips/${clipId}/clip.mp4`;
 const thumbKey = (clipId: string) => `clips/${clipId}/thumb.jpg`;
@@ -914,6 +917,43 @@ export function stripCringeEnding<T extends { text: string }>(beats: T[]): T[] {
   return out.length > 0 ? out : beats; // never strip everything to nothing
 }
 
+/**
+ * Scrub the "AI tell" connectives that scream machine-written — "And here's the
+ * strange part:", "But that's not the worst part —", "Plot twist.", "here's where
+ * it gets wild:". The prompt bans them and the model invents new ones anyway, so
+ * we catch them deterministically, the way we do for cringe endings.
+ *
+ * Two moves per sentence: a tell used as a LEAD-IN to real content (before a colon
+ * or dash) is dropped, keeping the real statement that follows; a tell that is a
+ * standalone hype sentence with no real content is removed outright. A tell word
+ * must be present, so ordinary sentences ("here is the address: …") are untouched.
+ * Pure, so it's unit-tested. Never empties a beat.
+ */
+export function stripAiTells<T extends { text: string }>(beats: T[]): T[] {
+  const splitSentences = (text: string) => text.match(/[^.!?]+[.!?]*\s*/g)?.map((s) => s.trim()).filter(Boolean) ?? [];
+  const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+  const TELL = "strange|wild|crazy|weird|surprising|mad|mind-?blowing|interesting|kicker|catch|twist|worst|best|wildest|strangest|craziest";
+  // Lead-in to real content before a ":" or "—": keep the tail.
+  const lead1 = new RegExp(`^(?:and |but |now |so |and now )?(?:here'?s|here is|what'?s)\\b[^:—]*\\b(?:${TELL}|part|thing)\\b[^:—]*[:—]\\s*(.+)$`, "i");
+  const lead2 = new RegExp(`^(?:and |but )?that'?s not (?:even )?the (?:${TELL}|worst) (?:part|half|of it)\\b[^:—,]*[,:—]\\s*(.+)$`, "i");
+  // Standalone hype sentence with no real payload: drop it.
+  const standalone = new RegExp(`^(?:and |but |now )?(?:here'?s (?:the|where)\\b.*|that'?s not (?:even )?the (?:worst|half|${TELL}) (?:part|of it)\\b.*|plot twist\\b.*|but wait,? there'?s more\\b.*|it (?:only |just )?gets (?:${TELL}|weirder|stranger|worse|better)\\b.*|the (?:${TELL}) part\\??\\b.*)$`, "i");
+  return beats.map((b) => {
+    const kept: string[] = [];
+    for (const s of splitSentences(b.text)) {
+      const m = s.match(lead1) ?? s.match(lead2);
+      if (m && m[1] && m[1].trim().length > 8) {
+        kept.push(cap(m[1].trim()));
+        continue;
+      }
+      if (standalone.test(s)) continue;
+      kept.push(s);
+    }
+    const text = kept.join(" ").replace(/\s+/g, " ").trim();
+    return { ...b, text: text || b.text };
+  });
+}
+
 export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
   const moved = await ctx.repos.sourceVideos.transition(
     sourceVideoId,
@@ -948,7 +988,9 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
 
     // 1. Script → beats. This is the whole product; everything else is assembly.
     await setProgress("Writing the script", 10);
-    const tts = ctx.ttsFor(spec.voiceTier);
+    // Story narration is ALWAYS the premium voice (ElevenLabs) — no tier to pick.
+    // Falls back to standard only if ElevenLabs isn't configured (see container.ts).
+    const tts = ctx.ttsFor("premium");
     const storyInput = {
       topic: spec.topic,
       mode: spec.mode ?? "scenario",
@@ -976,12 +1018,14 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       const retry = await ctx.llm.writeStory(storyInput);
       if (retry.beats.length > 0) story = retry;
     }
-    // Deterministically strip a tacked-on cringe closer — the writer's blocklist
-    // never fully holds. Rebuild the script so the stored copy matches what's
-    // actually narrated + captioned.
-    const cleaned = stripCringeEnding(story.beats);
-    if (cleaned.length !== story.beats.length || cleaned.at(-1)?.text !== story.beats.at(-1)?.text) {
-      ctx.logger.info({ sourceVideoId, was: story.beats.at(-1)?.text.slice(-80) }, "stripped a cringe ending");
+    // Deterministically scrub the AI tells the prompt never fully suppresses:
+    // first the "here's the strange part / but that's not the worst part" connective
+    // giveaways (mid-script), then a tacked-on cringe closer. Rebuild the script so
+    // the stored copy matches what's actually narrated + captioned.
+    const detold = stripAiTells(story.beats);
+    const cleaned = stripCringeEnding(detold);
+    if (cleaned.length !== story.beats.length || cleaned.some((b, i) => b.text !== story.beats[i]?.text)) {
+      ctx.logger.info({ sourceVideoId }, "scrubbed AI tells / cringe ending");
       story.beats = cleaned;
       story.script = cleaned.map((b) => b.text).join("\n\n");
     }
@@ -1065,25 +1109,30 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     //     (landscape 16:9 vs portrait 9:16) instead of being cropped.
     const orientation = spec.aspect === "16:9" ? "landscape" : "portrait";
     const imageSize = spec.imageSize ?? (orientation === "landscape" ? "1536x1024" : "1024x1536");
-    // Enforce the chosen style by EXAMPLE: feed a fixed style-reference exemplar
-    // to the image model on every frame (edits endpoint) so it copies the look
-    // instead of interpreting a text description — a description gpt-image-1-mini
-    // collapses to one default style. Null (no exemplar generated yet) falls back
-    // to the text anchor. Same exemplar every beat → one locked look, no content
-    // carryover between frames.
-    const styleRef = styleRefBuffer(spec.style);
-    const hasRef = !!styleRef;
+    // "stick-fal" is the composite path: the image model draws only the (no-people)
+    // background, and we paste our deterministic code-drawn stick figure on top, so
+    // the character is byte-identical every frame. "stick-openai" is the plain
+    // text-to-image path where the model draws the whole frame from the anchor.
+    const isFal = spec.style === "stick-fal";
     await setProgress("Drawing the images", 30);
     let done = 0;
     const images = await mapWithConcurrency(mergedShots.map((m) => m.prompt), 3, async (prompt, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
-        const { image } = await ctx.images.generate({
-          prompt: styledImagePrompt(prompt, spec.style, story.setting, orientation, hasRef),
-          size: imageSize,
-          ...(styleRef ? { referenceImage: styleRef } : {}),
-        });
-        await fs.writeFile(imgFile, image);
+        if (isFal) {
+          const { image: bg } = await ctx.images.generate({
+            prompt: styledImagePrompt(prompt, "stick-fal", story.setting, orientation),
+            size: imageSize,
+          });
+          const { figurePng } = await renderStickman({ figures: [{ pose: "stand", expression: "neutral", scale: 0.9 }], width: 300, height: 450 });
+          await fs.writeFile(imgFile, await compositeFigure(bg, figurePng, { heightFrac: 0.44, xFrac: 0.5, bottomFrac: 0.92 }));
+        } else {
+          const { image } = await ctx.images.generate({
+            prompt: styledImagePrompt(prompt, spec.style, story.setting, orientation),
+            size: imageSize,
+          });
+          await fs.writeFile(imgFile, image);
+        }
       } catch (err) {
         // Grim beat prompts (corpses, dictators, plagues — normal for the
         // history/true-crime niches) can trip the provider's moderation. Second
@@ -1097,13 +1146,8 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
             spec.style,
             story.setting,
             orientation,
-            hasRef,
           );
-          const { image } = await ctx.images.generate({
-            prompt: neutral,
-            size: imageSize,
-            ...(styleRef ? { referenceImage: styleRef } : {}),
-          });
+          const { image } = await ctx.images.generate({ prompt: neutral, size: imageSize });
           await fs.writeFile(imgFile, image);
         } catch (err2) {
           ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err2) }, "image gen failed twice; using plain card");
@@ -1142,15 +1186,19 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       kenBurns: ctx.config.story.kenBurns,
     });
 
-    // 3b. Optional background-music bed (skips cleanly if no track is present).
-    const musicFile = spec.music ? await resolveMusicFile(spec.music) : null;
-    if (musicFile) {
-      const withMusic = join(workDir, "story-music.mp4");
-      await mixMusic(outPath, musicFile, withMusic, workDir);
-      outPath = withMusic;
-      ctx.logger.info({ sourceVideoId, mood: spec.music }, "music bed mixed in");
-    } else if (spec.music && spec.music !== "none") {
-      ctx.logger.info({ sourceVideoId, mood: spec.music }, "no music track found; skipping bed");
+    // 3b. Append the reused like/subscribe/follow outro. Built ONCE and cached, so
+    //     every video ends the same way with its own graphic + narration that reads
+    //     as clearly separate from the story. Never fatal — a missing outro just
+    //     ships the story as-is.
+    try {
+      const outro = await getOutro(ctx, width, height);
+      if (outro) {
+        const withOutro = join(workDir, "story-outro.mp4");
+        await concatClips([outPath, outro], withOutro, workDir, { width, height });
+        outPath = withOutro;
+      }
+    } catch (err) {
+      ctx.logger.warn({ sourceVideoId, reason: String(err) }, "outro append failed; shipping without it");
     }
 
     // 4. Store + create a ready-to-review Clip with the LLM's metadata.
@@ -1518,7 +1566,7 @@ export async function runCallGenerate(ctx: PipelineContext, sourceVideoId: strin
     const images = await mapWithConcurrency(imagePrompts, 2, async (prompt, i) => {
       const imgFile = join(workDir, `img-${i}.png`);
       try {
-        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(prompt, "stick-scene", spec.premise ?? "") });
+        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(prompt, "stick-openai", spec.premise ?? "") });
         await fs.writeFile(imgFile, image);
       } catch (err) {
         ctx.logger.warn({ sourceVideoId, image: i, reason: String(err) }, "call image failed; using plain card");

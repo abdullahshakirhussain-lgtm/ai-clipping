@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-export const STORY_STYLES = ["stick-scene", "explainer", "doodle", "whiteboard", "flat-vector", "notebook-sketch"] as const;
+// Two paths only. "stick-openai" = the working OpenAI stick-figure + colourful
+// scene (default). "stick-fal" = the experimental fal composite path (code-drawn
+// figure over a fal background) — kept as an option while the real stick
+// animation is figured out elsewhere.
+export const STORY_STYLES = ["stick-openai", "stick-fal"] as const;
 export const STORY_NARRATOR_KEYS = ["storyteller", "hyped", "deadpan-documentary", "conspiratorial"] as const;
 export const CAPTION_STYLE_KEYS = ["bold-center", "yellow-pop", "clean-bottom"] as const;
 export const CAPTION_POSITIONS = ["top", "middle", "bottom"] as const;
@@ -34,15 +38,16 @@ export const STORY_MODES = ["scenario", "story"] as const;
 export const CreateStoryInputSchema = z.object({
   topic: z.string().min(3).max(300),
   mode: z.enum(STORY_MODES).default("scenario"),
-  length: z.enum(STORY_LENGTHS).default("long"),
-  style: z.enum(STORY_STYLES).default("stick-scene"),
-  /** Voice tier: standard (OpenAI) or premium (ElevenLabs). */
-  voiceTier: z.enum(["standard", "premium"]).default("standard"),
+  // Short form (9:16) is the default — that's what we publish. A story may still
+  // run a bit past 2 min when that's what a complete telling needs.
+  length: z.enum(STORY_LENGTHS).default("short"),
+  style: z.enum(STORY_STYLES).default("stick-openai"),
   narrator: z.enum(STORY_NARRATOR_KEYS).default("storyteller"),
   category: z.string().max(60).optional(),
-  captionStyle: z.enum(CAPTION_STYLE_KEYS).default("bold-center"),
-  captionPosition: z.enum(CAPTION_POSITIONS).default("middle"),
-  music: z.enum(MUSIC_MOODS).default("none"),
+  // Default caption look: clean, at the bottom. Voice is always ElevenLabs
+  // (premium) now — no tier to pick — and there is no background music.
+  captionStyle: z.enum(CAPTION_STYLE_KEYS).default("clean-bottom"),
+  captionPosition: z.enum(CAPTION_POSITIONS).default("bottom"),
 });
 export type CreateStoryInput = z.infer<typeof CreateStoryInputSchema>;
 

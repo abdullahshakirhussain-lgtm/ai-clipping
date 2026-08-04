@@ -12,3 +12,12 @@ coverage/
 .DS_Store
 .claude/launch.json
 scripts/style-refs-preview/
+
+# Local LoRA training candidates (generated, not committed)
+scripts/lora-candidates/
+
+# Generated preview/test artifacts (dev tooling output)
+scripts/composite-test/
+scripts/controlnet-test/
+scripts/*-preview.png
+scripts/outro-card.png

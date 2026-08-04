@@ -4,12 +4,8 @@ import { apiGet, apiSend, revalidateAll, runPlan, useCategories } from "@/lib/ap
 import { Button, Card, PageHeader } from "@/components/ui";
 
 const STYLES = [
-  { value: "stick-scene", label: "Stick figures + colorful scenes" },
-  { value: "explainer", label: "Explainer (icons + diagrams)" },
-  { value: "doodle", label: "Doodle (stick figures)" },
-  { value: "whiteboard", label: "Whiteboard" },
-  { value: "flat-vector", label: "Flat vector" },
-  { value: "notebook-sketch", label: "Notebook sketch" },
+  { value: "stick-openai", label: "Stick + colourful (OpenAI)" },
+  { value: "stick-fal", label: "Stick + colourful (fal · experimental)" },
 ];
 const NARRATORS = [
   { value: "storyteller", label: "Storyteller (warm, suspenseful)" },
@@ -147,13 +143,13 @@ export default function CreatePage() {
   const [planSec, setPlanSec] = useState(0);
   const [topic, setTopic] = useState("");
   const [mode, setMode] = useState<"scenario" | "story">("scenario");
-  const [length, setLength] = useState<"long" | "short">("long");
-  const [style, setStyle] = useState("stick-scene");
+  const [length, setLength] = useState<"long" | "short">("short");
+  const [style, setStyle] = useState("stick-openai");
   const [narrator, setNarrator] = useState("storyteller");
   const [voiceTier, setVoiceTier] = useState<"standard" | "premium">("standard");
   const [category, setCategory] = useState("");
-  const [captionStyle, setCaptionStyle] = useState("bold-center");
-  const [captionPosition, setCaptionPosition] = useState("middle");
+  const [captionStyle, setCaptionStyle] = useState("clean-bottom");
+  const [captionPosition, setCaptionPosition] = useState("bottom");
   const [music, setMusic] = useState("none");
 
   const [niche, setNiche] = useState("");
@@ -358,11 +354,9 @@ export default function CreatePage() {
           length,
           style,
           narrator,
-          voiceTier,
           category: category || undefined,
           captionStyle,
           captionPosition,
-          music,
         });
         setTopic("");
       }
@@ -499,21 +493,6 @@ export default function CreatePage() {
             <select value={narrator} onChange={(e) => setNarrator(e.target.value)}
               className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
               {NARRATORS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Voice</span>
-            <select value={voiceTier} onChange={(e) => setVoiceTier(e.target.value as "standard" | "premium")}
-              className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-              <option value="standard">Standard (OpenAI)</option>
-              <option value="premium">Premium (ElevenLabs)</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Music</span>
-            <select value={music} onChange={(e) => setMusic(e.target.value)}
-              className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-              {MUSIC.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </label>
           <label className="block">

@@ -725,7 +725,11 @@ Call submit_metadata with optimized fields.`,
         input.category ? ` for a "${input.category}" channel` : ""
       } — the kind that opens "Imagine you're a…" and reveals how something in the past actually was.
 
-Each idea pairs an ERA with an ASPECT OF LIFE, framed as a curiosity that makes someone go "wait, really?". Good shapes: "A day in the life of [person in an era]", "What happened if you [did X] in [era]", "How people [did X] before [Y]", "What [aspect] was actually like in [era]".
+Each idea pairs an ERA with an ASPECT OF LIFE, framed as a simple curiosity. Good shapes: "A day in the life of [person in an era]", "What happened if you [did X] in [era]", "How people [did X] before [Y]", "What [aspect] was actually like in [era]".
+
+MIX MAINSTREAM WITH NICHE: about HALF the ideas should be broadly interesting to anyone — familiar, "everyone wonders about this" topics (what a school day was like long ago, how people kept food from spoiling, how they told the time, what happened when you got a toothache) — and about half can be more niche/surprising. Do NOT make them all obscure; a wall of ultra-niche ideas is a fail.
+
+PLAIN WORDING — the idea itself must be in everyday language a normal person instantly gets. NO historical jargon or specialist terms in the idea ("What Florentine sumptuary law forbade" is bad; "What you were and weren't allowed to wear" is good). If someone would need to look up a word in the idea, reword it.
 
 For variety THIS time, lean on these eras — ${seedEras} — and these aspects — ${seedAspects} — but you may mix in others. Each idea 6-12 words, concrete and specific, no numbering.${avoidBlock}
 
@@ -758,13 +762,6 @@ Call submit_topics.`,
     const minWords = Math.max(60, Math.min(maxWords - 10, input.minWords ?? 60));
     const narrator = input.narrator ?? "storyteller";
     const isScenario = (input.mode ?? "scenario") === "scenario";
-    // The "explainer" style renders each beat as a clean icon/diagram/metaphor
-    // (the stick-figure history-channel look), NOT a drawn scene — so the writer
-    // must describe the beat as the simplest clear GRAPHIC, not a place.
-    const isExplainer = input.style === "explainer";
-    const explainerShot = isExplainer
-      ? ` GRAPHIC TYPE (this is an EXPLAINER — do NOT describe a detailed scene): render each beat as the SIMPLEST clear graphic — a bold ICON for a thing (fire, spear, DNA strand); a clean DIAGRAM for a fact, comparison or process (a timeline as dots on a line, a before/after split, a cross-section, a bar chart, a simple map, a two-column comparison) drawn as SHAPES AND ARROWS ONLY with NO written labels or numbers (the narration says those — and the image model can't spell); a simple VISUAL METAPHOR for an abstract idea (a wall shattering = a barrier broken; a star passing between two heads = an idea shared); or a plain stick figure ONLY when the beat is about a person. Name which of these it is and what's in it. Use small red arrows/circles/X to point at what matters.`
-      : ``;
 
     // Mode-specific instructions injected into the two shared prompts below. Both
     // modes keep the same craft (cold open, concrete named detail, chaining, no
@@ -827,7 +824,7 @@ STAY ON TOPIC — this is non-negotiable. The finished video MUST be unmistakabl
 
 ${architectStep1}
 
-Work only from what you actually know: real names, dates, places, numbers, the telling human detail. No vague filler, no "some say", no invented facts. Tone is PUNCHY BUT HONEST — the drama is allowed to be big, but every claim must be real and the hook must be a promise the ending truly keeps. Never over-promise.
+Work only from what you actually know: real names, dates, places, numbers, the telling human detail. No vague filler, no "some say", no invented facts. Tone is PLAIN AND CALM — told like a quiet true story, one person's real experience. The interest comes from real, concrete detail, NOT from hype or drama. This can simply be "how people lived / how X actually worked" — it does NOT need a shocking twist. Pick a thread the viewer can follow calmly, one thing at a time, and do not try to cram the whole topic in.
 
 Output:
 
@@ -937,7 +934,9 @@ ENDING TO LAND ON: ${planEnding || "the story's real final consequence"}
 
 HOW TO WRITE IT:
 - Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone.
-- Narrator persona: "${narrator}" — shape the emotional ARC to suit it (curiosity → tension → payoff), rising and falling, never flat. Tone is PUNCHY BUT HONEST: big drama, only real facts, never over-promise.
+- Narrator persona: "${narrator}", but keep it PLAIN AND CALM overall — a quiet, warm telling, like a person recounting a real experience, NOT hyped. The interest comes from the real detail, not from selling it. Some gentle rise and fall is fine; do NOT force drama, a big climax, or a "you won't believe" energy.
+- ONE IDEA PER BEAT. Each beat says ONE simple thing and lets it land. Do NOT stack multiple facts, numbers or names into a sentence — the anti-pattern is a beat like "your meat isn't measured in weight but in money, one shilling and tuppence a week, about one chop, and the butcher snips the coupon before he cuts it." That overloads the viewer and they leave. Break ideas apart; give each its own calm beat. Fewer facts, told clearly, beats many facts crammed in.
+- PLAIN WORDS, NO JARGON. Tell it in everyday language. Do NOT dump period terminology or stop to define words — no "that's the banca rotta, the word we still say as bankrupt", no "the Podestà, the city's chief magistrate", no "cessante e fuggitivo". If a foreign or old term is truly needed, use it lightly in passing; never make a teaching moment of it ("X is called Y", "the word comes from…"). People are watching for a calm story, not a vocabulary lesson.
 - LENGTH: the whole spoken narration must run BETWEEN ${minWords} and ${maxWords} words (~150 words/min, so roughly ${describeLength(minWords)}-${describeLength(maxWords)}). ${minWords} words is a FLOOR, not a suggestion — a story that lands short is not finished, so go back and give the setup and the turn the detail they deserve. Never pad with filler or repetition to reach it: earn the length with concrete specifics — names, dates, amounts, what someone actually said or did.
 
 RETENTION MECHANICS (this is the job):
@@ -945,8 +944,8 @@ RETENTION MECHANICS (this is the job):
 - NAMES ANCHOR EVERYTHING: introduce the main character BY NAME within the first two beats and keep USING the names — people, places, dates, amounts, in almost every beat. Never chain pronouns across beats ("he… they… it…"); re-anchor with the name or clear role each beat so a viewer always knows WHO is doing WHAT, WHERE. Rich specifics are what make the story feel real and easy to follow.
 - INTRODUCE EVERY NAMED PERSON ON FIRST MENTION: the first time a name appears, say in one clause WHO they are and why they matter ("a British spy named Ewen Montagu", "the town's coroner, Bentley Purchase") — never drop a bare surname the viewer has never met. And only NAME people the story comes back to; a one-off person who appears once is a role, not a name ("a fisherman", "a border guard"), so the cast stays small and nobody is confused by a name they can't place.
 - CHAIN THE BEATS: every beat after the first OPENS by linking to the previous one ("So…", "That's when…", "Because of that…", "Three days later…") — one continuous told story, never a list of facts. Before submitting, read the whole narration start to finish and smooth ANY seam that feels like a jump; coherence beats cleverness.
-- REHOOK: around the 2nd-3rd beat, open a SECOND smaller loop ("but that's not the strange part…") to catch anyone about to scroll before the curiosity dips.
-- ESCALATE every beat — stakes, tension or weirdness rise, each beat pulling into the next; NO flat middle.
+- NO AI TELLS — this is a hard rule. NEVER use the hype connectives that scream machine-written: "here's the strange part", "here's the wild/crazy/weird part", "but that's not the worst part", "here's the kicker", "plot twist", "here's where it gets interesting", "but here's the thing". If a detail is interesting, just tell it plainly and let it be interesting on its own. Move between beats with quiet, natural links, not hooks.
+- KEEP IT MOVING GENTLY: each beat should carry the story a step forward so it never stalls — but through natural progression, NOT forced escalation. It's fine for the middle to be calm; a plain, clear telling holds better than manufactured tension. Do not build toward a manufactured climax.
 
 ENDING RULES (critical — this is what's been going wrong):
 - The narration ends ON the story's final fact (the "ending" above): the LAST SENTENCE is simply the last thing that happened, stated plainly. Then it STOPS.
@@ -963,7 +962,7 @@ For EACH beat give:
         isScenario
           ? " IMMERSION: favour second-person / over-the-shoulder / POV framing that drops the viewer INSIDE the scene — \"from inside the dugout looking out toward the doors\", \"over your own shoulder as the shields lock into a wall\" — so they feel they are there, not watching from outside."
           : ""
-      }${explainerShot} No text/letters in the image.
+      } No text/letters in the image.
   DRAWABLE-SAFE (image prompts only — the narration is unaffected): the image API refuses graphic content, so NEVER put corpses, bodies, gore, blood, executions, weapons in use, or named real-world figures (Hitler, dictators, criminals) in an imagePrompt. IMPLY the dark beat instead: the empty rowboat, a covered stretcher, boots in the snow, a silhouette behind glass, officials huddled over a briefcase, the aftermath. Suggestion reads better on screen anyway.
 - "delivery": 1-2 sentences on the emotion of this beat (feeds the read's arc).
 

@@ -30,8 +30,11 @@ export interface LengthPreset {
 
 /** `long`'s maxBeats is filled from the env cap at construction (see below). */
 export function lengthPreset(length: StoryLength, longMaxBeats: number): LengthPreset {
+  // SHORT is the default we publish. The band is relaxed upward (200-360 words,
+  // ~90s-2.5min) so a story can run as long as a COMPLETE telling needs rather
+  // than being cut short — a solid finished story beats a tight stub.
   return length === "short"
-    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 14, minWords: 150, maxWords: 220 }
+    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 24, minWords: 200, maxWords: 360 }
     : { aspect: "16:9", imageSize: "1536x1024", maxBeats: longMaxBeats, minWords: 1050, maxWords: 1300 };
 }
 
@@ -46,7 +49,6 @@ export interface StorySpec {
   /** OpenAI image size matching the aspect. */
   imageSize: string;
   style: string;
-  voiceTier: string;
   narrator: string;
   /** Ceiling on beats — the writer uses as many as the story needs. */
   maxBeats: number;
@@ -56,7 +58,6 @@ export interface StorySpec {
   category?: string;
   captionStyle: string;
   captionPosition: "top" | "middle" | "bottom";
-  music: string;
 }
 
 /**
@@ -94,7 +95,6 @@ export class StoryService {
       aspect: preset.aspect,
       imageSize: preset.imageSize,
       style: input.style,
-      voiceTier: input.voiceTier,
       narrator: input.narrator,
       maxBeats: preset.maxBeats,
       maxWords: preset.maxWords,
@@ -102,7 +102,6 @@ export class StoryService {
       category: input.category?.trim() || undefined,
       captionStyle: input.captionStyle,
       captionPosition: input.captionPosition,
-      music: input.music,
     };
     const video = await this.repos.sourceVideos.create({
       campaignId,

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { stat, writeFile } from "node:fs/promises";
+import { copyFile, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1049,4 +1049,36 @@ export async function assembleClips(input: {
     }
     throw err;
   }
+}
+
+/**
+ * Concatenate finished clips (each video+audio) into one. Used to append the
+ * reused like/subscribe/follow outro after a story. Re-encodes through the concat
+ * filter and normalises each input to the same size/sar/fps, so clips that differ
+ * slightly still join cleanly. Inputs should share an aspect (they do: the outro is
+ * built at the story's width/height).
+ */
+export async function concatClips(inputs: string[], outPath: string, workDir: string, opts: { width?: number; height?: number } = {}): Promise<void> {
+  if (inputs.length === 0) throw new Error("concatClips: no inputs");
+  if (inputs.length === 1) {
+    await copyFile(inputs[0]!, outPath);
+    return;
+  }
+  const width = opts.width ?? 1080;
+  const height = opts.height ?? 1920;
+  const args: string[] = ["-y"];
+  for (const f of inputs) args.push("-i", f);
+  const norm = inputs
+    .map((_, i) => `[${i}:v:0]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,fps=25,format=yuv420p[v${i}]`)
+    .join(";");
+  const cat = inputs.map((_, i) => `[v${i}][${i}:a:0]`).join("");
+  args.push(
+    "-filter_complex", `${norm};${cat}concat=n=${inputs.length}:v=1:a=1[vo][ao]`,
+    "-map", "[vo]", "-map", "[ao]",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "160k",
+    "-movflags", "+faststart",
+    outPath,
+  );
+  await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 12 * 60 * 1000 });
 }

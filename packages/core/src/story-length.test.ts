@@ -3,13 +3,16 @@ import { asArray, strList, styledImagePrompt } from "@clipfactory/ai";
 import { describe, expect, it, vi } from "vitest";
 import { CreateStoryInputSchema } from "./contracts/story.js";
 import { lengthPreset, StoryService } from "./services/story-service.js";
-import { looksLikeColdOpen, stripCringeEnding } from "./pipeline/stages.js";
+import { looksLikeColdOpen, stripAiTells, stripCringeEnding } from "./pipeline/stages.js";
 
 describe("CreateStoryInput defaults", () => {
-  it("defaults to the scenario mode and long form", () => {
+  it("defaults to scenario mode, SHORT form, stick-openai, clean bottom captions", () => {
     const parsed = CreateStoryInputSchema.parse({ topic: "ancient Roman hygiene" });
     expect(parsed.mode).toBe("scenario");
-    expect(parsed.length).toBe("long");
+    expect(parsed.length).toBe("short");
+    expect(parsed.style).toBe("stick-openai");
+    expect(parsed.captionStyle).toBe("clean-bottom");
+    expect(parsed.captionPosition).toBe("bottom");
   });
 
   it("accepts an explicit story mode + short form", () => {
@@ -29,27 +32,27 @@ describe("lengthPreset — one knob drives the whole shape", () => {
     expect(p.maxWords).toBe(1300);
   });
 
-  it("short is 9:16, portrait image size, short word band over the 60s line", () => {
+  it("short is 9:16, portrait image size, relaxed band so the story can finish", () => {
     const p = lengthPreset("short", 50);
     expect(p.aspect).toBe("9:16");
     expect(p.imageSize).toBe("1024x1536");
-    expect(p.maxBeats).toBe(14);
-    // ~150-220 words at 150wpm ≈ 60-88s — comfortably past the 60s monetization line.
-    expect(p.minWords).toBeGreaterThanOrEqual(150);
-    expect(p.maxWords).toBeLessThanOrEqual(220);
+    expect(p.maxBeats).toBe(24);
+    // ~200-360 words at 150wpm ≈ 80s-2.4min — over the 60s line, room to finish.
+    expect(p.minWords).toBeGreaterThanOrEqual(200);
+    expect(p.maxWords).toBeLessThanOrEqual(360);
   });
 });
 
 describe("styledImagePrompt — orientation follows the aspect", () => {
   it("landscape asks for 16:9 and never 9:16", () => {
-    const out = styledImagePrompt("a dig site", "stick-scene", "a desert", "landscape");
+    const out = styledImagePrompt("a dig site", "stick-openai", "a desert", "landscape");
     expect(out).toContain("16:9");
     expect(out).not.toContain("9:16");
   });
 
   it("portrait (the default) asks for 9:16", () => {
-    expect(styledImagePrompt("a dig site", "stick-scene", "a desert", "portrait")).toContain("9:16");
-    expect(styledImagePrompt("a dig site", "stick-scene")).toContain("9:16");
+    expect(styledImagePrompt("a dig site", "stick-openai", "a desert", "portrait")).toContain("9:16");
+    expect(styledImagePrompt("a dig site", "stick-openai")).toContain("9:16");
   });
 });
 
@@ -145,6 +148,32 @@ describe("stripCringeEnding — kill the tacked-on closer the blocklist misses",
     const before = beats[1]!.text;
     stripCringeEnding(beats);
     expect(beats[1]!.text).toBe(before);
+  });
+});
+
+describe("stripAiTells — scrub the machine-written giveaways", () => {
+  const beat = (text: string) => ({ text });
+
+  it("drops a 'here's the strange part:' lead-in, keeping the real statement", () => {
+    const out = stripAiTells([beat("You lined up at dawn. And here's the strange part: your meat was measured in money, not weight.")]);
+    expect(out[0]!.text).toContain("Your meat was measured in money, not weight.");
+    expect(out[0]!.text.toLowerCase()).not.toContain("strange part");
+  });
+
+  it("removes a standalone hype sentence with no real payload", () => {
+    const out = stripAiTells([beat("The bench was smashed in the square. But that's not the worst part. Guild officers seized the ledgers.")]);
+    expect(out[0]!.text).not.toMatch(/worst part/i);
+    expect(out[0]!.text).toContain("Guild officers seized the ledgers.");
+  });
+
+  it("keeps an ordinary sentence that merely uses a colon", () => {
+    const out = stripAiTells([beat("The grocer weighed it out: bacon, sugar, tea and butter.")]);
+    expect(out[0]!.text).toBe("The grocer weighed it out: bacon, sugar, tea and butter.");
+  });
+
+  it("never empties a beat", () => {
+    const out = stripAiTells([beat("Plot twist.")]);
+    expect(out[0]!.text.length).toBeGreaterThan(0);
   });
 });
 
