@@ -35,7 +35,9 @@ export class DeepSeekProvider implements CheapTextProvider {
         messages: [{ role: "user", content: user }],
         response_format: { type: "json_object" },
         temperature: opts?.temperature ?? 0.7,
-        max_tokens: opts?.maxTokens ?? 2048,
+        // V4 models emit reasoning_content before the answer; a tight cap gets
+        // spent thinking and returns empty content, so budget generously.
+        max_tokens: opts?.maxTokens ?? 8000,
       }),
     });
     if (!res.ok) throw new Error(`deepseek ${res.status}: ${(await res.text()).slice(0, 300)}`);
@@ -55,7 +57,7 @@ export class DeepSeekProvider implements CheapTextProvider {
     const user = `${buildImagePromptsInstruction(input)}\n\nReturn JSON: {"prompts": ["…", …]} — exactly ${input.beats.length} strings, in beat order.`;
     const result = await this.chatJson<{ prompts?: unknown }>(user, {
       temperature: 0.4,
-      maxTokens: Math.max(1024, input.beats.length * 60 + 512),
+      maxTokens: Math.max(8000, input.beats.length * 120 + 2000),
     });
     const prompts = asArray<unknown>(result.prompts).map((p) => String(p ?? "").trim());
     // Align 1:1 to beats; fall back to the beat's base prompt (or its line) on any gap.
