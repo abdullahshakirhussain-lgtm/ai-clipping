@@ -89,7 +89,16 @@ export class StoryService {
       .map((v) => v.title)
       .filter((t): t is string => !!t)
       .slice(0, 20);
-    return this.cheapText.suggestStoryTopics({ category, count: 8, avoid });
+    const req = { category, count: 8, avoid };
+    try {
+      return await this.cheapText.suggestStoryTopics(req);
+    } catch (err) {
+      // The cheap provider (DeepSeek) was slow or unreachable from the host — this
+      // is an interactive button, so fall back to the main LLM rather than letting
+      // the request hang to the client's timeout. No-op guard when they're the same.
+      if (this.cheapText === this.llm) throw err;
+      return this.llm.suggestStoryTopics(req);
+    }
   }
 
   async create(input: CreateStoryInput): Promise<{ sourceVideoId: string }> {
