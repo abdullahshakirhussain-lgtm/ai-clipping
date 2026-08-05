@@ -19,14 +19,28 @@ const pick = <T>(a: T[], n: number) => [...a].sort(() => Math.random() - 0.5).sl
 
 /** The topic-suggester instruction: mainstream-mixed, plainly worded scenario ideas. */
 export function buildTopicsInstruction(input: SuggestTopicsInput): string {
+  const avoidBlock = input.avoid?.length
+    ? `\n\nDo NOT repeat or lightly reword any of these already-used ideas — go somewhere clearly different:\n${input.avoid.map((t) => `- ${t}`).join("\n")}`
+    : "";
+  const focus = input.category?.trim();
+
+  // A typed niche/category is the WHOLE point of the field — honour it as the
+  // FIXED SUBJECT so ideas change with what the user typed. (The old prompt only
+  // pinned random historical eras, so the input was effectively ignored.)
+  if (focus) {
+    return `Propose ${input.count} immersive, second-person short-video story ideas that are ALL specifically about: "${focus}".
+
+"${focus}" is the FIXED SUBJECT the user asked for — it may be an era, a place, a job, a person, or a theme (e.g. space, sports scandals, cursed history). EVERY single idea must be unmistakably about "${focus}". Do NOT drift to unrelated eras or subjects, and do NOT fall back to generic "life in the past" ideas unless "${focus}" itself is that. Someone who typed "${focus}" should read all ${input.count} ideas and think "yes — these are exactly what I asked for".
+
+Make the ${input.count} ideas DISTINCT from one another by taking different angles, moments or sub-topics WITHIN "${focus}" (a typical day, one specific event, the danger, the money, the people, the strangest detail) — never the same idea reworded.
+
+Frame each as a simple curiosity: "A day in the life of …", "What … was actually like", "How people/they … ", "What happened when …". PLAIN WORDING — everyday language a normal person instantly gets; no jargon or specialist terms (if someone would need to look a word up, reword it). Each idea 6-12 words, concrete and specific, no numbering.${avoidBlock}`;
+  }
+
+  // No subject typed → spread across random eras/aspects for a "surprise me" mix.
   const seedEras = pick(ERAS, 4).join(", ");
   const seedAspects = pick(ASPECTS, 5).join(", ");
-  const avoidBlock = input.avoid?.length
-    ? `\n\nDo NOT repeat or lightly reword any of these already-used ideas — go to a different era/aspect entirely:\n${input.avoid.map((t) => `- ${t}`).join("\n")}`
-    : "";
-  return `Propose ${input.count} SCENARIO ideas for immersive, second-person history explainer videos${
-    input.category ? ` for a "${input.category}" channel` : ""
-  } — the kind that opens "Imagine you're a…" and reveals how something in the past actually was.
+  return `Propose ${input.count} SCENARIO ideas for immersive, second-person history explainer videos — the kind that opens "Imagine you're a…" and reveals how something in the past actually was.
 
 Each idea pairs an ERA with an ASPECT OF LIFE, framed as a simple curiosity. Good shapes: "A day in the life of [person in an era]", "What happened if you [did X] in [era]", "How people [did X] before [Y]", "What [aspect] was actually like in [era]".
 
