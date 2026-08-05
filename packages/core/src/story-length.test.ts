@@ -37,9 +37,9 @@ describe("lengthPreset — one knob drives the whole shape", () => {
     expect(p.aspect).toBe("9:16");
     expect(p.imageSize).toBe("1024x1536");
     expect(p.maxBeats).toBe(32);
-    // ~200-360 words at 150wpm ≈ 80s-2.4min — over the 60s line, room to finish.
-    expect(p.minWords).toBeGreaterThanOrEqual(200);
-    expect(p.maxWords).toBeLessThanOrEqual(360);
+    // ~240-440 words at 150wpm ≈ 100s-3min — a bit over 2min so the day can end.
+    expect(p.minWords).toBeGreaterThanOrEqual(220);
+    expect(p.maxWords).toBeLessThanOrEqual(440);
   });
 });
 

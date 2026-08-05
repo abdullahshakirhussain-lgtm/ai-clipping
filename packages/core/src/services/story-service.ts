@@ -3,6 +3,38 @@ import type { CheapTextProvider, LlmProvider } from "@clipfactory/ai";
 import type { Dispatcher } from "@clipfactory/queue";
 import type { CreateStoryInput } from "../contracts/story.js";
 
+/** Reject if `p` hasn't settled within `ms` — so a slow model call can't hang an
+ *  interactive request past the proxy's ~30s cutoff. */
+function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); },
+    );
+  });
+}
+
+/** Plainly-worded day-in-the-life ideas, used only when every model call fails or
+ *  times out, so the Suggest button always returns a usable list. */
+const FALLBACK_TOPICS = [
+  "A day in the life of a medieval baker",
+  "What a school day was like 300 years ago",
+  "How people kept food from spoiling before fridges",
+  "A day working down a Victorian coal mine",
+  "What you ate on a sailing ship crossing the ocean",
+  "How people told the time before clocks",
+  "A day in the life of a Roman soldier on the wall",
+  "What happened when you got a toothache in the 1700s",
+  "How a farming family got through a winter day",
+  "A day in the life of a lighthouse keeper",
+  "What washing day was like before machines",
+  "A market trader's day in an ancient city",
+];
+function pickFallbackTopics(n: number): string[] {
+  return [...FALLBACK_TOPICS].sort(() => Math.random() - 0.5).slice(0, n);
+}
+
 /**
  * Everything that differs between a long-form 16:9 explainer and a vertical
  * Short. `length` is the single knob the user picks; these are the derived shape.
@@ -30,11 +62,12 @@ export interface LengthPreset {
 
 /** `long`'s maxBeats is filled from the env cap at construction (see below). */
 export function lengthPreset(length: StoryLength, longMaxBeats: number): LengthPreset {
-  // SHORT is the default we publish. The band is relaxed upward (200-360 words,
-  // ~90s-2.5min) so a story can run as long as a COMPLETE telling needs rather
-  // than being cut short — a solid finished story beats a tight stub.
+  // SHORT is the default we publish. The band runs 240-440 words (~100s-3min):
+  // the ceiling deliberately sits a bit OVER 2 minutes so the wake→sleep day can
+  // reach its end instead of being cut off mid-afternoon — a complete little day
+  // beats a tight stub. The floor keeps it clear of the 60s line.
   return length === "short"
-    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 32, minWords: 200, maxWords: 360 }
+    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 32, minWords: 240, maxWords: 440 }
     : { aspect: "16:9", imageSize: "1536x1024", maxBeats: longMaxBeats, minWords: 1050, maxWords: 1300 };
 }
 
@@ -81,23 +114,35 @@ export class StoryService {
   }
 
   async suggestTopics(category?: string): Promise<string[]> {
-    // Pass the recently-used topics so the model doesn't keep proposing the same
-    // handful — the repetition the user hit came from sending no history at all.
-    const recent = await this.repos.sourceVideos.list();
-    const avoid = recent
-      .filter((v) => v.kind === "story")
-      .map((v) => v.title)
-      .filter((t): t is string => !!t)
-      .slice(0, 20);
-    const req = { category, count: 8, avoid };
+    // This is an interactive button behind a proxy that hangs up at ~30s, and any
+    // model call CAN spike past that. So the whole thing runs under a hard deadline
+    // and ALWAYS returns something: cheap provider → main LLM → canned topics.
+    const work = (async () => {
+      // Pass the recently-used topics so the model doesn't keep proposing the same
+      // handful — the repetition the user hit came from sending no history at all.
+      const recent = await this.repos.sourceVideos.list();
+      const avoid = recent
+        .filter((v) => v.kind === "story")
+        .map((v) => v.title)
+        .filter((t): t is string => !!t)
+        .slice(0, 20);
+      const req = { category, count: 8, avoid };
+      try {
+        return await this.cheapText.suggestStoryTopics(req);
+      } catch {
+        // Cheap provider (DeepSeek) slow/unreachable — fall back to the main LLM,
+        // unless it IS the main LLM (no separate cheap provider configured).
+        if (this.cheapText === this.llm) throw new Error("cheap provider failed");
+        return this.llm.suggestStoryTopics(req);
+      }
+    })();
+
     try {
-      return await this.cheapText.suggestStoryTopics(req);
-    } catch (err) {
-      // The cheap provider (DeepSeek) was slow or unreachable from the host — this
-      // is an interactive button, so fall back to the main LLM rather than letting
-      // the request hang to the client's timeout. No-op guard when they're the same.
-      if (this.cheapText === this.llm) throw err;
-      return this.llm.suggestStoryTopics(req);
+      return await withDeadline(work, 18000);
+    } catch {
+      // Never leave the button spinning to the proxy timeout — hand back a varied
+      // set of plainly-worded day-in-the-life ideas the user can pick from.
+      return pickFallbackTopics(8);
     }
   }
 
