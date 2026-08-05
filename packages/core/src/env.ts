@@ -40,13 +40,11 @@ const EnvSchema = z.object({
   //    "cloud" = face/active-speaker tracking via a vision API (REFRAME_API_KEY).
   REFRAME_PROVIDER: z.enum(["center", "cloud"]).default("center"),
   REFRAME_API_KEY: z.string().optional().default(""),
-  // ── Commentary voice-over. "openai" = gpt-4o-mini-tts (steerable delivery,
-  //    ~10x cheaper); "elevenlabs" = most human read; "mock" = silent stub so the
-  //    pipeline runs keyless in dev.
-  TTS_PROVIDER: z.enum(["mock", "openai", "elevenlabs"]).default("mock"),
+  // ── Voice-over. ElevenLabs is the only real TTS ("mock" = silent stub so the
+  //    pipeline runs keyless in dev). It's used for EVERY spoken tier now — the
+  //    old OpenAI TTS was removed. Falls back to mock when the key isn't set.
+  TTS_PROVIDER: z.enum(["mock", "elevenlabs"]).default("elevenlabs"),
   OPENAI_API_KEY: z.string().optional().default(""),
-  OPENAI_TTS_MODEL: z.string().default("gpt-4o-mini-tts"),
-  OPENAI_TTS_VOICE: z.string().default("ash"),
   ELEVENLABS_API_KEY: z.string().optional().default(""),
   ELEVENLABS_VOICE_ID: z.string().optional().default(""),
   // eleven_v3 performs inline audio tags ("[shouts]") — the expressive model.

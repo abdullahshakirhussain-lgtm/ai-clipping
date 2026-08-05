@@ -1,8 +1,8 @@
 /**
  * Narrator personas for Story Studio. The base instruction sets the voice's
  * character; each beat's own `delivery` (written by the LLM) is appended so the
- * read rises and falls with the story instead of droning. Fed to OpenAI TTS as
- * `instructions` (its whole tone/pitch lever) — the fix for the flat read.
+ * read rises and falls with the story instead of droning — the fix for the flat
+ * read. (Formerly fed to OpenAI TTS as `instructions`; that provider is gone.)
  */
 export const STORY_NARRATORS: Record<string, string> = {
   storyteller:

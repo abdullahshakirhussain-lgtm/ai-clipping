@@ -16,7 +16,6 @@ import {
   MockTtsProvider,
   MockVideoProvider,
   OpenAiImageProvider,
-  OpenAiTtsProvider,
   type CallAudioProvider,
   type CheapTextProvider,
   type ImageProvider,
@@ -193,19 +192,9 @@ function buildCheapText(env: Env, logger: Logger, llm: LlmProvider): CheapTextPr
 }
 
 function buildTtsProvider(env: Env, logger: Logger): TtsProvider {
-  if (env.TTS_PROVIDER === "openai") {
-    if (!env.OPENAI_API_KEY) throw new Error("TTS_PROVIDER=openai requires OPENAI_API_KEY");
-    logger.info({ model: env.OPENAI_TTS_MODEL, voice: env.OPENAI_TTS_VOICE }, "using OpenAI TTS (steerable)");
-    return new OpenAiTtsProvider({
-      apiKey: env.OPENAI_API_KEY,
-      model: env.OPENAI_TTS_MODEL,
-      voice: env.OPENAI_TTS_VOICE,
-    });
-  }
-  if (env.TTS_PROVIDER === "elevenlabs") {
-    if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_VOICE_ID) {
-      throw new Error("TTS_PROVIDER=elevenlabs requires ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID");
-    }
+  // ElevenLabs is the only real TTS (OpenAI TTS was removed). Every tier uses it
+  // when configured; otherwise a silent mock keeps keyless dev running.
+  if (env.TTS_PROVIDER !== "mock" && env.ELEVENLABS_API_KEY && env.ELEVENLABS_VOICE_ID) {
     logger.info({ voice: env.ELEVENLABS_VOICE_ID }, "using ElevenLabs TTS");
     return new ElevenLabsTtsProvider({
       apiKey: env.ELEVENLABS_API_KEY,
@@ -213,7 +202,11 @@ function buildTtsProvider(env: Env, logger: Logger): TtsProvider {
       model: env.ELEVENLABS_MODEL,
     });
   }
-  logger.info("using mock TTS (silent commentary)");
+  if (env.TTS_PROVIDER === "elevenlabs") {
+    logger.warn("TTS_PROVIDER=elevenlabs but ELEVENLABS_API_KEY/VOICE_ID missing — using silent mock TTS");
+  } else {
+    logger.info("using mock TTS (silent commentary)");
+  }
   return new MockTtsProvider();
 }
 
