@@ -8,11 +8,11 @@ import type { CreateStoryInput } from "../contracts/story.js";
  * Short. `length` is the single knob the user picks; these are the derived shape.
  *
  * LONG is the ~8-minute format: at ~150 wpm that's ~1200 words (band 1050-1300).
- * Each beat becomes ONE distinct illustration, so ~50 beats ≈ a new picture every
- * ~10s — matching the reference channels. Narration this long exceeds a single
- * TTS request, so it's synthesized in sentence-aligned chunks and joined
- * (narration.ts). SHORT is a 9:16 clip of ~70-90s (150-220 words, ~14 beats),
- * comfortably over the 60s monetization line.
+ * Each beat is cut into up to three distinct shots (see planImageCadence), so
+ * ~50-60 beats ≈ a new picture every ~3s — a swipe-feed pace, not the old ~10s
+ * hold. Narration this long exceeds a single TTS request, so it's synthesized in
+ * sentence-aligned chunks and joined (narration.ts). SHORT is a 9:16 clip of
+ * ~90s-2.5min (200-360 words, up to ~32 beats), comfortably over the 60s line.
  *
  * The word FLOOR matters as much as the ceiling: the writer is otherwise told
  * shorter is better and hands back a stub.
@@ -34,7 +34,7 @@ export function lengthPreset(length: StoryLength, longMaxBeats: number): LengthP
   // ~90s-2.5min) so a story can run as long as a COMPLETE telling needs rather
   // than being cut short — a solid finished story beats a tight stub.
   return length === "short"
-    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 24, minWords: 200, maxWords: 360 }
+    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 32, minWords: 200, maxWords: 360 }
     : { aspect: "16:9", imageSize: "1536x1024", maxBeats: longMaxBeats, minWords: 1050, maxWords: 1300 };
 }
 

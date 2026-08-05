@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { planImageCadence } from "./story-timing.js";
+import { planImageCadence, type CadenceOpts } from "./story-timing.js";
 
-const totalStills = (beats: number[], target: number, max: number) => planImageCadence(beats, target, max).length;
-const perBeat = (beats: number[], target: number, max: number) => {
+const totalStills = (beats: number[], target: number, max: number, opts?: CadenceOpts) =>
+  planImageCadence(beats, target, max, opts).length;
+const perBeat = (beats: number[], target: number, max: number, opts?: CadenceOpts) => {
   const counts = new Map<number, number>();
-  for (const s of planImageCadence(beats, target, max)) counts.set(s.beatIndex, (counts.get(s.beatIndex) ?? 0) + 1);
+  for (const s of planImageCadence(beats, target, max, opts)) counts.set(s.beatIndex, (counts.get(s.beatIndex) ?? 0) + 1);
   return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c);
 };
 
@@ -13,14 +14,14 @@ describe("planImageCadence", () => {
     expect(perBeat([3, 2.5, 3], 3, 30)).toEqual([1, 1, 1]);
   });
 
-  it("splits a long beat into two shots (the per-beat cap)", () => {
-    // A 9s sentence at a 3s target wants 3, but the cap is now 2 — the model
-    // can't reliably make more than 2 genuinely-distinct shots of one beat.
+  it("splits a long beat into three shots (the per-beat cap)", () => {
+    // A 9s sentence at a 3s target wants 3, and the cap is now 3 — the splitter
+    // reliably makes three distinct framings (wide → closer → detail) of a beat.
     const slides = planImageCadence([9], 3, 30);
-    expect(slides).toHaveLength(2);
-    for (const s of slides) expect(s.durationSec).toBeCloseTo(4.5, 5);
-    expect(slides.map((s) => s.subIndex)).toEqual([0, 1]);
-    expect(slides.every((s) => s.subCount === 2)).toBe(true);
+    expect(slides).toHaveLength(3);
+    for (const s of slides) expect(s.durationSec).toBeCloseTo(3, 5);
+    expect(slides.map((s) => s.subIndex)).toEqual([0, 1, 2]);
+    expect(slides.every((s) => s.subCount === 3)).toBe(true);
   });
 
   it("preserves total screen time exactly — the video length must not move", () => {
@@ -36,9 +37,9 @@ describe("planImageCadence", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
-  it("caps one runaway beat at 2 shots instead of letting it eat the budget", () => {
-    // 40s on a single beat would want ~13 frames; the per-beat cap is now 2.
-    expect(perBeat([40], 3, 30)).toEqual([2]);
+  it("caps one runaway beat at 3 shots instead of letting it eat the budget", () => {
+    // 40s on a single beat would want ~13 frames; the per-beat cap is now 3.
+    expect(perBeat([40], 3, 30)).toEqual([3]);
   });
 
   it("spends a tight budget on the longest beats first", () => {
@@ -65,5 +66,34 @@ describe("planImageCadence", () => {
     expect(slides.length).toBeGreaterThanOrEqual(24);
     const longest = Math.max(...slides.map((s) => s.durationSec));
     expect(longest).toBeLessThanOrEqual(3.5);
+  });
+
+  it("fast open: beats that start inside the window get denser, later beats don't", () => {
+    // beat starts: 0, 4, 9. A 6s window covers the first two only.
+    const beats = [4, 5, 6];
+    const normal = perBeat(beats, 3, 100);
+    const opened = perBeat(beats, 3, 100, { openSeconds: 6 });
+    expect(opened[0]!).toBeGreaterThan(normal[0]!); // first beat is packed tighter
+    expect(opened[2]!).toBe(normal[2]!); // beat starting at t=9 is untouched
+    // The opening slides are genuinely fast (well under the normal 3s target).
+    const firstBeatSlides = planImageCadence(beats, 3, 100, { openSeconds: 6 }).filter((s) => s.beatIndex === 0);
+    expect(Math.max(...firstBeatSlides.map((s) => s.durationSec))).toBeLessThanOrEqual(2);
+  });
+
+  it("fast open never overruns the total screen time", () => {
+    const beats = [3.5, 4.2, 5, 6, 7];
+    const total = beats.reduce((a, b) => a + b, 0);
+    const sum = planImageCadence(beats, 3, 100, { openSeconds: 6 }).reduce((a, s) => a + s.durationSec, 0);
+    expect(sum).toBeCloseTo(total, 5);
+  });
+
+  it("long form (~8min) reaches ~3s cadence via the per-beat split, within budget", () => {
+    // ~55 beats averaging ~9s ≈ 8 minutes — long form can't have hundreds of
+    // beats, so the 3-way split is what carries it to a swipe-feed pace.
+    const beats = Array.from({ length: 55 }, () => 9);
+    const total = beats.reduce((a, b) => a + b, 0); // 495s
+    const slides = planImageCadence(beats, 3, 220);
+    expect(slides.length).toBeLessThanOrEqual(220); // inside STORY_MAX_IMAGES
+    expect(total / slides.length).toBeLessThanOrEqual(3.2); // ~one image every ~3s
   });
 });

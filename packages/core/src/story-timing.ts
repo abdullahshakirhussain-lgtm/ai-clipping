@@ -75,32 +75,63 @@ export interface CadenceSlide {
   durationSec: number;
 }
 
+/** Hard ceiling on stills carved from ONE beat. The splitter (expandImagePrompts)
+ *  reliably yields three genuinely-distinct framings — WIDE → CLOSER → DETAIL — of
+ *  the same moment; past three it starts returning generic or repeated variations
+ *  (which the merge step then collapses anyway), so three is the useful maximum. */
+const MAX_STILLS_PER_BEAT = 3;
+
+/** Fast-open tuning: beats that BEGIN inside the opening window are cut against a
+ *  tighter target so the hook never holds a static frame — you keep or lose the
+ *  viewer here. Still bounded by {@link MAX_STILLS_PER_BEAT}. */
+export interface CadenceOpts {
+  /** Length of the fast-open window from t=0, in seconds (0 disables it). */
+  openSeconds?: number;
+  /** Per-still target inside the open window; defaults below the normal target. */
+  openTargetSec?: number;
+}
+
 /**
  * Decide how many STILLS each beat gets so no image sits on screen much longer
- * than `targetSec`.
+ * than `targetSec` (roughly one change every ~3s), with an even denser OPEN.
  *
  * A narrated beat is a whole sentence, which can easily run 6-8 seconds — long
  * enough for a viewer to feel nothing is happening. Rather than force the writer
  * into 8-word fragments (which wrecks the narration), the sentence stays intact
- * and its screen time is divided between several images of the same moment.
+ * and its screen time is divided between several distinct images of the same
+ * moment (up to {@link MAX_STILLS_PER_BEAT}).
  *
  * `maxImages` is a hard cost ceiling; when the ideal split would exceed it, the
  * longest beats keep their extra stills and the shortest give theirs up first,
  * so the budget lands where the dead air actually is. Pure, so it's unit-tested.
+ *
+ * The same function serves shorts and long form — only the beat count and total
+ * duration differ; long form leans on the per-beat split to reach ~3s cadence
+ * because it can't have hundreds of beats.
  */
 export function planImageCadence(
   slideDurations: number[],
   targetSec: number,
   maxImages: number,
+  opts: CadenceOpts = {},
 ): CadenceSlide[] {
   const n = slideDurations.length;
   if (n === 0) return [];
   const target = Math.max(0.5, targetSec);
+  const openSeconds = Math.max(0, opts.openSeconds ?? 0);
+  // A beat spanning the open window still can't exceed the cap, so keep this
+  // clearly below `target` (not below the 0.5 floor) to actually bite.
+  const openTarget = Math.max(0.5, opts.openTargetSec ?? Math.min(target, 1.6));
 
-  // Ideal split per beat, capped at 2 stills. The model can reliably make ONE
-  // beat into 2 genuinely-distinct shots; asking for 3-4 is where it starts
-  // returning generic or repeated variations (and padding then duplicates them).
-  const want = slideDurations.map((d) => Math.max(1, Math.min(2, Math.round(d / target))));
+  // Ideal split per beat. Beats that START within the opening window are cut
+  // against the tighter `openTarget`; the rest against `target`. Both capped.
+  let cursor = 0;
+  const want = slideDurations.map((d) => {
+    const beatStart = cursor;
+    cursor += d;
+    const t = beatStart < openSeconds ? openTarget : target;
+    return Math.max(1, Math.min(MAX_STILLS_PER_BEAT, Math.round(d / t)));
+  });
 
   // Trim to budget: repeatedly take a still back from whichever beat currently
   // has the SHORTEST time-per-still, i.e. the one that needs it least.

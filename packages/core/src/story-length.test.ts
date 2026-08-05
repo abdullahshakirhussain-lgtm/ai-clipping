@@ -36,7 +36,7 @@ describe("lengthPreset — one knob drives the whole shape", () => {
     const p = lengthPreset("short", 50);
     expect(p.aspect).toBe("9:16");
     expect(p.imageSize).toBe("1024x1536");
-    expect(p.maxBeats).toBe(24);
+    expect(p.maxBeats).toBe(32);
     // ~200-360 words at 150wpm ≈ 80s-2.4min — over the 60s line, room to finish.
     expect(p.minWords).toBeGreaterThanOrEqual(200);
     expect(p.maxWords).toBeLessThanOrEqual(360);

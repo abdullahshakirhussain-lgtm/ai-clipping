@@ -1084,7 +1084,12 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       totalDur,
       voice.words,
     ).slideDurations;
-    const cadence = planImageCadence(beatDurations, ctx.config.story.imageSeconds, ctx.config.story.maxImages);
+    // Fast open: the first ~6s change roughly every ~1.6s so the hook never
+    // sits still (where the swipe feed keeps or loses the viewer); the rest of
+    // the video holds the normal ~imageSeconds cadence. Same for both aspects.
+    const cadence = planImageCadence(beatDurations, ctx.config.story.imageSeconds, ctx.config.story.maxImages, {
+      openSeconds: 6,
+    });
 
     // One cheap LLM call turns each multi-shot beat into that many DISTINCT
     // successive shots. On failure every shot falls back to the beat's own
