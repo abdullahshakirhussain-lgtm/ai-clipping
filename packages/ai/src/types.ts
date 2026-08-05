@@ -149,6 +149,9 @@ export interface WriteStoryInput {
    * story with a hook and a turn. Shapes both the architect and narrator passes.
    */
   mode?: "scenario" | "story";
+  /** Explicit format so the writer doesn't have to guess it from word counts:
+   *  "long" wants many full-sentence beats; "short" wants a few tiny ones. */
+  length?: "long" | "short";
   /** Style preset key (doodle | whiteboard | flat-vector | notebook-sketch). */
   style: string;
   /** CEILING on images/beats (cost + cadence cap); the writer uses as many as the story needs. */

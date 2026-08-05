@@ -28,6 +28,10 @@ describe("lengthPreset — one knob drives the whole shape", () => {
     expect(p.aspect).toBe("16:9");
     expect(p.imageSize).toBe("1536x1024");
     expect(p.maxBeats).toBe(50); // filled from the env cap
+    // Beat FLOOR near the cap — this is what drives ~150 images (≤3 stills/beat),
+    // and its absence was why long form kept landing at ~36.
+    expect(p.minBeats).toBe(44);
+    expect(p.minBeats).toBeLessThan(p.maxBeats);
     expect(p.minWords).toBe(1050);
     expect(p.maxWords).toBe(1300);
   });
@@ -37,6 +41,7 @@ describe("lengthPreset — one knob drives the whole shape", () => {
     expect(p.aspect).toBe("9:16");
     expect(p.imageSize).toBe("1024x1536");
     expect(p.maxBeats).toBe(32);
+    expect(p.minBeats).toBe(16); // a light floor; shorts make plenty of beats anyway
     // ~240-440 words at 150wpm ≈ 100s-3min — a bit over 2min so the day can end.
     expect(p.minWords).toBeGreaterThanOrEqual(220);
     expect(p.maxWords).toBeLessThanOrEqual(440);

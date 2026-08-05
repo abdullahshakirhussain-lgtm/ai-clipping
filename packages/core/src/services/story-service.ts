@@ -56,6 +56,9 @@ export interface LengthPreset {
   /** OpenAI image size matching the aspect (landscape 3:2 vs portrait 2:3). */
   imageSize: string;
   maxBeats: number;
+  /** FLOOR on beats — the real driver of image count (each beat splits into ≤3
+   *  stills), so long form MUST demand many beats or it lands at ~36 images. */
+  minBeats: number;
   minWords: number;
   maxWords: number;
 }
@@ -66,9 +69,14 @@ export function lengthPreset(length: StoryLength, longMaxBeats: number): LengthP
   // the ceiling deliberately sits a bit OVER 2 minutes so the wake→sleep day can
   // reach its end instead of being cut off mid-afternoon — a complete little day
   // beats a tight stub. The floor keeps it clear of the 60s line.
+  //
+  // LONG must earn ~150 images: with ≤3 stills per beat that needs ~45+ beats, so
+  // minBeats is set high (just under the maxBeats cap) — the missing floor was why
+  // long form kept landing at ~36 images. SHORT keeps a light floor; it already
+  // makes plenty of beats on its own.
   return length === "short"
-    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 32, minWords: 240, maxWords: 440 }
-    : { aspect: "16:9", imageSize: "1536x1024", maxBeats: longMaxBeats, minWords: 1050, maxWords: 1300 };
+    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 32, minBeats: 16, minWords: 240, maxWords: 440 }
+    : { aspect: "16:9", imageSize: "1536x1024", maxBeats: longMaxBeats, minBeats: Math.min(44, longMaxBeats - 2), minWords: 1050, maxWords: 1300 };
 }
 
 /** Story spec persisted on the SourceVideo (kind=story) and read by the generator. */
@@ -85,6 +93,8 @@ export interface StorySpec {
   narrator: string;
   /** Ceiling on beats — the writer uses as many as the story needs. */
   maxBeats: number;
+  /** Beat FLOOR — the real driver of image count (long form demands many beats). */
+  minBeats?: number;
   maxWords: number;
   /** Word FLOOR, so the narration clears the 60-second line. */
   minWords?: number;
@@ -158,6 +168,7 @@ export class StoryService {
       style: input.style,
       narrator: input.narrator,
       maxBeats: preset.maxBeats,
+      minBeats: preset.minBeats,
       maxWords: preset.maxWords,
       minWords: preset.minWords,
       category: input.category?.trim() || undefined,

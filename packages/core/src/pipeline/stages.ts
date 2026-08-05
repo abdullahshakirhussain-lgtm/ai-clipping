@@ -826,8 +826,13 @@ interface StorySpec {
   voiceTier: string;
   narrator?: string;
   maxBeats: number;
+  /** FLOOR on beats — long form needs ~45 so, split ≤3 ways, it reaches ~150 images.
+   *  Absent on pre-field specs → the writer's own default (5). */
+  minBeats?: number;
   maxWords?: number;
   minWords?: number;
+  /** "long" | "short" — the explicit format signal (no more guessing from maxWords). */
+  length?: "long" | "short";
   /** "16:9" (long) or "9:16" (short). Absent on pre-length specs → treated as 9:16. */
   aspect?: "16:9" | "9:16";
   /** OpenAI image size matching the aspect (e.g. "1536x1024" | "1024x1536"). */
@@ -997,10 +1002,15 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       mode: spec.mode ?? "scenario",
       style: spec.style,
       maxBeats: spec.maxBeats,
+      // Beat FLOOR: long form must produce many beats or the video is too short
+      // AND too few images (each beat splits into ≤3 stills). Derive from length
+      // for specs written before the field existed.
+      minBeats: spec.minBeats ?? (spec.length === "long" || spec.aspect === "16:9" ? 44 : 16),
       maxWords: spec.maxWords ?? 1300,
       // Floor, so the narration reaches long-form length. Defaulted for specs
       // written before the field existed (read back out of the DB as-is).
       minWords: spec.minWords ?? 1050,
+      length: spec.length ?? (spec.aspect === "16:9" ? "long" : "short"),
       narrator: spec.narrator,
       voiceTags: tts.speaksTags === true,
     };

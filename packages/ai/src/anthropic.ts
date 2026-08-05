@@ -752,15 +752,16 @@ Call submit_metadata with optimized fields.`,
     const minWords = Math.max(60, Math.min(maxWords - 10, input.minWords ?? 60));
     const narrator = input.narrator ?? "storyteller";
     const isScenario = (input.mode ?? "scenario") === "scenario";
-    // Long form (~8 min) vs a short. The two shape beats differently: long form
-    // wants fuller sentence-beats (the image splitter supplies the fast cadence),
-    // shorts want many tiny one-image beats. maxWords cleanly separates them
-    // (short ≤ ~440, long ≥ 1050).
-    const isLong = maxWords >= 700;
-    // How long each BEAT should be — the lever that broke long form when it was
-    // made unconditionally "short" (50 tiny beats ⇒ ~400 words ⇒ a 2.5-min "long").
+    // Long form (~8 min) vs a short. Use the EXPLICIT length signal when present
+    // (no more guessing from word counts — that was the "vague path"); fall back to
+    // maxWords only for old callers that don't pass length.
+    const isLong = input.length ? input.length === "long" : maxWords >= 700;
+    // How long each BEAT should be. Long form's image count is driven by the beat
+    // COUNT (each beat splits into ≤3 stills), so it needs MANY beats, each a full
+    // sentence — the earlier unconditional "short beats" made ~12 fat beats ⇒ 36
+    // images. Shorts want many tiny one-image beats.
     const beatLengthGuidance = isLong
-      ? `Each beat is a FULL, vivid sentence — occasionally two. Long form earns its length from rich, specific beats, and the pictures are split automatically to keep the screen moving, so do NOT chop the narration into tiny fragments. Use all the beats you're given and fill the word range; a long-form video that lands short is unfinished.`
+      ? `Each beat is ONE full, vivid sentence (occasionally two). Long form earns its length from MANY such beats — aim for the full ${minBeats}-${maxBeats} beats, each a distinct moment of the day, because every beat becomes ~3 seconds of pictures. Do NOT compress the day into a handful of fat paragraphs; keep the beats flowing, one clear moment at a time, all the way from waking to sleep.`
       : `Keep beats SHORT — a single short sentence, about one picture's worth (~3 seconds spoken). Prefer more short beats over a few long ones: each beat drives the image on screen, and a long beat leaves the picture sitting still.`;
 
     // Mode-specific instructions injected into the two shared prompts below. Both
