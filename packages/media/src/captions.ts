@@ -9,6 +9,9 @@ export interface CaptionSegment {
   end: number;
   text: string;
   words?: CaptionWord[];
+  /** Speaker index (0/1) for two-voice formats (calls). Colours the caption via
+   *  `speakerColours` in {@link buildAss}; ignored when that isn't passed. */
+  speaker?: number;
 }
 
 export interface CaptionStyleSpec {
@@ -104,6 +107,10 @@ export function buildAss(
   wordsPerChunk = 3,
   position?: CaptionPosition,
   resolution: CaptionResolution = DEFAULT_RESOLUTION,
+  /** Per-speaker caption colours (ASS &HAABBGGRR), indexed by `segment.speaker`.
+   *  When given, each speaker gets its own colour so a two-voice call reads as two
+   *  people. Omitted (the default) → every caption uses the single Default style. */
+  speakerColours?: string[],
 ): string {
   const style = CAPTION_STYLES[styleName] ?? CAPTION_STYLES["bold-center"]!;
   // Font sizes and margins are authored for a 1920-tall (9:16) canvas. On a
@@ -117,10 +124,16 @@ export function buildAss(
   const place = { alignment: rawPlace.alignment, marginV: px(rawPlace.marginV) };
   const fontSize = px(style.fontSize);
   const outline = px(style.outline);
-  const events: Array<{ start: number; end: number; text: string }> = [];
+  const events: Array<{ start: number; end: number; text: string; style: string }> = [];
+
+  // Resolve a segment's ASS style name: a per-speaker style when colours are
+  // supplied and the segment is tagged, otherwise the single Default style.
+  const styleFor = (seg: CaptionSegment): string =>
+    speakerColours && seg.speaker != null && speakerColours[seg.speaker] ? `Spk${seg.speaker}` : "Default";
 
   for (const seg of segments) {
     if (seg.end <= clipStart || seg.start >= clipEnd) continue;
+    const segStyle = styleFor(seg);
     if (seg.words && seg.words.length > 0) {
       for (let i = 0; i < seg.words.length; i += wordsPerChunk) {
         const chunk = seg.words.slice(i, i + wordsPerChunk);
@@ -131,6 +144,7 @@ export function buildAss(
           start: start - clipStart,
           end: end - clipStart,
           text: chunk.map((w) => w.word).join(" ").trim(),
+          style: segStyle,
         });
       }
     } else {
@@ -138,11 +152,22 @@ export function buildAss(
         start: Math.max(seg.start, clipStart) - clipStart,
         end: Math.min(seg.end, clipEnd) - clipStart,
         text: seg.text,
+        style: segStyle,
       });
     }
   }
 
   const marginH = px(60);
+  // One Style line per named style. Speaker styles clone Default and only swap
+  // PrimaryColour, so a two-voice call reads as two people without any other
+  // change to size/position/outline.
+  const styleLine = (name: string, primaryColour: string) =>
+    `Style: ${name},${style.fontName},${fontSize},${primaryColour},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${outline},1,${place.alignment},${marginH},${marginH},${place.marginV},1`;
+  const styleLines = [styleLine("Default", style.primaryColour)];
+  if (speakerColours) {
+    speakerColours.forEach((colour, i) => styleLines.push(styleLine(`Spk${i}`, colour)));
+  }
+
   const header = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${resolution.width}
@@ -151,7 +176,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${style.fontName},${fontSize},${style.primaryColour},${style.outlineColour},&H00000000,${style.bold ? -1 : 0},0,1,${outline},1,${place.alignment},${marginH},${marginH},${place.marginV},1
+${styleLines.join("\n")}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -160,7 +185,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   const lines = events
     .map(
       (e) =>
-        `Dialogue: 0,${assTime(e.start)},${assTime(e.end)},Default,,0,0,0,,${escapeAss(e.text.toUpperCase())}`,
+        `Dialogue: 0,${assTime(e.start)},${assTime(e.end)},${e.style},,0,0,0,,${escapeAss(e.text.toUpperCase())}`,
     )
     .join("\n");
 

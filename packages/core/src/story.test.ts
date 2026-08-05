@@ -10,7 +10,7 @@ import {
 } from "@clipfactory/ai";
 import { buildAss, planCaptionTiming } from "@clipfactory/media";
 import { describe, expect, it } from "vitest";
-import { planStoryTiming } from "./story-timing.js";
+import { planCallCaptions, planStoryTiming } from "./story-timing.js";
 
 describe("planCaptionTiming", () => {
   it("spreads each beat's words across its duration, contiguous and non-overlapping", () => {
@@ -104,6 +104,68 @@ describe("continuous-narration timing (v3)", () => {
     expect(slideDurations[0]! + slideDurations[1]!).toBeCloseTo(6, 5);
     // Captions come straight from the exact words.
     expect(captionSegments[0]!.words).toHaveLength(6);
+  });
+});
+
+describe("planCallCaptions (two-speaker call captions)", () => {
+  const lines = [
+    { speaker: "Dave", text: "hello are you there" }, // 4 words
+    { speaker: "Mia", text: "yes stop calling" }, // 3 words
+  ];
+  const names: [string, string] = ["Dave", "Mia"];
+
+  it("tags each line with its speaker index (0/1), case-insensitively", () => {
+    const { captionSegments } = planCallCaptions(lines, names, 7);
+    expect(captionSegments.map((s) => s.speaker)).toEqual([0, 1]);
+    // An unknown / differently-cased label still maps sensibly.
+    const mixed = planCallCaptions([{ speaker: "DAVE", text: "hi" }, { speaker: "someone", text: "no" }], names, 4);
+    expect(mixed.captionSegments.map((s) => s.speaker)).toEqual([0, 1]);
+  });
+
+  it("without word timings, spreads lines across the duration by word count", () => {
+    const { slideDurations, captionSegments } = planCallCaptions(lines, names, 7);
+    // 4 and 3 words of 7 total → 4s then 3s.
+    expect(slideDurations[0]).toBeCloseTo(4, 5);
+    expect(slideDurations[1]).toBeCloseTo(3, 5);
+    expect(captionSegments[1]!.start).toBeCloseTo(4, 5);
+    // Each line's own words are spread inside its span for caption chunking.
+    expect(captionSegments[0]!.words).toHaveLength(4);
+  });
+
+  it("with word timings, snaps line spans to the real audio (not just word share)", () => {
+    // 7 words at 1s each, total 7s. Line 1 = words 0-3, line 2 = words 4-6.
+    const words = Array.from({ length: 7 }, (_, i) => ({ start: i, end: i + 1, word: `w${i}` }));
+    const { captionSegments } = planCallCaptions(lines, names, 7, words);
+    expect(captionSegments[0]!.start).toBeCloseTo(0, 5);
+    expect(captionSegments[0]!.end).toBeCloseTo(4, 5); // ends at word 4's start boundary
+    expect(captionSegments[1]!.start).toBeCloseTo(4, 5);
+    expect(captionSegments[1]!.end).toBeCloseTo(7, 5);
+  });
+
+  it("returns empty for no lines", () => {
+    expect(planCallCaptions([], names, 10)).toEqual({ slideDurations: [], captionSegments: [] });
+  });
+});
+
+describe("buildAss speaker colours (two-voice calls)", () => {
+  const segs = [
+    { start: 0, end: 2, text: "hello", speaker: 0 },
+    { start: 2, end: 4, text: "goodbye", speaker: 1 },
+  ];
+
+  it("emits a per-speaker style and colours each line by speaker", () => {
+    const ass = buildAss(segs, 0, 4, "clean-bottom", 3, "bottom", { width: 1080, height: 1920 }, ["&H00FFFFFF", "&H0042C5FF"]);
+    expect(ass).toMatch(/^Style: Spk0,.*&H00FFFFFF/m);
+    expect(ass).toMatch(/^Style: Spk1,.*&H0042C5FF/m);
+    // Each dialogue line references its speaker's style.
+    expect(ass).toMatch(/^Dialogue:[^\n]*,Spk0,,[^\n]*HELLO/m);
+    expect(ass).toMatch(/^Dialogue:[^\n]*,Spk1,,[^\n]*GOODBYE/m);
+  });
+
+  it("without speakerColours, every line uses Default (unchanged for other formats)", () => {
+    const ass = buildAss(segs, 0, 4, "clean-bottom", 3, "bottom");
+    expect(ass).not.toContain("Style: Spk0");
+    expect(ass).toMatch(/^Dialogue:[^\n]*,Default,,/m);
   });
 });
 

@@ -163,3 +163,84 @@ export function planImageCadence(
   }
   return slides;
 }
+
+/** One line of a prank call: who said it and the exact words (from the improviser). */
+export interface CallLine {
+  speaker: string;
+  text: string;
+}
+
+export interface CallCaptionSegment extends StoryCaptionSegment {
+  /** 0 or 1 — which of the two speakers said this line (for caption colouring). */
+  speaker: number;
+}
+
+export interface CallTiming {
+  /** On-screen seconds for each slide, one per line, summing to ~totalSec. */
+  slideDurations: number[];
+  captionSegments: CallCaptionSegment[];
+}
+
+/**
+ * Time a call's KNOWN dialogue lines against the audio and tag each with its
+ * speaker (0/1), so captions colour per voice AND the phone screen can switch to
+ * whoever is talking.
+ *
+ * We keep the line TEXT exactly (it's what was performed); we only borrow TIMES.
+ * With real word timestamps from transcription we map each line to a span by its
+ * share of the words (robust to the recogniser mis-hearing a word — only the
+ * clock comes from it). Without them we fall back to spreading lines across the
+ * measured duration by word count (today's behaviour), still speaker-tagged. Each
+ * line's own words are spread evenly inside its span so buildAss can chunk them.
+ * Pure, so it's unit-tested.
+ */
+export function planCallCaptions(
+  lines: CallLine[],
+  speakerNames: [string, string],
+  totalSec: number,
+  transcriptWords?: Array<{ start: number; end: number; word: string }>,
+): CallTiming {
+  if (lines.length === 0 || totalSec <= 0) return { slideDurations: [], captionSegments: [] };
+
+  const norm = (s: string) => s.trim().toLowerCase();
+  const nameA = norm(speakerNames[0]);
+  const speakerIndex = (name: string): number => (norm(name) === nameA ? 0 : 1);
+
+  const lineWords = lines.map((l) => l.text.split(/\s+/).filter(Boolean));
+  const counts = lineWords.map((w) => Math.max(1, w.length));
+  const totalWords = counts.reduce((a, c) => a + c, 0);
+
+  // Line time spans: from real word timestamps when present, else proportional.
+  const spans: Array<{ start: number; end: number }> = [];
+  if (transcriptWords && transcriptWords.length > 0) {
+    const tw = transcriptWords;
+    const ratio = tw.length / totalWords;
+    let cum = 0;
+    for (const c of counts) {
+      const si = Math.min(tw.length - 1, Math.round(cum * ratio));
+      const ei = Math.min(tw.length - 1, Math.max(si, Math.round((cum + c) * ratio) - 1));
+      spans.push({ start: Math.min(tw[si]!.start, totalSec), end: Math.min(tw[ei]!.end, totalSec) });
+      cum += c;
+    }
+  } else {
+    let t = 0;
+    for (const c of counts) {
+      const dur = (c / totalWords) * totalSec;
+      spans.push({ start: t, end: t + dur });
+      t += dur;
+    }
+  }
+
+  // Guarantee each span is forward-going and contiguous enough to render.
+  const captionSegments: CallCaptionSegment[] = lines.map((l, i) => {
+    const start = Math.max(0, spans[i]!.start);
+    const end = Math.max(start + 0.3, spans[i]!.end);
+    const ws = lineWords[i]!;
+    const step = (end - start) / ws.length;
+    const words = ws.map((word, k) => ({ start: start + k * step, end: start + (k + 1) * step, word }));
+    return { start, end, text: l.text, speaker: speakerIndex(l.speaker), words };
+  });
+
+  const slideDurations = captionSegments.map((s) => Math.max(0.3, s.end - s.start));
+  return { slideDurations, captionSegments };
+}

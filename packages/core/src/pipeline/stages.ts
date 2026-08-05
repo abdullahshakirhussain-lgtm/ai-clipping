@@ -17,6 +17,7 @@ import {
   assembleNarratedClips,
   assembleSlideshow,
   buildAss,
+  buildCallScreen,
   type CaptionWord,
   compositeFigure,
   concatClips,
@@ -50,7 +51,7 @@ import {
   type ScoringWeights,
 } from "../detection.js";
 import { synthesizeNarration } from "../narration.js";
-import { planImageCadence, planStoryTiming } from "../story-timing.js";
+import { planCallCaptions, planImageCadence, planStoryTiming } from "../story-timing.js";
 import type { PipelineContext } from "./context.js";
 import { getOutro } from "./outro.js";
 
@@ -1580,32 +1581,41 @@ export async function runCallGenerate(ctx: PipelineContext, sourceVideoId: strin
     const probed = await probe(audioFile);
     const totalDur = probed.durationSec > 0 ? probed.durationSec : targetSeconds;
 
-    // 3. Stills. A call is audio-led, so a handful of images is all it needs —
-    //    they hold the screen while the captions carry the dialogue.
-    await setProgress("Drawing the scene", 60);
-    const prompts = (spec.imagePrompts ?? []).filter(Boolean).slice(0, 4);
-    const imagePrompts = prompts.length > 0 ? prompts : ["two people on a phone call, simple scene"];
-    const images = await mapWithConcurrency(imagePrompts, 2, async (prompt, i) => {
-      const imgFile = join(workDir, `img-${i}.png`);
-      try {
-        const { image } = await ctx.images.generate({ prompt: styledImagePrompt(prompt, "stick-openai", spec.premise ?? "") });
-        await fs.writeFile(imgFile, image);
-      } catch (err) {
-        ctx.logger.warn({ sourceVideoId, image: i, reason: String(err) }, "call image failed; using plain card");
-        await fs.writeFile(imgFile, plainCardPng());
-      }
-      return imgFile;
-    });
+    // 3. Sync the KNOWN dialogue lines to the audio. Gemini TTS gives no word
+    //    timestamps, so transcribe the finished call purely for TIMING (the text
+    //    stays exactly what was performed). Best-effort: a transcription failure
+    //    just falls back to a proportional spread — never lose a paid call.
+    await setProgress("Timing the captions", 60);
+    const names = (spec.characters ?? []).slice(0, 2).map((c) => c.name);
+    const speakerNames: [string, string] = [names[0] ?? "A", names[1] ?? "B"];
+    let transcriptWords: Array<{ start: number; end: number; word: string }> | undefined;
+    try {
+      const tr = await ctx.transcription.transcribe(audioFile);
+      transcriptWords = tr.segments.flatMap((s) => s.words ?? []);
+      if (transcriptWords.length === 0) transcriptWords = undefined;
+    } catch (err) {
+      ctx.logger.warn({ sourceVideoId, reason: String(err) }, "call transcription failed; spreading captions proportionally");
+    }
+    const { slideDurations, captionSegments } = planCallCaptions(call.lines, speakerNames, totalDur, transcriptWords);
 
-    // 4. Captions from the dialogue lines, spread across the measured duration.
-    //    The lines are known exactly, so this needs no transcription pass —
-    //    captions match what was said instead of what a recogniser heard.
-    await setProgress("Putting it together", 80);
-    const captionBeats = call.lines.map((l) => ({ text: l.text }));
-    const { captionSegments } = planStoryTiming(captionBeats, totalDur);
-    // Images share the screen time evenly — they're wallpaper, not beats.
-    const per = totalDur / images.length;
-    const slides = images.map((imageFile) => ({ imageFile, durationSec: per }));
+    // 4. The fake phone SCREEN — two deterministic frames (left-talking /
+    //    right-talking), built once and reused per line so the picture switches
+    //    to whoever is speaking. No image-model spend on calls.
+    await setProgress("Drawing the scene", 75);
+    const [callW, callH] = [1080, 1920];
+    const frameFor: string[] = [];
+    for (let a = 0; a < 2; a++) {
+      const f = join(workDir, `screen-${a}.png`);
+      await fs.writeFile(f, await buildCallScreen({ width: callW, height: callH, left: speakerNames[0], right: speakerNames[1], active: a }));
+      frameFor.push(f);
+    }
+    const slides = captionSegments.map((seg, i) => ({
+      imageFile: frameFor[seg.speaker] ?? frameFor[0]!,
+      durationSec: slideDurations[i]!,
+    }));
+
+    // 5. Captions: colour-coded per speaker so two voices read as two people.
+    await setProgress("Putting it together", 85);
     const assName = `${sourceVideoId}.ass`;
     const ass = buildAss(
       captionSegments,
@@ -1613,7 +1623,11 @@ export async function runCallGenerate(ctx: PipelineContext, sourceVideoId: strin
       totalDur,
       spec.captionStyle ?? video.captionStyle,
       3,
-      spec.captionPosition ?? (video.captionPosition as "top" | "middle" | "bottom" | undefined),
+      // Calls default to bottom captions so they clear the on-screen avatars.
+      spec.captionPosition ?? (video.captionPosition as "top" | "middle" | "bottom" | undefined) ?? "bottom",
+      { width: callW, height: callH },
+      // speaker 0 = white, speaker 1 = amber (matches the call-screen accents).
+      ["&H00FFFFFF", "&H0042C5FF"],
     );
     if (ass.trim()) await fs.writeFile(join(workDir, assName), ass, "utf8");
 
