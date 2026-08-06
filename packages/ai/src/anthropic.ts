@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveVoice, voiceCatalogue } from "./call-brief.js";
-import { buildImagePromptsInstruction, buildTopicsInstruction } from "./story-prompts.js";
+import { alignExpandedFrames, buildExpandFramesInstruction, buildImagePromptsInstruction, buildTopicsInstruction } from "./story-prompts.js";
 import { planVisionBatches } from "./types.js";
 import type {
   AnimShot,
@@ -1137,29 +1137,10 @@ Call submit_cook.`,
 
   async expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]> {
     if (input.beats.length === 0) return [];
-    const listing = input.beats
-      .map(
-        (b, i) =>
-          `${i + 1}. NARRATION: "${b.text}"\n   BASE IMAGE: ${b.imagePrompt}\n   SPLIT INTO: ${b.count} frames`,
-      )
-      .join("\n");
-
+    // Shared, provider-neutral instruction (also used by DeepSeek, which normally
+    // runs this) — only the output directive differs (tool call here).
     const result = await this.callTool<{ beats?: Array<{ prompts?: string[] }> }>(
-      `Each beat below stays on screen too long for a single picture. Cut it into the requested number of DISTINCT SHOTS — the way a video editor covers one moment from different angles — so the screen keeps changing and never looks like the same picture nudged.
-
-WORLD (every shot lives here): ${input.setting || "unspecified"}
-
-${listing}
-
-Rules:
-- ONE SINGLE MOMENT PER PROMPT. Each prompt is ONE instant seen by ONE camera — never two things at once, never a sequence. NO collages, NO split screens, NO side-by-side or before/after panels, NO grids or multi-panel layouts, and no "then"/"and then"/"as well as" describing a second scene. One place, one instant, one composition. (This is the collage bug — kill it here.)
-- THE ${input.beats[0]?.count ?? 3} SHOTS MUST LOOK CLEARLY DIFFERENT, or they render as the same picture and get dropped as duplicates. Change the CAMERA between them, not the caption: a WIDE establishing view of the whole place → a CLOSER angle on the key structure/object/action → a tight DETAIL of the single most important element. Different distance AND angle each time. If two of your prompts could produce near-identical images, rewrite one.
-- Every shot depicts the SPECIFIC thing this beat's narration describes, rendered with its stated details (if the line says "fifty doors", draw fifty; if it says "shields locked", lock them). The base prompt names that subject — keep it central. Only make one a close-up on a character's face when the beat is actually ABOUT a person reacting — for scene/place/object beats, keep the described thing on screen, not a random figure.
-- Stay true to the beat; do NOT invent new events the narration doesn't mention, and never jump ahead to a later beat.
-- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; name a character's expression only when a face is actually shown.
-- Keep every subject centered and simply drawn; no on-screen text.
-- Return exactly the requested number of prompts per beat, in the same beat order.
-Call submit_frames.`,
+      `${buildExpandFramesInstruction(input)}\nCall submit_frames.`,
       {
         name: "submit_frames",
         description: "Submit the expanded per-beat frame prompts.",
@@ -1191,14 +1172,7 @@ Call submit_frames.`,
       Math.max(3000, input.beats.reduce((n, b) => n + b.count, 0) * 60 + 1000),
     );
 
-    // Pad/trim to exactly what was asked for: a short answer would silently
-    // desync the slide list from the timing plan.
-    return input.beats.map((b, i) => {
-      const got = asArray<unknown>(result.beats?.[i]?.prompts).map(String).map((s) => s.trim()).filter(Boolean);
-      const out: string[] = [];
-      for (let k = 0; k < b.count; k++) out.push(got[k] ?? got[got.length - 1] ?? b.imagePrompt);
-      return out;
-    });
+    return alignExpandedFrames(input, asArray(result.beats));
   }
 
   async planAnimationShots(input: PlanAnimationInput): Promise<{ cast: string; shots: AnimShot[] }> {

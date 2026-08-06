@@ -219,6 +219,9 @@ export interface CheapTextProvider {
   suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]>;
   /** One tight, on-topic image prompt per beat, in order (length === beats.length). */
   refineImagePrompts(input: RefineImagePromptsInput): Promise<string[]>;
+  /** Split each long beat into N DISTINCT shot prompts. Mechanical fan-out — runs
+   *  on the budget model; the main LLM implements it too, as the fallback. */
+  expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]>;
 }
 
 // ── Animated stick shorts (one generated clip per narrated beat) ────────────

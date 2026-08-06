@@ -1116,7 +1116,9 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     let expanded = new Map<number, string[]>();
     if (needsSplit.length > 0) {
       try {
-        const lists = await ctx.llm.expandImagePrompts({
+        // Mechanical fan-out (~132 shots on long form) runs on the CHEAP model
+        // (DeepSeek) when configured, else the main LLM — same shared prompt.
+        const lists = await ctx.cheapText.expandImagePrompts({
           setting: story.setting,
           beats: needsSplit.map((s) => ({
             text: stripAudioTags(story.beats[s.beatIndex]!.text),

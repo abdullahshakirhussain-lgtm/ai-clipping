@@ -1,6 +1,6 @@
 import { asArray, strList } from "./anthropic.js";
-import { buildImagePromptsInstruction, buildTopicsInstruction } from "./story-prompts.js";
-import type { CheapTextProvider, RefineImagePromptsInput, SuggestTopicsInput } from "./types.js";
+import { alignExpandedFrames, buildExpandFramesInstruction, buildImagePromptsInstruction, buildTopicsInstruction } from "./story-prompts.js";
+import type { CheapTextProvider, ExpandImagePromptsInput, RefineImagePromptsInput, SuggestTopicsInput } from "./types.js";
 
 export interface DeepSeekOptions {
   apiKey: string;
@@ -30,37 +30,59 @@ export class DeepSeekProvider implements CheapTextProvider {
     user: string,
     opts?: { temperature?: number; maxTokens?: number; timeoutMs?: number },
   ): Promise<T> {
-    // Hard timeout so a stalled connection (e.g. slow egress from the host to the
-    // DeepSeek API) fails fast and can fall back, instead of hanging until the
-    // browser aborts the whole request. DeepSeek normally answers in a few seconds.
+    // Hard per-attempt timeout so a stalled connection fails fast rather than
+    // hanging. DeepSeek normally answers in a few seconds.
     const timeoutMs = opts?.timeoutMs ?? 20000;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let res: Response;
-    try {
-      res = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.opts.apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [{ role: "user", content: user }],
-          response_format: { type: "json_object" },
-          temperature: opts?.temperature ?? 0.7,
-          // V4 models emit reasoning_content before the answer; a tight cap gets
-          // spent thinking and returns empty content, so budget generously.
-          max_tokens: opts?.maxTokens ?? 8000,
-        }),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      throw controller.signal.aborted ? new Error(`deepseek request timed out after ${timeoutMs}ms`) : err;
-    } finally {
-      clearTimeout(timer);
+    const body = JSON.stringify({
+      model: this.model,
+      messages: [{ role: "user", content: user }],
+      response_format: { type: "json_object" },
+      temperature: opts?.temperature ?? 0.7,
+      // V4 models emit reasoning_content before the answer; a tight cap gets
+      // spent thinking and returns empty content, so budget generously.
+      max_tokens: opts?.maxTokens ?? 8000,
+    });
+
+    // Retry transient failures — a TCP connect timeout (undici's 10s default) or
+    // a 429/5xx — with backoff, so an occasional blip under concurrent batches
+    // doesn't drop a call (which would fall back to a duplicated base prompt).
+    const MAX_ATTEMPTS = 3;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.opts.apiKey}`, "Content-Type": "application/json" },
+          body,
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const detail = (await res.text()).slice(0, 300);
+          if ((res.status === 429 || res.status >= 500) && attempt < MAX_ATTEMPTS) {
+            lastErr = new Error(`deepseek ${res.status}: ${detail}`);
+            await new Promise((r) => setTimeout(r, 600 * attempt));
+            continue;
+          }
+          throw new Error(`deepseek ${res.status}: ${detail}`);
+        }
+        const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+        const content = json.choices?.[0]?.message?.content?.trim() || "{}";
+        return JSON.parse(content) as T;
+      } catch (err) {
+        if (controller.signal.aborted) throw new Error(`deepseek request timed out after ${timeoutMs}ms`);
+        lastErr = err;
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, 600 * attempt));
+          continue;
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
     }
-    if (!res.ok) throw new Error(`deepseek ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content?.trim() || "{}";
-    return JSON.parse(content) as T;
+    throw lastErr instanceof Error ? lastErr : new Error("deepseek request failed");
   }
 
   async suggestStoryTopics(input: SuggestTopicsInput): Promise<string[]> {
@@ -83,5 +105,52 @@ export class DeepSeekProvider implements CheapTextProvider {
     const prompts = asArray<unknown>(result.prompts).map((p) => String(p ?? "").trim());
     // Align 1:1 to beats; fall back to the beat's base prompt (or its line) on any gap.
     return input.beats.map((b, i) => prompts[i] || b.imagePrompt?.trim() || b.text.trim());
+  }
+
+  async expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]> {
+    if (input.beats.length === 0) return [];
+    // BATCHED: one call for all ~132 long-form shots is slow (~3s/shot) and would
+    // blow the timeout → the caller would fall back to the base prompt for all 3
+    // shots (the exact duplication we're avoiding). So split into small batches,
+    // run a few at a time, and let a failed batch degrade ONLY its own beats
+    // (placeholder entries keep every beat's index aligned for the pad/trim).
+    const BATCH = 6;
+    const CONCURRENCY = 4;
+    const batches: ExpandImagePromptsInput["beats"][] = [];
+    for (let i = 0; i < input.beats.length; i += BATCH) batches.push(input.beats.slice(i, i + BATCH));
+
+    const results: Array<{ prompts?: unknown }>[] = new Array(batches.length);
+    let next = 0;
+    const runOne = async (): Promise<void> => {
+      for (;;) {
+        const idx = next++;
+        if (idx >= batches.length) return;
+        const batch = batches[idx]!;
+        try {
+          const totalFrames = batch.reduce((n, b) => n + b.count, 0);
+          const user = `${buildExpandFramesInstruction({ setting: input.setting, beats: batch })}\n\nReturn JSON: {"beats": [{"prompts": ["…", …]}, …]} — one entry per beat, in beat order, each with exactly its requested number of prompts.`;
+          const result = await this.chatJson<{ beats?: Array<{ prompts?: unknown }> }>(user, {
+            temperature: 0.5,
+            // Floor 8000: V4 is a REASONING model — a tight cap gets spent thinking
+            // and returns EMPTY content (which would fall back to base prompts and
+            // read as duplicates). Same floor the single-call version used.
+            maxTokens: Math.max(8000, totalFrames * 120 + 3000),
+            timeoutMs: 75000,
+          });
+          const raw = asArray<{ prompts?: unknown }>(result.beats);
+          // Always contribute exactly batch.length entries so later batches stay
+          // index-aligned; a missing/short answer degrades only its own beats.
+          results[idx] = batch.map((_, j) => raw[j] ?? {});
+        } catch {
+          // Degrade just this batch: empty entries → pad/trim falls back to each
+          // beat's base prompt (only these beats repeat, never the whole video).
+          results[idx] = batch.map(() => ({}));
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, runOne));
+
+    // Shared pad/trim so the slide list never desyncs from the timing plan.
+    return alignExpandedFrames(input, results.flat());
   }
 }

@@ -3,7 +3,7 @@
  * dedicated image-prompt pass). Kept provider-neutral so the Anthropic fallback
  * and the DeepSeek provider send byte-identical instructions and never drift.
  */
-import type { RefineImagePromptsInput, SuggestTopicsInput } from "./types.js";
+import type { ExpandImagePromptsInput, RefineImagePromptsInput, SuggestTopicsInput } from "./types.js";
 
 const ERAS = [
   "the Stone Age", "ancient Egypt", "ancient Rome", "ancient Greece", "the Viking age",
@@ -77,4 +77,48 @@ Give EXACTLY ${input.beats.length} prompts, one per beat, in beat order.
 
 NARRATION:
 ${lines}`;
+}
+
+/**
+ * Shared instruction for the SPLIT pass: fan each long beat into N DISTINCT shot
+ * prompts. Provider-neutral so DeepSeek (the budget model that runs this at scale)
+ * and the Anthropic fallback send identical rules; each provider appends its own
+ * output directive (tool call vs JSON). This is the biggest per-video image-prompt
+ * workload (44 beats × 3 ≈ 132 shots), so it belongs on the cheap model.
+ */
+export function buildExpandFramesInstruction(input: ExpandImagePromptsInput): string {
+  const listing = input.beats
+    .map((b, i) => `${i + 1}. NARRATION: "${b.text}"\n   BASE IMAGE: ${b.imagePrompt}\n   SPLIT INTO: ${b.count} frames`)
+    .join("\n");
+  const count = input.beats[0]?.count ?? 3;
+  return `Each beat below stays on screen too long for a single picture. Cut it into the requested number of DISTINCT SHOTS — the way a video editor covers one moment from different angles — so the screen keeps changing and never looks like the same picture nudged.
+
+WORLD (every shot lives here): ${input.setting || "unspecified"}
+
+${listing}
+
+Rules:
+- ONE SINGLE MOMENT PER PROMPT. Each prompt is ONE instant seen by ONE camera — never two things at once, never a sequence. NO collages, NO split screens, NO side-by-side or before/after panels, NO grids or multi-panel layouts, and no "then"/"and then"/"as well as" describing a second scene. One place, one instant, one composition. (This is the collage bug — kill it here.)
+- THE ${count} SHOTS MUST LOOK CLEARLY DIFFERENT, or they render as the same picture and get dropped as duplicates. Change the CAMERA between them, not the caption: a WIDE establishing view of the whole place → a CLOSER angle on the key structure/object/action → a tight DETAIL of the single most important element. Different distance AND angle each time. If two of your prompts could produce near-identical images, rewrite one.
+- Every shot depicts the SPECIFIC thing this beat's narration describes, rendered with its stated details (if the line says "fifty doors", draw fifty; if it says "shields locked", lock them). The base prompt names that subject — keep it central. Only make one a close-up on a character's face when the beat is actually ABOUT a person reacting — for scene/place/object beats, keep the described thing on screen, not a random figure.
+- Stay true to the beat; do NOT invent new events the narration doesn't mention, and never jump ahead to a later beat.
+- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; name a character's expression only when a face is actually shown.
+- Keep every subject centered and simply drawn; no on-screen text.
+- Return exactly the requested number of prompts per beat, in the same beat order.`;
+}
+
+/** Align a raw per-beat prompt list back to the requested counts (pad/trim), so
+ *  the slide list never desyncs from the timing plan. Shared by both providers. */
+export function alignExpandedFrames(
+  input: ExpandImagePromptsInput,
+  rawBeats: Array<{ prompts?: unknown }>,
+): string[][] {
+  return input.beats.map((b, i) => {
+    const got = (Array.isArray(rawBeats[i]?.prompts) ? (rawBeats[i]!.prompts as unknown[]) : [])
+      .map((p) => String(p ?? "").trim())
+      .filter(Boolean);
+    const out: string[] = [];
+    for (let k = 0; k < b.count; k++) out.push(got[k] ?? got[got.length - 1] ?? b.imagePrompt);
+    return out;
+  });
 }
