@@ -42,9 +42,10 @@ describe("lengthPreset — one knob drives the whole shape", () => {
     expect(p.imageSize).toBe("1024x1536");
     expect(p.maxBeats).toBe(32);
     expect(p.minBeats).toBe(16); // a light floor; shorts make plenty of beats anyway
-    // ~240-440 words at 150wpm ≈ 100s-3min — a bit over 2min so the day can end.
+    // 240-360 words: the 360 ceiling keeps it UNDER YouTube's 3-min Shorts cap
+    // (~2.6min at the ~143 wpm we measure, + the outro), with margin to spare.
     expect(p.minWords).toBeGreaterThanOrEqual(220);
-    expect(p.maxWords).toBeLessThanOrEqual(440);
+    expect(p.maxWords).toBeLessThanOrEqual(360);
   });
 });
 

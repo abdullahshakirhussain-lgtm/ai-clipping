@@ -65,17 +65,18 @@ export interface LengthPreset {
 
 /** `long`'s maxBeats is filled from the env cap at construction (see below). */
 export function lengthPreset(length: StoryLength, longMaxBeats: number): LengthPreset {
-  // SHORT is the default we publish. The band runs 240-440 words (~100s-3min):
-  // the ceiling deliberately sits a bit OVER 2 minutes so the wake→sleep day can
-  // reach its end instead of being cut off mid-afternoon — a complete little day
-  // beats a tight stub. The floor keeps it clear of the 60s line.
+  // SHORT is the default we publish. The band runs 240-360 words. The 360 ceiling
+  // keeps the video UNDER YouTube's 3-minute Shorts cap: at the ~143 wpm we
+  // actually measure (plus the ~4s like/subscribe outro) that's ~2.6 min, with
+  // margin for the writer overshooting or the voice running slow — a 440 ceiling
+  // tipped past 3:00 and lost Shorts eligibility. The floor keeps it over 60s.
   //
   // LONG must earn ~150 images: with ≤3 stills per beat that needs ~45+ beats, so
   // minBeats is set high (just under the maxBeats cap) — the missing floor was why
   // long form kept landing at ~36 images. SHORT keeps a light floor; it already
   // makes plenty of beats on its own.
   return length === "short"
-    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 32, minBeats: 16, minWords: 240, maxWords: 440 }
+    ? { aspect: "9:16", imageSize: "1024x1536", maxBeats: 32, minBeats: 16, minWords: 240, maxWords: 360 }
     : { aspect: "16:9", imageSize: "1536x1024", maxBeats: longMaxBeats, minBeats: Math.min(44, longMaxBeats - 2), minWords: 1050, maxWords: 1300 };
 }
 
