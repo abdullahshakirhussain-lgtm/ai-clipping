@@ -899,8 +899,11 @@ Call submit_outline.`,
           required: ["title", "angleOptions", "hookOptions", "hook", "setting", "ending", "spine"],
         },
       },
-      // Scales with the spine: 45+ beats of facts overflow a fixed 5000.
-      Math.max(5000, maxBeats * 90 + 1500),
+      // Scales with the spine AND leaves room for high-effort reasoning, which
+      // shares this ceiling: a 44-50 beat spine plus reasoning overflowed the old
+      // ~6000 and truncated the tool call (→ "no beats"). Ceiling only, billed by
+      // use, so budget generously.
+      Math.max(8000, maxBeats * 140 + 5000),
       // effort: "high" — the architect is the brain (story pick + arc + on-topic
       // faithfulness); reasoning here is where the quality gain lives.
       { model: this.commentaryModel, effort: "high" },
@@ -1000,10 +1003,12 @@ Call submit_story.`,
           required: ["title", "script", "description", "hashtags", "setting", "beats"],
         },
       },
-      // Scales with the script: a long-form narration plus a per-beat image
-      // prompt and delivery note for 45+ beats runs well past a fixed 6000, and
-      // overflowing truncates the tool call into an unusable partial story.
-      Math.max(6000, Math.round(maxWords * 2.2) + maxBeats * 60 + 2000),
+      // The narrator emits the narration TWICE (as `script` and split across
+      // `beats[].text`) plus a per-beat image prompt + delivery note, AND its
+      // reasoning shares this same ceiling. For 44-50 long-form beats the old
+      // ~7860 overflowed and truncated the tool call → zero usable beats. Ceiling
+      // only (billed by use), so give it ample room.
+      Math.max(9000, Math.round(maxWords * 4) + maxBeats * 170 + 4500),
       // effort: "medium" — the narrator is execution (spine → coherent prose);
       // reasoning helps it chain beats without the cost of "high".
       { model: this.commentaryModel, effort: "medium" },

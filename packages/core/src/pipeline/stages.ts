@@ -1016,6 +1016,13 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     };
     let story = await ctx.llm.writeStory(storyInput);
     if (story.beats.length === 0) {
+      // A long-form story is a big single generation; an occasional truncated
+      // tool call yields zero beats. Retry once before giving up rather than
+      // losing the whole job.
+      ctx.logger.warn({ sourceVideoId }, "story writer returned no beats; regenerating once");
+      story = await ctx.llm.writeStory(storyInput);
+    }
+    if (story.beats.length === 0) {
       await failVideo(ctx, sourceVideoId, new Error("story writer returned no beats"));
       return;
     }
