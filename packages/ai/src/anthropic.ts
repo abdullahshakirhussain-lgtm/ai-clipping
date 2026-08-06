@@ -761,7 +761,7 @@ Call submit_metadata with optimized fields.`,
     // sentence — the earlier unconditional "short beats" made ~12 fat beats ⇒ 36
     // images. Shorts want many tiny one-image beats.
     const beatLengthGuidance = isLong
-      ? `Each beat is ONE full, vivid sentence (occasionally two). Long form earns its length from MANY such beats — aim for the full ${minBeats}-${maxBeats} beats, each a distinct moment of the day, because every beat becomes ~3 seconds of pictures. Do NOT compress the day into a handful of fat paragraphs; keep the beats flowing, one clear moment at a time, all the way from waking to sleep.`
+      ? `BEAT LENGTH IS CRITICAL — long form is ~8 minutes. Write ${minBeats}-${maxBeats} beats, and EACH beat is a FULL, unhurried sentence of roughly 22-28 words — about TEN seconds when spoken. This length is the whole game: a ten-second beat is shown as THREE successive pictures (≈3s cadence), while a clipped 5-10 word beat gets only ONE picture AND makes the video far too short. So do NOT write short fragments and do NOT rush the day — write complete, richly detailed sentences, ${minBeats}+ of them, until the narration reaches ${minWords}-${maxWords} words. ${minBeats} ten-second beats ≈ 8 minutes ≈ ~${minBeats * 3} pictures; that is the target.`
       : `Keep beats SHORT — a single short sentence, about one picture's worth (~3 seconds spoken). Prefer more short beats over a few long ones: each beat drives the image on screen, and a long beat leaves the picture sitting still.`;
 
     // Mode-specific instructions injected into the two shared prompts below. Both
@@ -922,7 +922,6 @@ Call submit_outline.`,
     // ── Pass 2: narrate the spine into the finished, spoken story.
     const result = await this.callTool<{
       title?: string;
-      script?: string;
       description?: string;
       hashtags?: string[];
       setting?: string;
@@ -979,7 +978,6 @@ Call submit_story.`,
           type: "object",
           properties: {
             title: { type: "string" },
-            script: { type: "string", description: "the full narration, all beats joined" },
             description: { type: "string" },
             hashtags: { type: "array", items: { type: "string" } },
             setting: {
@@ -1000,15 +998,14 @@ Call submit_story.`,
               },
             },
           },
-          required: ["title", "script", "description", "hashtags", "setting", "beats"],
+          required: ["title", "description", "hashtags", "setting", "beats"],
         },
       },
-      // The narrator emits the narration TWICE (as `script` and split across
-      // `beats[].text`) plus a per-beat image prompt + delivery note, AND its
-      // reasoning shares this same ceiling. For 44-50 long-form beats the old
-      // ~7860 overflowed and truncated the tool call → zero usable beats. Ceiling
-      // only (billed by use), so give it ample room.
-      Math.max(9000, Math.round(maxWords * 4) + maxBeats * 170 + 4500),
+      // Beats only (no duplicate `script` — it's rebuilt from beats downstream),
+      // plus per-beat image prompt + delivery, plus reasoning which shares this
+      // ceiling. Generous so 44-50 long-form beats never truncate. Ceiling only,
+      // billed by actual use.
+      Math.max(9000, Math.round(maxWords * 3) + maxBeats * 170 + 4500),
       // effort: "medium" — the narrator is execution (spine → coherent prose);
       // reasoning helps it chain beats without the cost of "high".
       { model: this.commentaryModel, effort: "medium" },
@@ -1023,7 +1020,7 @@ Call submit_story.`,
       }));
     return {
       title: String(result.title ?? outline.title ?? input.topic).slice(0, 120),
-      script: String(result.script ?? cleanBeats.map((b) => b.text).join(" ")),
+      script: cleanBeats.map((b) => b.text).join(" "),
       description: String(result.description ?? ""),
       hashtags: strList(result.hashtags).slice(0, 6),
       setting: String(result.setting ?? "").trim() || planSetting,
@@ -1155,8 +1152,9 @@ WORLD (every shot lives here): ${input.setting || "unspecified"}
 ${listing}
 
 Rules:
-- Every shot depicts the SPECIFIC thing this beat's narration describes, rendered with its stated details (if the line says "fifty doors", draw fifty; if it says "shields locked", lock them). The base prompt names that subject — keep it central in every shot.
-- Vary the FRAMING across the shots, not the subject: e.g. a WIDE establishing view of the whole place/scene, then a CLOSER angle on the key structure/object/action, then a DETAIL of the most important element. Only make one a close-up on a character's face when the beat is actually ABOUT a person reacting — for scene/place/object beats, keep the described thing on screen, not a random figure. Different distance and angle, same subject — NOT the same image nudged.
+- ONE SINGLE MOMENT PER PROMPT. Each prompt is ONE instant seen by ONE camera — never two things at once, never a sequence. NO collages, NO split screens, NO side-by-side or before/after panels, NO grids or multi-panel layouts, and no "then"/"and then"/"as well as" describing a second scene. One place, one instant, one composition. (This is the collage bug — kill it here.)
+- THE ${input.beats[0]?.count ?? 3} SHOTS MUST LOOK CLEARLY DIFFERENT, or they render as the same picture and get dropped as duplicates. Change the CAMERA between them, not the caption: a WIDE establishing view of the whole place → a CLOSER angle on the key structure/object/action → a tight DETAIL of the single most important element. Different distance AND angle each time. If two of your prompts could produce near-identical images, rewrite one.
+- Every shot depicts the SPECIFIC thing this beat's narration describes, rendered with its stated details (if the line says "fifty doors", draw fifty; if it says "shields locked", lock them). The base prompt names that subject — keep it central. Only make one a close-up on a character's face when the beat is actually ABOUT a person reacting — for scene/place/object beats, keep the described thing on screen, not a random figure.
 - Stay true to the beat; do NOT invent new events the narration doesn't mention, and never jump ahead to a later beat.
 - Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; name a character's expression only when a face is actually shown.
 - Keep every subject centered and simply drawn; no on-screen text.
