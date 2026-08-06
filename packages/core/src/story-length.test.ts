@@ -40,10 +40,11 @@ describe("lengthPreset — one knob drives the whole shape", () => {
     const p = lengthPreset("short", 50);
     expect(p.aspect).toBe("9:16");
     expect(p.imageSize).toBe("1024x1536");
-    expect(p.maxBeats).toBe(32);
-    expect(p.minBeats).toBe(16); // a light floor; shorts make plenty of beats anyway
-    // 240-360 words: the 360 ceiling keeps it UNDER YouTube's 3-min Shorts cap
-    // (~2.6min at the ~143 wpm we measure, + the outro), with margin to spare.
+    // maxBeats caps the runtime structurally (one narration chunk per beat), so a
+    // short stays under YouTube's 3-min Shorts cap even if the writer runs the word
+    // band full: ~18 short sentences ≈ 2-2.5 min.
+    expect(p.maxBeats).toBe(18);
+    expect(p.minBeats).toBe(10);
     expect(p.minWords).toBeGreaterThanOrEqual(220);
     expect(p.maxWords).toBeLessThanOrEqual(360);
   });
