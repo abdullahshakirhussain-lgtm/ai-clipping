@@ -56,6 +56,16 @@ const BASE = "https://generativelanguage.googleapis.com/v1beta";
  *  dialogue writer falls through this list rather than hard-failing the call. */
 const FALLBACK_TEXT_MODELS = ["gemini-flash-latest", "gemini-2.0-flash"];
 
+/** The call is FICTIONAL rage-bait — a heated argument that Gemini's default
+ *  filters block at MEDIUM, returning a 200 with no audio/text. Relax to only
+ *  block genuinely HIGH-severity content so a normal spat gets performed. */
+const SAFETY_SETTINGS = [
+  "HARM_CATEGORY_HARASSMENT",
+  "HARM_CATEGORY_HATE_SPEECH",
+  "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+  "HARM_CATEGORY_DANGEROUS_CONTENT",
+].map((category) => ({ category, threshold: "BLOCK_ONLY_HIGH" }));
+
 export class GoogleCallProvider implements CallAudioProvider {
   private readonly ttsModel: string;
   private readonly textModel: string;
@@ -134,6 +144,7 @@ OUTPUT RULES — follow exactly:
         {
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: { temperature: 1.0, maxOutputTokens: 2048 },
+          safetySettings: SAFETY_SETTINGS,
         },
         "gemini-dialogue",
       );
@@ -171,6 +182,7 @@ OUTPUT RULES — follow exactly:
             },
           },
         },
+        safetySettings: SAFETY_SETTINGS,
       },
       "gemini-tts",
     );
@@ -180,7 +192,12 @@ OUTPUT RULES — follow exactly:
     }
     const j = (await res.json()) as GenerateContentResponse;
     const part = (j.candidates?.[0]?.content?.parts ?? []).find((p) => p.inlineData?.data);
-    if (!part?.inlineData?.data) throw new Error("Gemini TTS returned no audio");
+    if (!part?.inlineData?.data) {
+      // 200 but no audio → say WHY: a blocked/finished-early candidate or a
+      // prompt-level block, so the failure is diagnosable instead of opaque.
+      const reason = j.candidates?.[0]?.finishReason ?? j.promptFeedback?.blockReason ?? "unknown";
+      throw new Error(`Gemini TTS returned no audio (finishReason: ${reason})`);
+    }
     return {
       pcm: Buffer.from(part.inlineData.data, "base64"),
       sampleRate: rateFromMime(part.inlineData.mimeType),
@@ -191,7 +208,9 @@ OUTPUT RULES — follow exactly:
 interface GenerateContentResponse {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string; inlineData?: { data?: string; mimeType?: string } }> };
+    finishReason?: string;
   }>;
+  promptFeedback?: { blockReason?: string };
 }
 
 /** GET a model definition — the cheapest possible "does this key see this model" probe. */
