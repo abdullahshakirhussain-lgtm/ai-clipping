@@ -51,13 +51,20 @@ const BASE = "https://generativelanguage.googleapis.com/v1beta";
  * it directly. Cheap enough to iterate on: ~$10/M audio output tokens puts a
  * 60-second call around 2 cents.
  */
+/** Text models tried in order when the configured one is gone (404). Google
+ *  periodically retires models for new accounts (e.g. gemini-2.5-flash), so the
+ *  dialogue writer falls through this list rather than hard-failing the call. */
+const FALLBACK_TEXT_MODELS = ["gemini-flash-latest", "gemini-2.0-flash"];
+
 export class GoogleCallProvider implements CallAudioProvider {
   private readonly ttsModel: string;
   private readonly textModel: string;
+  /** The model that actually worked, cached after the first success. */
+  private resolvedTextModel?: string;
 
   constructor(private readonly opts: GoogleCallOptions) {
     this.ttsModel = opts.ttsModel || "gemini-2.5-flash-preview-tts";
-    this.textModel = opts.textModel || "gemini-2.5-flash";
+    this.textModel = opts.textModel || "gemini-flash-latest";
   }
 
   async generate(input: {
@@ -114,26 +121,37 @@ OUTPUT RULES — follow exactly:
 - Keep every hard rule in the brief. Everyone is fictional; no real people, companies or numbers.
 - End where the brief says it ends — cut on the peak, no resolution, no closing quip.`;
 
-    const res = await postWithBackoff(
-      `${BASE}/models/${this.textModel}:generateContent`,
-      this.opts.apiKey,
-      {
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 1.0, maxOutputTokens: 2048 },
-      },
-      "gemini-dialogue",
-    );
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`Gemini dialogue call failed (${res.status}): ${detail.slice(0, 300)}`);
+    // Try the configured model, then fall through the fallbacks on a 404 (model
+    // retired) — other errors are real, so stop on them. Cache the winner.
+    const candidates = this.resolvedTextModel
+      ? [this.resolvedTextModel]
+      : [...new Set([this.textModel, ...FALLBACK_TEXT_MODELS])];
+    let last: { status: number; detail: string } | null = null;
+    for (const model of candidates) {
+      const res = await postWithBackoff(
+        `${BASE}/models/${model}:generateContent`,
+        this.opts.apiKey,
+        {
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 1.0, maxOutputTokens: 2048 },
+        },
+        "gemini-dialogue",
+      );
+      if (res.ok) {
+        this.resolvedTextModel = model;
+        const j = (await res.json()) as GenerateContentResponse;
+        const text = (j.candidates?.[0]?.content?.parts ?? [])
+          .map((p) => p.text ?? "")
+          .join("")
+          .trim();
+        if (!text) throw new Error("Gemini dialogue call returned no text");
+        return text;
+      }
+      last = { status: res.status, detail: await res.text().catch(() => "") };
+      if (res.status !== 404) break; // real error, not a retired model
+      console.warn(`[gemini-dialogue] model ${model} unavailable (404); trying next`);
     }
-    const j = (await res.json()) as GenerateContentResponse;
-    const text = (j.candidates?.[0]?.content?.parts ?? [])
-      .map((p) => p.text ?? "")
-      .join("")
-      .trim();
-    if (!text) throw new Error("Gemini dialogue call returned no text");
-    return text;
+    throw new Error(`Gemini dialogue call failed (${last?.status}): ${(last?.detail ?? "").slice(0, 300)}`);
   }
 
   private async speak(text: string, speakers: CallSpeaker[]): Promise<{ pcm: Buffer; sampleRate: number }> {

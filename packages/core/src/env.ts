@@ -97,7 +97,7 @@ const EnvSchema = z.object({
   // here by an order of magnitude. AUTO-selects on the key, like video.
   CALL_PROVIDER: z.enum(["auto", "mock", "google"]).default("auto"),
   GEMINI_TTS_MODEL: z.string().default("gemini-2.5-flash-preview-tts"),
-  GEMINI_TEXT_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_TEXT_MODEL: z.string().default("gemini-flash-latest"),
   // Target spoken length; the planner paces the escalation to fit. Default 75s
   // so calls clear the 60-second line like every other format (the old 50s
   // default produced sub-minute videos). ~3c of Gemini audio at this length.
