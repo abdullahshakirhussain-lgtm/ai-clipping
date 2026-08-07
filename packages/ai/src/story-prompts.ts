@@ -15,7 +15,7 @@ const ERAS = [
 // are deliberately left out.
 const ASPECTS = [
   "food and feasts", "a market day", "crafts and trades", "family and home life", "festivals and holidays",
-  "music and dancing", "work and a typical day", "childhood and play", "farming and the seasons", "cooking at the hearth",
+  "music and dancing", "work and a typical day", "childhood and play", "farming and the seasons", "cooking over the fire",
   "friendship and neighbours", "games and pastimes", "keeping warm and cosy", "courtship and marriage", "a day by the river",
 ];
 const pick = <T>(a: T[], n: number) => [...a].sort(() => Math.random() - 0.5).slice(0, n);
