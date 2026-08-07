@@ -10,10 +10,13 @@ const ERAS = [
   "medieval Europe", "feudal Japan", "the Aztec empire", "the Ottoman empire", "Qing-dynasty China",
   "the Victorian era", "the American frontier (1800s)", "the age of sail", "WWII on the home front", "ancient Mesopotamia",
 ];
+// Wholesome, peaceful slices of daily life — the point is to make the past look
+// calm and inviting, so the grim aspects (death, plague, war, crime, sickness)
+// are deliberately left out.
 const ASPECTS = [
-  "food and eating", "medicine and getting sick", "hygiene and the toilet", "death and burial", "war and battle",
-  "love, sex and marriage", "money and trade", "crime and punishment", "work and a typical day", "childhood and school",
-  "travel and navigation", "law and justice", "entertainment and games", "religion and the afterlife", "disease and plague",
+  "food and feasts", "a market day", "crafts and trades", "family and home life", "festivals and holidays",
+  "music and dancing", "work and a typical day", "childhood and play", "farming and the seasons", "cooking at the hearth",
+  "friendship and neighbours", "games and pastimes", "keeping warm and cosy", "courtship and marriage", "a day by the river",
 ];
 const pick = <T>(a: T[], n: number) => [...a].sort(() => Math.random() - 0.5).slice(0, n);
 
@@ -67,9 +70,9 @@ VISUAL WORLD (keep every frame in it): ${input.setting || "(derive a concrete, p
 
 RULES:
 - DRAW WHAT THE LINE SAYS. Each prompt is the concrete thing that line describes — the specific place, object, structure or action (a brick oven with round loaves; a stone well with a wooden bucket; a market stall with brass scales). Do NOT default to a figure standing in a vague background while the interesting thing goes undrawn.
-- FOLLOW THE NARRATION'S FLOW. The lines are in order and usually walk one person through a day — so the prompts must PROGRESS with them: read prompt N as the moment right after prompt N-1, in the same continuous place and story, never a random reshuffle. If the narration moves through the day, shift the TIME OF DAY with it (pre-dawn → morning → midday → dusk → night) and the LOCATION with it, so the frames play as one continuous day — but keep every frame WARMLY LIT and colourful (soft dawn glow, golden lamplight, warm firelight, warm moonlit night), never black, grey or gloomy.
+- FOLLOW THE NARRATION'S FLOW, AND VARY THE SCENE. The lines are in order and usually walk one man through a day — so the prompts must PROGRESS with them: read prompt N as the moment right after prompt N-1, in the same continuous story, never a random reshuffle. Shift the TIME OF DAY with the narration (pre-dawn → morning → midday → dusk → night) AND move through DIFFERENT, richly-coloured SETTINGS across the day (warm home interior, sunlit lane, green fields, a lively market, a workshop, the riverside) so the backgrounds stay varied and lively — never the same drab room repeated. Keep every frame WARMLY LIT and bright with colour (soft dawn glow, golden sun, warm firelight, warm moonlit night), never black, grey or gloomy.
 - ACCURATE + ON-TOPIC. Use the period-correct materials, structures and objects for this exact era — no anachronisms. Someone who knows the period shouldn't be able to nitpick it.
-- CONSISTENT CHARACTER. If a recurring person appears, describe them the SAME way in every prompt they're in (establish one short look — e.g. "a stick figure with short black hair" — and reuse it word-for-word). Not every beat needs the person; establishing/scene beats can have no one.
+- CONSISTENT CHARACTER, HAPPY BY DEFAULT. If a recurring person appears, describe him the SAME way in every prompt he's in (establish one short look — e.g. "a stick figure with short brown hair" — and reuse it word-for-word), and give him a warm, content SMILE by default (only another expression when the beat clearly calls for it). Not every beat needs the person; establishing/scene beats can have no one.
 - Do NOT describe art style, colours, or medium (that is added automatically). Just the subject and scene.
 - One single scene per prompt, no text/letters/labels in the image, 15-40 words each.
 
@@ -102,7 +105,7 @@ Rules:
 - THE ${count} SHOTS MUST LOOK CLEARLY DIFFERENT, or they render as the same picture and get dropped as duplicates. Change the CAMERA between them, not the caption: a WIDE establishing view of the whole place → a CLOSER angle on the key structure/object/action → a tight DETAIL of the single most important element. Different distance AND angle each time. If two of your prompts could produce near-identical images, rewrite one.
 - Every shot depicts the SPECIFIC thing this beat's narration describes, rendered with its stated details (if the line says "fifty doors", draw fifty; if it says "shields locked", lock them). The base prompt names that subject — keep it central. Only make one a close-up on a character's face when the beat is actually ABOUT a person reacting — for scene/place/object beats, keep the described thing on screen, not a random figure.
 - Stay true to the beat; do NOT invent new events the narration doesn't mention, and never jump ahead to a later beat.
-- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; name a character's expression only when a face is actually shown.
+- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; when a face is shown, give it a warm, content SMILE by default (only another expression when the beat clearly calls for it).
 - Keep every subject centered and simply drawn; no on-screen text.
 - Return exactly the requested number of prompts per beat, in the same beat order.`;
 }
