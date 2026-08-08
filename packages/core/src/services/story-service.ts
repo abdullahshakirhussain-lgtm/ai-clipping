@@ -120,6 +120,8 @@ export class StoryService {
     private readonly dispatcher: Dispatcher,
     private readonly maxBeats: number,
     cheapText?: CheapTextProvider,
+    /** HERO channel protagonist name — used only to name its separate campaign. */
+    private readonly heroName?: string,
   ) {
     this.cheapText = cheapText ?? llm;
   }
@@ -158,7 +160,10 @@ export class StoryService {
   }
 
   async create(input: CreateStoryInput): Promise<{ sourceVideoId: string }> {
-    const campaignId = await this.getOrCreateStoryCampaignId();
+    // The HERO channel groups under its own campaign so it reads as a separate
+    // channel from the stick-figure Story Studio.
+    const campaignName = input.style === "hero-painterly" ? `${this.heroName || "Hero"}'s World` : "Story Studio";
+    const campaignId = await this.getOrCreateCampaignId(campaignName);
     const preset = lengthPreset(input.length, this.maxBeats);
     const spec: StorySpec = {
       topic: input.topic.trim(),
@@ -191,13 +196,13 @@ export class StoryService {
     return { sourceVideoId: video.id };
   }
 
-  /** A dedicated campaign so generated videos group separately from uploads. */
-  private async getOrCreateStoryCampaignId(): Promise<string> {
+  /** A dedicated campaign (by name) so generated videos group separately. */
+  private async getOrCreateCampaignId(name: string): Promise<string> {
     const existing = await this.repos.campaigns.list();
-    const found = existing.find((c) => c.name === "Story Studio");
+    const found = existing.find((c) => c.name === name);
     if (found) return found.id;
     const created = await this.repos.campaigns.create({
-      name: "Story Studio",
+      name,
       allowedPlatforms: ["YOUTUBE", "TIKTOK", "INSTAGRAM"],
       status: "ACTIVE",
     });

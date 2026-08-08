@@ -257,6 +257,21 @@ function buildImageProvider(env: Env, logger: Logger): ImageProvider {
 }
 
 /**
+ * The HERO channel image provider: a trained fal character LoRA. Returns null
+ * (channel inert, falls back to the normal provider) until HERO_LORA_URL + FAL_KEY
+ * are set.
+ */
+function buildHeroImages(env: Env, logger: Logger): ImageProvider | null {
+  if (!env.HERO_LORA_URL) return null;
+  if (!env.FAL_KEY) {
+    logger.warn("HERO_LORA_URL is set but FAL_KEY is missing — hero channel disabled");
+    return null;
+  }
+  logger.info({ scale: env.HERO_LORA_SCALE, name: env.HERO_NAME || "(unnamed)" }, "hero channel: fal character LoRA");
+  return new FalImageProvider({ apiKey: env.FAL_KEY, loraUrl: env.HERO_LORA_URL, loraScale: env.HERO_LORA_SCALE });
+}
+
+/**
  * Veo, on whichever model tier the caller wants. Cook uses Fast (photoreal food
  * has to hold up); animated stick shorts use Lite at half the price, because
  * flat line art asks much less of the model.
@@ -371,6 +386,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const cheapText = buildCheapText(env, logger, llm);
   const ttsFor = buildTtsTiers(env, logger);
   const images = buildImageProvider(env, logger);
+  const heroImages = buildHeroImages(env, logger);
   // Cook holds an 8s shot of a single continuous cooking action; animation cuts
   // faster, so it runs shorter clips at the same per-second cost.
   const video = buildVideoProvider(env, logger, env.GEMINI_VEO_MODEL, "cook", env.VEO_DURATION_SECONDS);
@@ -393,6 +409,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     cheapText,
     ttsFor,
     images,
+    heroImages,
     sceneImages,
     video,
     animVideo,
@@ -413,6 +430,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
       // Mock LLM returns "" anyway; the flag mainly saves the frame extraction.
       visionContext: env.VISION_CONTEXT && env.AI_DRIVER === "live",
       story: { imageSeconds: env.STORY_IMAGE_SECONDS, maxImages: env.STORY_MAX_IMAGES, kenBurns: env.STORY_KEN_BURNS },
+      hero: env.HERO_NAME || env.HERO_TRIGGER ? { name: env.HERO_NAME, desc: env.HERO_DESC, trigger: env.HERO_TRIGGER } : undefined,
       animConcurrency: env.ANIM_CONCURRENCY,
     },
   } as PipelineContext;
@@ -446,7 +464,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     discovery: new DiscoveryService(repos, buildFeedProviders(env, logger), videos, logger, {
       maxAgeHours: env.DISCOVERY_MAX_AGE_H,
     }),
-    story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS, cheapText),
+    story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS, cheapText, env.HERO_NAME),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
     calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
     anim: new AnimService(repos, llm, dispatcher, env.ANIM_MAX_SHOTS),

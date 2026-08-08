@@ -1038,6 +1038,8 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       length: spec.length ?? (spec.aspect === "16:9" ? "long" : "short"),
       narrator: spec.narrator,
       voiceTags: tts.speaksTags === true,
+      // HERO channel: a fixed NAMED protagonist for the writer's opening.
+      ...(spec.style === "hero-painterly" && ctx.config.hero?.name ? { protagonistName: ctx.config.hero.name } : {}),
     };
     let story = await ctx.llm.writeStory(storyInput);
     if (story.beats.length === 0) {
@@ -1181,6 +1183,15 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     // the character is byte-identical every frame. "stick-openai" is the plain
     // text-to-image path where the model draws the whole frame from the anchor.
     const isFal = spec.style === "stick-fal";
+    // HERO channel: render on the trained character-LoRA provider (falls back to
+    // the normal provider when the LoRA isn't configured). The LoRA trigger word +
+    // name/desc lead every prompt so the SAME man renders each frame.
+    const isHero = spec.style === "hero-painterly";
+    const imgProvider = isHero && ctx.heroImages ? ctx.heroImages : ctx.images;
+    const heroTag =
+      isHero && ctx.config.hero
+        ? `${[ctx.config.hero.trigger, ctx.config.hero.name, ctx.config.hero.desc].map((s) => s?.trim()).filter(Boolean).join(", ")}. `
+        : "";
     await setProgress("Drawing the images", 30);
     let done = 0;
     const images = await mapWithConcurrency(mergedShots.map((m) => m.prompt), 3, async (prompt, i) => {
@@ -1194,8 +1205,8 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
           const { figurePng } = await renderStickman({ figures: [{ pose: "stand", expression: "neutral", scale: 0.9 }], width: 300, height: 450 });
           await fs.writeFile(imgFile, await compositeFigure(bg, figurePng, { heightFrac: 0.44, xFrac: 0.5, bottomFrac: 0.92 }));
         } else {
-          const { image } = await ctx.images.generate({
-            prompt: styledImagePrompt(prompt, spec.style, story.setting, orientation),
+          const { image } = await imgProvider.generate({
+            prompt: styledImagePrompt(heroTag + prompt, spec.style, story.setting, orientation),
             size: imageSize,
           });
           await fs.writeFile(imgFile, image);
@@ -1214,7 +1225,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
             story.setting,
             orientation,
           );
-          const { image } = await ctx.images.generate({ prompt: neutral, size: imageSize });
+          const { image } = await (isFal ? ctx.images : imgProvider).generate({ prompt: neutral, size: imageSize });
           await fs.writeFile(imgFile, image);
         } catch (err2) {
           ctx.logger.warn({ sourceVideoId, shot: i, reason: String(err2) }, "image gen failed twice; using plain card");

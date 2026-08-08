@@ -39,6 +39,12 @@ export interface PipelineContext {
   /** Image generation for Story Studio slideshows (stick-figure art). */
   images: ImageProvider;
   /**
+   * Image generation for the HERO channel: a trained fal character LoRA that
+   * renders the same named human every time. null when HERO_LORA_URL is unset,
+   * in which case the "hero-painterly" style falls back to `images`.
+   */
+  heroImages: ImageProvider | null;
+  /**
    * Photoreal stills used as the FIRST FRAME of each generated video clip.
    * null when disabled, in which case the video model works from text alone.
    */
@@ -65,6 +71,9 @@ export interface PipelineContext {
     visionContext: boolean;
     /** Slideshow knobs. `kenBurns` adds a slow per-slide push-in (STORY_KEN_BURNS). */
     story: { imageSeconds: number; maxImages: number; kenBurns: boolean };
+    /** Hero channel: the named protagonist for the prompt + narration. undefined
+     *  when the channel isn't configured (HERO_NAME/HERO_TRIGGER empty). */
+    hero?: { name: string; desc: string; trigger: string };
     /** Parallel Veo calls for animation — the first dial to turn down on 429s. */
     animConcurrency: number;
   };

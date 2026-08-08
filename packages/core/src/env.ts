@@ -66,6 +66,16 @@ const EnvSchema = z.object({
   OPENAI_IMAGE_QUALITY: z.enum(["auto", "low", "medium", "high"]).default("medium"),
   FAL_KEY: z.string().optional().default(""),
   FAL_IMAGE_MODEL: z.string().default("fal-ai/flux/schnell"),
+  // ── Hero channel (a named human protagonist, soft painterly, via a trained fal
+  //    Flux LoRA). Inert until HERO_LORA_URL is set — the "hero-painterly" style
+  //    then renders on fal with this LoRA; without it, that style falls back to
+  //    the normal image provider. HERO_TRIGGER is the LoRA's trigger word, and
+  //    HERO_NAME/HERO_DESC name + describe the man in the prompt and narration.
+  HERO_LORA_URL: z.string().optional().default(""),
+  HERO_LORA_SCALE: z.coerce.number().min(0).max(2).default(1),
+  HERO_TRIGGER: z.string().default(""),
+  HERO_NAME: z.string().default(""),
+  HERO_DESC: z.string().default(""),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────
   // Google Veo via the Gemini API DIRECTLY (no fal reseller markup). Veo 3.1
   // Fast @ 720p ≈ $0.10/sec (~$0.80/8s clip). Provider AUTO-selects: set

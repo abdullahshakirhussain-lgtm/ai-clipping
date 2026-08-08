@@ -6,6 +6,7 @@ import { Button, Card, PageHeader } from "@/components/ui";
 const STYLES = [
   { value: "stick-openai", label: "Stick + colourful (OpenAI)" },
   { value: "stick-fal", label: "Stick + colourful (fal · experimental)" },
+  { value: "hero-painterly", label: "Hero — painterly human (fal LoRA)" },
 ];
 const NARRATORS = [
   { value: "storyteller", label: "Storyteller (warm, suspenseful)" },

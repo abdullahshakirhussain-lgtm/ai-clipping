@@ -149,6 +149,10 @@ export interface WriteStoryInput {
    * story with a hook and a turn. Shapes both the architect and narrator passes.
    */
   mode?: "scenario" | "story";
+  /** HERO channel: the fixed protagonist's name. When set, the scenario is a
+   *  peaceful day in a DIFFERENT life for this same named man ("you, [Name], …");
+   *  when absent, the stick channel's name-less "you" opening stands. */
+  protagonistName?: string;
   /** Explicit format so the writer doesn't have to guess it from word counts:
    *  "long" wants many full-sentence beats; "short" wants a few tiny ones. */
   length?: "long" | "short";

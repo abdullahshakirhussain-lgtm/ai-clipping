@@ -4,40 +4,62 @@ export interface FalImageOptions {
   apiKey: string;
   /** fal model id — default FLUX.1 [schnell]: fast, cheap (~$0.003/image), good. */
   model?: string;
+  /**
+   * A trained Flux LoRA to attach (the character LoRA for the Hero channel). When
+   * set, the provider switches to the `fal-ai/flux-lora` endpoint and passes the
+   * LoRA so the trained character renders identically every time.
+   */
+  loraUrl?: string;
+  /** LoRA strength, 0..~1.5 (default 1). */
+  loraScale?: number;
+}
+
+/** "1024x1536" → {width,height}; falls back to a ~1MP 9:16 portrait. */
+function parseSize(size?: string): { width: number; height: number } {
+  const m = /^(\d+)x(\d+)$/.exec(size ?? "");
+  if (m) return { width: Number(m[1]), height: Number(m[2]) };
+  return { width: 768, height: 1344 };
 }
 
 /**
- * fal.ai image generation (FLUX.1 [schnell] by default). Roughly 50x cheaper
- * than gpt-image-1 at high quality with comparable quality for the illustrated /
- * doodle / vector styles Story Studio uses. The sync endpoint returns a hosted
- * image URL, which we fetch to bytes.
+ * fal.ai image generation. Two modes:
+ *  - default: FLUX.1 [schnell] from a plain prompt (cheap illustrated styles).
+ *  - LoRA (loraUrl set): the `fal-ai/flux-lora` endpoint with a trained character
+ *    LoRA attached — the consistency lever for the Hero channel, where the same
+ *    named human must look identical across every video. The trigger word lives in
+ *    the prompt (built upstream); this just carries the LoRA.
+ * The sync endpoint returns a hosted image URL, which we fetch to bytes.
  */
 export class FalImageProvider implements ImageProvider {
   private readonly model: string;
+  private readonly loraUrl?: string;
+  private readonly loraScale: number;
 
   constructor(private readonly opts: FalImageOptions) {
-    this.model = opts.model || "fal-ai/flux/schnell";
+    this.loraUrl = opts.loraUrl?.trim() || undefined;
+    this.loraScale = opts.loraScale ?? 1;
+    // A LoRA requires the flux-lora endpoint; otherwise the plain schnell default.
+    this.model = opts.model || (this.loraUrl ? "fal-ai/flux-lora" : "fal-ai/flux/schnell");
   }
 
   async generate(input: { prompt: string; size?: string }): Promise<{ image: Buffer; ext: "png" }> {
+    const { width, height } = parseSize(input.size);
+    const body: Record<string, unknown> = {
+      prompt: input.prompt,
+      // fal bills FLUX at $/megapixel rounded up; a clean 9:16 portrait.
+      image_size: { width, height },
+      num_images: 1,
+      output_format: "png",
+    };
+    if (this.loraUrl) body.loras = [{ path: this.loraUrl, scale: this.loraScale }];
+
     const res = await fetch(`https://fal.run/${this.model}`, {
       method: "POST",
       headers: {
         Authorization: `Key ${this.opts.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        prompt: input.prompt,
-        // 720x1280 = 0.92 MP, a clean 9:16. fal bills FLUX.1 [schnell] at
-        // $0.003/megapixel ROUNDED UP to the next whole MP, so anything <=1 MP
-        // costs a flat $0.003/image. Staying under 1 MP (vs the ~2 MP
-        // portrait_16_9 preset) halves the bill and keeps a 15-image story at
-        // ~$0.045. The assembler upscales this to 1080x1920 (same aspect, no
-        // letterbox), which is fine for the flat doodle/sketch styles.
-        image_size: { width: 720, height: 1280 },
-        num_images: 1,
-        output_format: "png",
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");

@@ -1,10 +1,11 @@
 import { z } from "zod";
 
-// Two paths only. "stick-openai" = the working OpenAI stick-figure + colourful
-// scene (default). "stick-fal" = the experimental fal composite path (code-drawn
-// figure over a fal background) — kept as an option while the real stick
-// animation is figured out elsewhere.
-export const STORY_STYLES = ["stick-openai", "stick-fal"] as const;
+// Story visual styles. "stick-openai" = the working OpenAI stick-figure +
+// colourful scene (default). "stick-fal" = the experimental fal composite path.
+// "hero-painterly" = the HERO channel: a named human protagonist in soft painterly
+// storybook art, rendered by a trained fal character LoRA so he's identical every
+// video (inert → falls back to stick-openai until HERO_LORA_URL is configured).
+export const STORY_STYLES = ["stick-openai", "stick-fal", "hero-painterly"] as const;
 export const STORY_NARRATOR_KEYS = ["storyteller", "hyped", "deadpan-documentary", "conspiratorial"] as const;
 export const CAPTION_STYLE_KEYS = ["bold-center", "yellow-pop", "clean-bottom"] as const;
 export const CAPTION_POSITIONS = ["top", "middle", "bottom"] as const;

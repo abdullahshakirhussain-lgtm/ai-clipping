@@ -1,5 +1,5 @@
 import { buildAss } from "@clipfactory/media";
-import { asArray, strList, styledImagePrompt } from "@clipfactory/ai";
+import { asArray, FalImageProvider, strList, styledImagePrompt } from "@clipfactory/ai";
 import { describe, expect, it, vi } from "vitest";
 import { CreateStoryInputSchema } from "./contracts/story.js";
 import { lengthPreset, StoryService } from "./services/story-service.js";
@@ -155,6 +155,47 @@ describe("stripCringeEnding — kill the tacked-on closer the blocklist misses",
     const before = beats[1]!.text;
     stripCringeEnding(beats);
     expect(beats[1]!.text).toBe(before);
+  });
+});
+
+describe("CreateStoryInput accepts the hero style", () => {
+  it("parses style 'hero-painterly'", () => {
+    const parsed = CreateStoryInputSchema.parse({ topic: "a calm day", style: "hero-painterly" });
+    expect(parsed.style).toBe("hero-painterly");
+  });
+});
+
+describe("FalImageProvider — hero LoRA channel", () => {
+  const withMockedFetch = async (fn: () => Promise<void>, capture: Array<{ url: string; body: unknown }>) => {
+    const orig = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: unknown, init?: { body?: string }) => {
+      const u = String(url);
+      capture.push({ url: u, body: init?.body ? JSON.parse(init.body) : undefined });
+      if (u.startsWith("https://fal.run/")) return { ok: true, json: async () => ({ images: [{ url: "https://img/x.png" }] }) } as unknown as Response;
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(4) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    try { await fn(); } finally { globalThis.fetch = orig; }
+  };
+
+  it("attaches the LoRA and hits the flux-lora endpoint when a LoRA URL is set", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    await withMockedFetch(async () => {
+      const p = new FalImageProvider({ apiKey: "k", loraUrl: "https://lora/x.safetensors", loraScale: 0.8 });
+      await p.generate({ prompt: "hi", size: "1024x1536" });
+    }, calls);
+    const gen = calls[0]!;
+    expect(gen.url).toBe("https://fal.run/fal-ai/flux-lora");
+    expect((gen.body as { loras?: unknown }).loras).toEqual([{ path: "https://lora/x.safetensors", scale: 0.8 }]);
+    expect((gen.body as { image_size?: unknown }).image_size).toEqual({ width: 1024, height: 1536 });
+  });
+
+  it("uses plain flux/schnell and no loras when no LoRA URL", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    await withMockedFetch(async () => {
+      await new FalImageProvider({ apiKey: "k" }).generate({ prompt: "hi" });
+    }, calls);
+    expect(calls[0]!.url).toBe("https://fal.run/fal-ai/flux/schnell");
+    expect((calls[0]!.body as { loras?: unknown }).loras).toBeUndefined();
   });
 });
 
