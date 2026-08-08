@@ -755,6 +755,13 @@ Call submit_metadata with optimized fields.`,
     // HERO channel: a fixed NAMED man ("you, Kian, …") vs the stick channel's
     // name-less "you". Only affects the scenario opening/anchoring wording.
     const heroName = input.protagonistName?.trim();
+    // Optional creator direction (what to mention/avoid, angle, tone). Honoured on
+    // top of the doctrine but never overrides the hard rules (plain words, cold
+    // open, no AI tells, etc.). Injected into both passes.
+    const direction = input.direction?.trim();
+    const directionBlock = direction
+      ? `\n\nCREATOR'S DIRECTION FOR THIS VIDEO (follow it closely — it says what to include, what to leave out, and the angle/tone wanted; obey it as long as it doesn't break the hard rules above):\n"${direction}"\n`
+      : "";
     // Long form (~8 min) vs a short. Use the EXPLICIT length signal when present
     // (no more guessing from word counts — that was the "vague path"); fall back to
     // maxWords only for old callers that don't pass length.
@@ -839,7 +846,7 @@ The payoff is accumulated "so THAT's what a day was like" warmth — no dramatic
     }>(
       `${architectRole}
 
-STAY ON TOPIC — this is non-negotiable. The finished video MUST be unmistakably about "${input.topic}". Someone who searched "${input.topic}" has to think "yes, this is exactly that", never "wait, why is this about something else".
+STAY ON TOPIC — this is non-negotiable. The finished video MUST be unmistakably about "${input.topic}". Someone who searched "${input.topic}" has to think "yes, this is exactly that", never "wait, why is this about something else".${directionBlock}
 
 ${architectStep1}
 
@@ -949,7 +956,7 @@ OPENING HOOK — beat 1's "text" MUST START with these exact words, and NOTHING 
 VISUAL WORLD (setting): ${planSetting || "(derive a concrete, on-topic world)"}
 STORY SPINE — follow this order, one beat each:
 ${spineText}
-ENDING TO LAND ON: ${planEnding || "the story's real final consequence"}
+ENDING TO LAND ON: ${planEnding || "the story's real final consequence"}${directionBlock}
 
 HOW TO WRITE IT:
 - Conversational, spoken aloud — contractions, varied sentence length, vivid concrete detail. No throat-clearing, no "in this video", no wiki-summary tone.

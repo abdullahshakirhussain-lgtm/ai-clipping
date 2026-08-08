@@ -820,6 +820,8 @@ async function applyCommentary(
 
 interface StorySpec {
   topic: string;
+  /** Optional creator direction (what to mention/avoid, angle, tone). */
+  direction?: string;
   /** "scenario" (immersive explainer, default) or "story" (dramatic true story). */
   mode?: "scenario" | "story";
   style: string;
@@ -1038,6 +1040,8 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       length: spec.length ?? (spec.aspect === "16:9" ? "long" : "short"),
       narrator: spec.narrator,
       voiceTags: tts.speaksTags === true,
+      // Optional creator direction (what to mention/avoid, angle, tone).
+      ...(spec.direction ? { direction: spec.direction } : {}),
       // HERO channel: a fixed NAMED protagonist for the writer's opening.
       ...(spec.style === "hero-painterly" && ctx.config.hero?.name ? { protagonistName: ctx.config.hero.name } : {}),
     };

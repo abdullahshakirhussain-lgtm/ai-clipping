@@ -83,6 +83,8 @@ export function lengthPreset(length: StoryLength, longMaxBeats: number): LengthP
 /** Story spec persisted on the SourceVideo (kind=story) and read by the generator. */
 export interface StorySpec {
   topic: string;
+  /** Optional user direction — what to mention / avoid, the angle/tone to take. */
+  direction?: string;
   /** "scenario" (immersive explainer, default) or "story" (dramatic true story). */
   mode: "scenario" | "story";
   length: StoryLength;
@@ -173,6 +175,7 @@ export class StoryService {
       imageSize: preset.imageSize,
       style: input.style,
       narrator: input.narrator,
+      direction: input.direction?.trim() || undefined,
       maxBeats: preset.maxBeats,
       minBeats: preset.minBeats,
       maxWords: preset.maxWords,

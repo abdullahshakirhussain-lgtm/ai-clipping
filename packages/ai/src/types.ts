@@ -143,6 +143,9 @@ export interface StoryBeat {
 
 export interface WriteStoryInput {
   topic: string;
+  /** Optional free-text direction from the user (what to mention/avoid, angle,
+   *  tone). Honoured on top of the doctrine, without overriding the hard rules. */
+  direction?: string;
   /**
    * "scenario" (default) = immersive second-person explainer of how something
    * actually was (no dramatic twist needed). "story" = a specific dramatic true

@@ -143,6 +143,7 @@ export default function CreatePage() {
   const [planning, setPlanning] = useState(false);
   const [planSec, setPlanSec] = useState(0);
   const [topic, setTopic] = useState("");
+  const [direction, setDirection] = useState("");
   const [mode, setMode] = useState<"scenario" | "story">("scenario");
   const [length, setLength] = useState<"long" | "short">("short");
   const [style, setStyle] = useState("stick-openai");
@@ -351,6 +352,7 @@ export default function CreatePage() {
       } else {
         await apiSend("/story", "POST", {
           topic: topic.trim(),
+          direction: direction.trim() || undefined,
           mode,
           length,
           style,
@@ -360,6 +362,7 @@ export default function CreatePage() {
           captionPosition,
         });
         setTopic("");
+        setDirection("");
       }
       setMsg("Generating… it'll appear in the Library when done. Track progress in the Video Queue.");
       await revalidateAll();
@@ -434,6 +437,19 @@ export default function CreatePage() {
             placeholder="e.g. the con man who sold the Eiffel Tower twice"
             className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
             style={{ borderColor: topic.trim() ? "var(--primary)" : "var(--border)" }}
+          />
+        </label>
+
+        <label className="block mb-4">
+          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Direction (optional)</span>
+          <textarea
+            value={direction}
+            onChange={(e) => setDirection(e.target.value)}
+            rows={2}
+            maxLength={600}
+            placeholder="how you want it told — what to mention, what to avoid, the angle/tone (e.g. 'focus on the food and the family, keep it very calm, don't mention the war')"
+            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
+            style={{ borderColor: "var(--border)" }}
           />
         </label>
 
