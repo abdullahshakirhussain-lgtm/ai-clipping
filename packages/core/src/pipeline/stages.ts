@@ -960,6 +960,31 @@ export function stripAiTells<T extends { text: string }>(beats: T[]): T[] {
   });
 }
 
+/**
+ * Deterministic backstop for the "too poetic" tell: hard-swap the worst literary
+ * words for their plainest everyday equivalent (hearth→fire, amber→orange,
+ * weary→tired…). The writer prompt already bans these, but the model still slips;
+ * this guarantees they never reach the screen. Same part of speech both ways so
+ * grammar stays intact; capitalization of the first letter is preserved. Applies
+ * to the spoken narration only (image prompts keep "amber/golden" for warm art).
+ */
+const PLAIN_WORD_SWAPS: Record<string, string> = {
+  hearth: "fire", amber: "orange", weary: "tired", slumber: "sleep",
+  serene: "calm", tranquil: "calm", bustling: "busy", dwelling: "home",
+  abode: "home", morn: "morning", aglow: "bright", glistening: "shining",
+  glisten: "shine", gleaming: "shining", repast: "meal",
+};
+const POETIC_RE = new RegExp(`\\b(${Object.keys(PLAIN_WORD_SWAPS).join("|")})\\b`, "gi");
+export function stripPoeticWords<T extends { text: string }>(beats: T[]): T[] {
+  return beats.map((b) => ({
+    ...b,
+    text: b.text.replace(POETIC_RE, (m) => {
+      const plain = PLAIN_WORD_SWAPS[m.toLowerCase()] ?? m;
+      return m[0] === m[0]!.toUpperCase() ? plain[0]!.toUpperCase() + plain.slice(1) : plain;
+    }),
+  }));
+}
+
 export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
   const moved = await ctx.repos.sourceVideos.transition(
     sourceVideoId,
@@ -1040,7 +1065,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
     // first the "here's the strange part / but that's not the worst part" connective
     // giveaways (mid-script), then a tacked-on cringe closer. Rebuild the script so
     // the stored copy matches what's actually narrated + captioned.
-    const detold = stripAiTells(story.beats);
+    const detold = stripPoeticWords(stripAiTells(story.beats));
     const cleaned = stripCringeEnding(detold);
     if (cleaned.length !== story.beats.length || cleaned.some((b, i) => b.text !== story.beats[i]?.text)) {
       ctx.logger.info({ sourceVideoId }, "scrubbed AI tells / cringe ending");

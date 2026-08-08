@@ -3,7 +3,7 @@ import { asArray, strList, styledImagePrompt } from "@clipfactory/ai";
 import { describe, expect, it, vi } from "vitest";
 import { CreateStoryInputSchema } from "./contracts/story.js";
 import { lengthPreset, StoryService } from "./services/story-service.js";
-import { looksLikeColdOpen, stripAiTells, stripCringeEnding } from "./pipeline/stages.js";
+import { looksLikeColdOpen, stripAiTells, stripCringeEnding, stripPoeticWords } from "./pipeline/stages.js";
 
 describe("CreateStoryInput defaults", () => {
   it("defaults to scenario mode, SHORT form, stick-openai, clean bottom captions", () => {
@@ -155,6 +155,19 @@ describe("stripCringeEnding — kill the tacked-on closer the blocklist misses",
     const before = beats[1]!.text;
     stripCringeEnding(beats);
     expect(beats[1]!.text).toBe(before);
+  });
+});
+
+describe("stripPoeticWords — plain-word backstop", () => {
+  it("swaps poetic words for plain ones, keeping capitalization", () => {
+    const out = stripPoeticWords([{ text: "The hearth was aglow and you felt weary." }, { text: "Amber light filled the dwelling." }]);
+    expect(out[0]!.text).toBe("The fire was bright and you felt tired.");
+    expect(out[1]!.text).toBe("Orange light filled the home."); // leading cap preserved
+  });
+  it("leaves plain text untouched and only matches whole words", () => {
+    const out = stripPoeticWords([{ text: "You bake bread by the fire and go to sleep." }, { text: "chambermorn is not a word" }]);
+    expect(out[0]!.text).toBe("You bake bread by the fire and go to sleep.");
+    expect(out[1]!.text).toBe("chambermorn is not a word"); // no substring match
   });
 });
 
