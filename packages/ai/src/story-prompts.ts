@@ -64,14 +64,15 @@ For variety THIS time, lean on these eras — ${seedEras} — and these aspects 
  */
 export function buildImagePromptsInstruction(input: RefineImagePromptsInput): string {
   const lines = input.beats.map((b, i) => `${i + 1}. ${b.text.replace(/\[[^\]]*\]/g, "").trim()}`).join("\n");
-  return `You are writing image prompts for a stick-figure history explainer about "${input.topic}". You are given the finished narration, one line per beat. Write EXACTLY ${input.beats.length} image prompts, one per beat, in order.
+  return `You are writing image prompts for a stick-figure day-in-the-life explainer about "${input.topic}". You are given the finished narration, one line per beat. Write EXACTLY ${input.beats.length} image prompts, one per beat, in order.
 
-VISUAL WORLD (keep every frame in it): ${input.setting || "(derive a concrete, period-correct world from the lines)"}
+VISUAL WORLD (keep every frame in it): ${input.setting || "(derive a concrete world true to the topic — its own time and place, historical or modern — from the lines)"}
 
 RULES:
 - DRAW WHAT THE LINE SAYS. Each prompt is the concrete thing that line describes — the specific place, object, structure or action (a brick oven with round loaves; a stone well with a wooden bucket; a market stall with brass scales). Do NOT default to a figure standing in a vague background while the interesting thing goes undrawn.
 - FOLLOW THE NARRATION'S FLOW, AND VARY THE SCENE. The lines are in order and usually walk one man through a day — so the prompts must PROGRESS with them: read prompt N as the moment right after prompt N-1, in the same continuous story, never a random reshuffle. Shift the TIME OF DAY with the narration (pre-dawn → morning → midday → dusk → night) AND move through DIFFERENT, richly-coloured SETTINGS across the day (warm home interior, sunlit lane, green fields, a lively market, a workshop, the riverside) so the backgrounds stay varied and lively — never the same drab room repeated. Keep every frame BRIGHT and full of clear, varied colour (fresh greens, sky blues, clean reds — not just warm tones), lit naturally for the time of day; never black, grey or gloomy, and never a flat yellow/amber/sepia wash over the whole picture.
-- ACCURATE + ON-TOPIC. Use the period-correct materials, structures and objects for this exact era — no anachronisms. Someone who knows the period shouldn't be able to nitpick it.
+- ACCURATE + ON-TOPIC. Use the materials, structures and objects that belong to the topic's real time and place (historical or modern) — nothing out of place. Someone who knows the subject shouldn't be able to nitpick it.
+- RICH, DETAILED BACKGROUND — the figures stay simple, the WORLD does not. Fill the scene behind and around the stick figure with specific, layered detail: the named place plus its smaller props, textures, plants, furnishings and surroundings, and a sense of depth (foreground, middle, distance). The stick figure itself is always a plain simple doodle — never add detail to the FIGURE — but the background should look full, lived-in and interesting, never a bare or empty backdrop.
 - CONSISTENT CHARACTER, HAPPY BY DEFAULT. If a recurring person appears, describe him the SAME way in every prompt he's in (establish one short look — e.g. "a stick figure with short brown hair" — and reuse it word-for-word), and give him a warm, content SMILE by default (only another expression when the beat clearly calls for it). Not every beat needs the person; establishing/scene beats can have no one.
 - Do NOT describe art style, colours, or medium (that is added automatically). Just the subject and scene.
 - One single scene per prompt, no text/letters/labels in the image, 15-40 words each.
