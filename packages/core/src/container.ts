@@ -431,6 +431,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
       visionContext: env.VISION_CONTEXT && env.AI_DRIVER === "live",
       story: { imageSeconds: env.STORY_IMAGE_SECONDS, maxImages: env.STORY_MAX_IMAGES, kenBurns: env.STORY_KEN_BURNS },
       hero: env.HERO_NAME || env.HERO_TRIGGER ? { name: env.HERO_NAME, desc: env.HERO_DESC, trigger: env.HERO_TRIGGER } : undefined,
+      animeLook: env.ANIME_LOOK,
       animConcurrency: env.ANIM_CONCURRENCY,
     },
   } as PipelineContext;

@@ -1151,6 +1151,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
         // (DeepSeek) when configured, else the main LLM — same shared prompt.
         const lists = await ctx.cheapText.expandImagePrompts({
           setting: story.setting,
+          style: spec.style,
           beats: needsSplit.map((s) => ({
             text: stripAudioTags(story.beats[s.beatIndex]!.text),
             imagePrompt: story.beats[s.beatIndex]!.imagePrompt,
@@ -1196,6 +1197,13 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
       isHero && ctx.config.hero
         ? `${[ctx.config.hero.trigger, ctx.config.hero.name, ctx.config.hero.desc].map((s) => s?.trim()).filter(Boolean).join(", ")}. `
         : "";
+    // FPV channel: a locked "your look" snippet (optional ANIME_LOOK) prepended to
+    // every prompt so the glimpses of your own hands/clothes stay consistent. Empty
+    // is fine — the style anchor already pins a generic "ordinary young man's hands".
+    const isFpv = spec.style === "anime-fpv";
+    const fpvTag = isFpv && ctx.config.animeLook ? `${ctx.config.animeLook.trim()}. ` : "";
+    // Prompt prefix by channel: hero LoRA tag, FPV "your look", or nothing.
+    const leadTag = isHero ? heroTag : isFpv ? fpvTag : "";
     await setProgress("Drawing the images", 30);
     let done = 0;
     const images = await mapWithConcurrency(mergedShots.map((m) => m.prompt), 3, async (prompt, i) => {
@@ -1210,7 +1218,7 @@ export async function runStoryGenerate(ctx: PipelineContext, sourceVideoId: stri
           await fs.writeFile(imgFile, await compositeFigure(bg, figurePng, { heightFrac: 0.44, xFrac: 0.5, bottomFrac: 0.92 }));
         } else {
           const { image } = await imgProvider.generate({
-            prompt: styledImagePrompt(heroTag + prompt, spec.style, story.setting, orientation),
+            prompt: styledImagePrompt(leadTag + prompt, spec.style, story.setting, orientation),
             size: imageSize,
           });
           await fs.writeFile(imgFile, image);

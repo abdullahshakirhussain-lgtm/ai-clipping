@@ -202,6 +202,9 @@ export interface StoryScript {
 export interface ExpandImagePromptsInput {
   /** The story's locked visual world, so the extra frames stay on-topic. */
   setting: string;
+  /** Style key — only needed so the FPV style ("anime-fpv") keeps the shots in
+   *  first-person; omit/other keys use the normal third-person framing. */
+  style?: string;
   /** Beats needing more than one still: the spoken line, the base prompt, how many. */
   beats: Array<{ text: string; imagePrompt: string; count: number }>;
 }

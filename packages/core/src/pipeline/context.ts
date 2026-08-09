@@ -74,6 +74,10 @@ export interface PipelineContext {
     /** Hero channel: the named protagonist for the prompt + narration. undefined
      *  when the channel isn't configured (HERO_NAME/HERO_TRIGGER empty). */
     hero?: { name: string; desc: string; trigger: string };
+    /** FPV ("anime-fpv") channel: optional locked description of the viewer's own
+     *  visible body (hands/clothes), prepended to every prompt. "" = use the style's
+     *  generic default. */
+    animeLook: string;
     /** Parallel Veo calls for animation — the first dial to turn down on 429s. */
     animConcurrency: number;
   };

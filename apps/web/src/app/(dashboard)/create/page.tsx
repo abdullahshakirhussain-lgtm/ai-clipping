@@ -7,6 +7,7 @@ const STYLES = [
   { value: "stick-openai", label: "Stick + colourful (OpenAI)" },
   { value: "stick-fal", label: "Stick + colourful (fal · experimental)" },
   { value: "hero-painterly", label: "Hero — painterly human (fal LoRA)" },
+  { value: "anime-fpv", label: "Anime POV — first-person (you)" },
 ];
 const NARRATORS = [
   { value: "storyteller", label: "Storyteller (warm, suspenseful)" },

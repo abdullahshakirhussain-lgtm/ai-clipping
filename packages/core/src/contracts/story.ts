@@ -5,7 +5,10 @@ import { z } from "zod";
 // "hero-painterly" = the HERO channel: a named human protagonist in soft painterly
 // storybook art, rendered by a trained fal character LoRA so he's identical every
 // video (inert → falls back to stick-openai until HERO_LORA_URL is configured).
-export const STORY_STYLES = ["stick-openai", "stick-fal", "hero-painterly"] as const;
+// "anime-fpv" = the POV channel: detailed anime shot FIRST-PERSON (the camera is
+// the viewer's own eyes), so there's no face to keep consistent — a blank vessel
+// the viewer inhabits. Renders on the normal image provider (gpt-image) in Phase 1.
+export const STORY_STYLES = ["stick-openai", "stick-fal", "hero-painterly", "anime-fpv"] as const;
 export const STORY_NARRATOR_KEYS = ["storyteller", "hyped", "deadpan-documentary", "conspiratorial"] as const;
 export const CAPTION_STYLE_KEYS = ["bold-center", "yellow-pop", "clean-bottom"] as const;
 export const CAPTION_POSITIONS = ["top", "middle", "bottom"] as const;

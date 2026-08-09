@@ -76,6 +76,12 @@ const EnvSchema = z.object({
   HERO_TRIGGER: z.string().default(""),
   HERO_NAME: z.string().default(""),
   HERO_DESC: z.string().default(""),
+  // ── Anime POV channel ("anime-fpv" style). First-person, so no face/LoRA is
+  //    needed — Phase 1 renders on the normal image provider. ANIME_LOOK is an
+  //    OPTIONAL locked description of your own visible body (hands/sleeves/clothes)
+  //    prepended to every prompt so the glimpses stay consistent video-to-video;
+  //    empty is fine (the style's generic "ordinary young man's hands" covers it).
+  ANIME_LOOK: z.string().default(""),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────
   // Google Veo via the Gemini API DIRECTLY (no fal reseller markup). Veo 3.1
   // Fast @ 720p ≈ $0.10/sec (~$0.80/8s clip). Provider AUTO-selects: set

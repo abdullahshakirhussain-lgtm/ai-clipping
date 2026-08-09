@@ -164,7 +164,12 @@ export class StoryService {
   async create(input: CreateStoryInput): Promise<{ sourceVideoId: string }> {
     // The HERO channel groups under its own campaign so it reads as a separate
     // channel from the stick-figure Story Studio.
-    const campaignName = input.style === "hero-painterly" ? `${this.heroName || "Hero"}'s World` : "Story Studio";
+    const campaignName =
+      input.style === "hero-painterly"
+        ? `${this.heroName || "Hero"}'s World`
+        : input.style === "anime-fpv"
+          ? "POV Lives"
+          : "Story Studio";
     const campaignId = await this.getOrCreateCampaignId(campaignName);
     const preset = lengthPreset(input.length, this.maxBeats);
     const spec: StorySpec = {

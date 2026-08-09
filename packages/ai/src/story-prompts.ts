@@ -64,17 +64,43 @@ For variety THIS time, lean on these eras — ${seedEras} — and these aspects 
  */
 export function buildImagePromptsInstruction(input: RefineImagePromptsInput): string {
   const lines = input.beats.map((b, i) => `${i + 1}. ${b.text.replace(/\[[^\]]*\]/g, "").trim()}`).join("\n");
-  return `You are writing image prompts for a stick-figure day-in-the-life explainer about "${input.topic}". You are given the finished narration, one line per beat. Write EXACTLY ${input.beats.length} image prompts, one per beat, in order.
+  const isFpv = input.style === "anime-fpv";
+
+  // The FPV channel is shot FIRST-PERSON: the camera is the viewer's own eyes, so
+  // the "figure/pose" and "consistent character" rules are replaced with POV rules
+  // (your own hands do the action; never your face). Everything else — flow,
+  // accuracy, detailed background, one scene — is shared.
+  const intro = isFpv
+    ? `You are writing FIRST-PERSON POV image prompts for a detailed anime day-in-the-life video about "${input.topic}". The camera is the viewer's OWN eyes ("you"). You are given the finished narration, one line per beat. Write EXACTLY ${input.beats.length} image prompts, one per beat, in order.`
+    : `You are writing image prompts for a stick-figure day-in-the-life explainer about "${input.topic}". You are given the finished narration, one line per beat. Write EXACTLY ${input.beats.length} image prompts, one per beat, in order.`;
+
+  const drawRule = isFpv
+    ? `- DRAW WHAT THE LINE SAYS, FROM YOUR OWN EYES. Each prompt is the concrete thing that line describes as YOU would see it — the brick oven right in front of you, the well as you look down into it, the market stall across the counter. The interesting thing is always in view; do NOT waste the frame on nothing.`
+    : `- DRAW WHAT THE LINE SAYS. Each prompt is the concrete thing that line describes — the specific place, object, structure or action (a brick oven with round loaves; a stone well with a wooden bucket; a market stall with brass scales). Do NOT default to a figure standing in a vague background while the interesting thing goes undrawn.`;
+
+  const bodyRule = isFpv
+    ? `- FIRST-PERSON POV, ALWAYS. Every prompt is what YOU see from inside your own body — the world directly ahead, and your OWN hands/arms/legs entering the frame when you act: "pov, your own hands kneading dough on the floured board, the warm kitchen ahead", "looking down the lane, your feet on the dirt path", "pov looking up at the wooden ceiling from your pillow as you wake", "pov, your eyelids closing, the dim room going dark". NEVER draw a separate person standing in the scene, and NEVER show your own face (no front view, no mirror, no reflection). Match your hands/body to the ACTION in the line (kneading, carrying, reaching, lying still) — do not default to empty hands. An occasional over-the-shoulder view of your own back (head from behind only) is fine for variety, never a face.`
+    : `- STATE THE POSE / ACTION. Whenever the person is in the shot, say plainly what he is DOING and his body pose — "lying in bed asleep with his eyes closed", "sitting cross-legged by the fire", "kneeling to plant seeds", "walking down the lane with a basket", "reaching up to a high shelf", "leaning on the fence talking". The pose matters as much as the place: NEVER write him standing when the line has him lying down, sitting, kneeling, sleeping or otherwise — read the line and match his body to it. "Lying down to sleep" must show him lying down, not standing.`;
+
+  const bgRule = isFpv
+    ? `- INSANELY DETAILED BACKGROUND — this is the whole point. Since no character fills the frame, the WORLD is the subject: pack every prompt with specific, layered detail — the named place plus its smaller props, textures, plants, furnishings and surroundings, with real depth (foreground, middle, distance). Full, lived-in, interesting; never a bare or empty backdrop.`
+    : `- RICH, DETAILED BACKGROUND — the figures stay simple, the WORLD does not. Fill the scene behind and around the stick figure with specific, layered detail: the named place plus its smaller props, textures, plants, furnishings and surroundings, and a sense of depth (foreground, middle, distance). The stick figure itself is always a plain simple doodle — never add detail to the FIGURE — but the background should look full, lived-in and interesting, never a bare or empty backdrop.`;
+
+  const consistencyRule = isFpv
+    ? `- CONSISTENT "YOU". When your hands, arms or clothing show, keep them the SAME each time (ordinary young man's hands, plain simple clothes) — but they are only glimpses at the edge of the frame; the DETAILED WORLD ahead is the subject, not your body. Plenty of beats show no body at all, just what you're looking at.`
+    : `- CONSISTENT CHARACTER, HAPPY BY DEFAULT. If a recurring person appears, describe him the SAME way in every prompt he's in (establish one short look — e.g. "a stick figure with short brown hair" — and reuse it word-for-word), and give him a warm, content SMILE by default (only another expression when the beat clearly calls for it). Not every beat needs the person; establishing/scene beats can have no one.`;
+
+  return `${intro}
 
 VISUAL WORLD (keep every frame in it): ${input.setting || "(derive a concrete world true to the topic — its own time and place, historical or modern — from the lines)"}
 
 RULES:
-- DRAW WHAT THE LINE SAYS. Each prompt is the concrete thing that line describes — the specific place, object, structure or action (a brick oven with round loaves; a stone well with a wooden bucket; a market stall with brass scales). Do NOT default to a figure standing in a vague background while the interesting thing goes undrawn.
-- STATE THE POSE / ACTION. Whenever the person is in the shot, say plainly what he is DOING and his body pose — "lying in bed asleep with his eyes closed", "sitting cross-legged by the fire", "kneeling to plant seeds", "walking down the lane with a basket", "reaching up to a high shelf", "leaning on the fence talking". The pose matters as much as the place: NEVER write him standing when the line has him lying down, sitting, kneeling, sleeping or otherwise — read the line and match his body to it. "Lying down to sleep" must show him lying down, not standing.
+${drawRule}
+${bodyRule}
 - FOLLOW THE NARRATION'S FLOW, AND VARY THE SCENE. The lines are in order and usually walk one man through a day — so the prompts must PROGRESS with them: read prompt N as the moment right after prompt N-1, in the same continuous story, never a random reshuffle. Shift the TIME OF DAY with the narration (pre-dawn → morning → midday → dusk → night) AND move through DIFFERENT, richly-coloured SETTINGS across the day (warm home interior, sunlit lane, green fields, a lively market, a workshop, the riverside) so the backgrounds stay varied and lively — never the same drab room repeated. Keep every frame BRIGHT and full of clear, varied colour (fresh greens, sky blues, clean reds — not just warm tones), lit naturally for the time of day; never black, grey or gloomy, and never a flat yellow/amber/sepia wash over the whole picture.
 - ACCURATE + ON-TOPIC. Use the materials, structures and objects that belong to the topic's real time and place (historical or modern) — nothing out of place. Someone who knows the subject shouldn't be able to nitpick it.
-- RICH, DETAILED BACKGROUND — the figures stay simple, the WORLD does not. Fill the scene behind and around the stick figure with specific, layered detail: the named place plus its smaller props, textures, plants, furnishings and surroundings, and a sense of depth (foreground, middle, distance). The stick figure itself is always a plain simple doodle — never add detail to the FIGURE — but the background should look full, lived-in and interesting, never a bare or empty backdrop.
-- CONSISTENT CHARACTER, HAPPY BY DEFAULT. If a recurring person appears, describe him the SAME way in every prompt he's in (establish one short look — e.g. "a stick figure with short brown hair" — and reuse it word-for-word), and give him a warm, content SMILE by default (only another expression when the beat clearly calls for it). Not every beat needs the person; establishing/scene beats can have no one.
+${bgRule}
+${consistencyRule}
 - Do NOT describe art style, colours, or medium (that is added automatically). Just the subject and scene.
 - One single scene per prompt, no text/letters/labels in the image, 15-40 words each.
 
@@ -96,6 +122,27 @@ export function buildExpandFramesInstruction(input: ExpandImagePromptsInput): st
     .map((b, i) => `${i + 1}. NARRATION: "${b.text}"\n   BASE IMAGE: ${b.imagePrompt}\n   SPLIT INTO: ${b.count} frames`)
     .join("\n");
   const count = input.beats[0]?.count ?? 3;
+  const isFpv = input.style === "anime-fpv";
+
+  // FPV keeps every shot inside the viewer's own eyes: the camera distance moves
+  // (wide POV → closer POV → detail) but it never leaves first person and never
+  // shows a face. Non-FPV styles keep the normal third-person coverage rules.
+  const differRule = isFpv
+    ? `- THE ${count} SHOTS MUST LOOK CLEARLY DIFFERENT, all in FIRST-PERSON POV. Change the CAMERA distance, not the vantage: a WIDE POV taking in the whole place ahead of you → a CLOSER POV on the key object / your own hands at the work → a tight DETAIL of the single most important element. Still first-person every time (never step outside to a third-person view), and if two prompts could render near-identical, rewrite one.`
+    : `- THE ${count} SHOTS MUST LOOK CLEARLY DIFFERENT, or they render as the same picture and get dropped as duplicates. Change the CAMERA between them, not the caption: a WIDE establishing view of the whole place → a CLOSER angle on the key structure/object/action → a tight DETAIL of the single most important element. Different distance AND angle each time. If two of your prompts could produce near-identical images, rewrite one.`;
+
+  const holdRule = isFpv
+    ? `- STAY FIRST-PERSON AND NO FACE ACROSS ALL ${count} SHOTS. Every shot is "pov" from your own eyes — your own hands/body may enter the frame doing the beat's action, but NEVER a separate standing figure and NEVER your face (no front view, no mirror, no reflection). Carry the action from the base prompt into each shot (if you're lying down to sleep, all ${count} shots are that POV — the ceiling, your hands settling, eyes closing to dark), do NOT reset to a neutral establishing shot with a person in it.`
+    : `- KEEP THE SAME POSE/ACTION ACROSS ALL ${count} SHOTS — only the camera moves, never the body. If the beat has the figure lying down asleep, sitting, or kneeling, then EVERY one of the ${count} shots shows him lying / sitting / kneeling (wide, closer and detail all of that same pose) — do NOT reset him to a neutral standing establishing shot. Carry the pose from the base prompt into each shot verbatim.`;
+
+  const subjectRule = isFpv
+    ? `- Every shot depicts the SPECIFIC thing this beat's narration describes, as YOU see it, rendered with its stated details (if the line says "fifty doors", draw fifty; if "shields locked", lock them). The base prompt names that subject — keep it central. Make one a tight close-up of your own hands / what you're holding when the beat is about doing something; for place/object beats, keep the described thing on screen.`
+    : `- Every shot depicts the SPECIFIC thing this beat's narration describes, rendered with its stated details (if the line says "fifty doors", draw fifty; if it says "shields locked", lock them). The base prompt names that subject — keep it central. Only make one a close-up on a character's face when the beat is actually ABOUT a person reacting — for scene/place/object beats, keep the described thing on screen, not a random figure.`;
+
+  const faceRule = isFpv
+    ? `- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; keep it first-person with NO face shown.`
+    : `- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; when a face is shown, give it a warm, content SMILE by default (only another expression when the beat clearly calls for it).`;
+
   return `Each beat below stays on screen too long for a single picture. Cut it into the requested number of DISTINCT SHOTS — the way a video editor covers one moment from different angles — so the screen keeps changing and never looks like the same picture nudged.
 
 WORLD (every shot lives here): ${input.setting || "unspecified"}
@@ -104,11 +151,11 @@ ${listing}
 
 Rules:
 - ONE SINGLE MOMENT PER PROMPT. Each prompt is ONE instant seen by ONE camera — never two things at once, never a sequence. NO collages, NO split screens, NO side-by-side or before/after panels, NO grids or multi-panel layouts, and no "then"/"and then"/"as well as" describing a second scene. One place, one instant, one composition. (This is the collage bug — kill it here.)
-- THE ${count} SHOTS MUST LOOK CLEARLY DIFFERENT, or they render as the same picture and get dropped as duplicates. Change the CAMERA between them, not the caption: a WIDE establishing view of the whole place → a CLOSER angle on the key structure/object/action → a tight DETAIL of the single most important element. Different distance AND angle each time. If two of your prompts could produce near-identical images, rewrite one.
-- KEEP THE SAME POSE/ACTION ACROSS ALL ${count} SHOTS — only the camera moves, never the body. If the beat has the figure lying down asleep, sitting, or kneeling, then EVERY one of the ${count} shots shows him lying / sitting / kneeling (wide, closer and detail all of that same pose) — do NOT reset him to a neutral standing establishing shot. Carry the pose from the base prompt into each shot verbatim.
-- Every shot depicts the SPECIFIC thing this beat's narration describes, rendered with its stated details (if the line says "fifty doors", draw fifty; if it says "shields locked", lock them). The base prompt names that subject — keep it central. Only make one a close-up on a character's face when the beat is actually ABOUT a person reacting — for scene/place/object beats, keep the described thing on screen, not a random figure.
+${differRule}
+${holdRule}
+${subjectRule}
 - Stay true to the beat; do NOT invent new events the narration doesn't mention, and never jump ahead to a later beat.
-- Each prompt stands alone (the image model sees only that one line) and must carry the world's concrete markers so the shots clearly belong to the same scene; when a face is shown, give it a warm, content SMILE by default (only another expression when the beat clearly calls for it).
+${faceRule}
 - Keep every subject centered and simply drawn; no on-screen text.
 - Return exactly the requested number of prompts per beat, in the same beat order.`;
 }
