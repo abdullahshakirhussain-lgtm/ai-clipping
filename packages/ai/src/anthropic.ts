@@ -732,7 +732,9 @@ Call submit_metadata with optimized fields.`,
           required: ["prompts"],
         },
       },
-      Math.max(1024, input.beats.length * 60 + 512),
+      // ~120 tok/beat: each prompt now LEADS with a state clause (place+in/out,
+      // time, weather, outfit) before the scene, so 60 would truncate the tail.
+      Math.max(2048, input.beats.length * 120 + 1500),
       { model: this.model, effort: "low" },
     );
     const prompts = asArray<unknown>(result.prompts).map((p) => String(p ?? "").trim());
@@ -1194,7 +1196,9 @@ Call submit_cook.`,
       // Scales with the work: a long-form story can send 40+ beats needing 3
       // frames each, and a fixed budget would truncate the tail into missing
       // prompts (which then silently reuse the beat's original frame).
-      Math.max(3000, input.beats.reduce((n, b) => n + b.count, 0) * 60 + 1000),
+      // ~110 tok/frame: each shot now leads with its state clause, so 60 would
+      // truncate the tail into missing prompts (which reuse the base frame).
+      Math.max(3000, input.beats.reduce((n, b) => n + b.count, 0) * 110 + 2000),
     );
 
     return alignExpandedFrames(input, asArray(result.beats));

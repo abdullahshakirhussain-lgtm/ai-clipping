@@ -98,7 +98,10 @@ export class DeepSeekProvider implements CheapTextProvider {
     const user = `${buildImagePromptsInstruction(input)}\n\nReturn JSON: {"prompts": ["…", …]} — exactly ${input.beats.length} strings, in beat order.`;
     const result = await this.chatJson<{ prompts?: unknown }>(user, {
       temperature: 0.4,
-      maxTokens: Math.max(8000, input.beats.length * 120 + 2000),
+      // Each prompt now LEADS with a full state clause (place+in/out, time, weather,
+      // outfit) before the scene, so it's longer — budget ~160 tok/beat or a
+      // truncated tail silently falls back to base prompts (the flicker returns).
+      maxTokens: Math.max(8000, input.beats.length * 160 + 3000),
       // Background render job (not interactive) — allow generously for many beats.
       timeoutMs: 45000,
     });
@@ -128,13 +131,13 @@ export class DeepSeekProvider implements CheapTextProvider {
         const batch = batches[idx]!;
         try {
           const totalFrames = batch.reduce((n, b) => n + b.count, 0);
-          const user = `${buildExpandFramesInstruction({ setting: input.setting, beats: batch })}\n\nReturn JSON: {"beats": [{"prompts": ["…", …]}, …]} — one entry per beat, in beat order, each with exactly its requested number of prompts.`;
+          const user = `${buildExpandFramesInstruction({ setting: input.setting, style: input.style, beats: batch })}\n\nReturn JSON: {"beats": [{"prompts": ["…", …]}, …]} — one entry per beat, in beat order, each with exactly its requested number of prompts.`;
           const result = await this.chatJson<{ beats?: Array<{ prompts?: unknown }> }>(user, {
             temperature: 0.5,
             // Floor 8000: V4 is a REASONING model — a tight cap gets spent thinking
             // and returns EMPTY content (which would fall back to base prompts and
             // read as duplicates). Same floor the single-call version used.
-            maxTokens: Math.max(8000, totalFrames * 120 + 3000),
+            maxTokens: Math.max(8000, totalFrames * 150 + 3000),
             timeoutMs: 75000,
           });
           const raw = asArray<{ prompts?: unknown }>(result.beats);
