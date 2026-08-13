@@ -59,6 +59,27 @@ export const strList = (v: unknown): string[] =>
       ? v.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
       : [];
 
+/**
+ * Hashtags, normalized: each gets exactly ONE leading '#', spaces removed, empties
+ * dropped, deduped (case-insensitive), capped. The model is told to include the '#'
+ * but sometimes returns a bare word — which then shows in the caption as plain text
+ * with no '#'. Forcing it here fixes it everywhere hashtags are stored/used.
+ */
+export const hashList = (v: unknown, max = 6): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of strList(v)) {
+    const tag = "#" + raw.replace(/^#+/, "").replace(/\s+/g, "");
+    if (tag.length <= 1) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= max) break;
+  }
+  return out;
+};
+
 /** Words → a human runtime, in minutes once "seconds" stops being readable. */
 function describeLength(words: number): string {
   const sec = Math.round(words / 2.5);
@@ -693,7 +714,7 @@ Call submit_metadata with optimized fields.`,
     return {
       title: String(p.title ?? input.hook).slice(0, 120),
       description: String(p.description ?? ""),
-      hashtags: strList(p.hashtags).slice(0, 6),
+      hashtags: hashList(p.hashtags),
       hookVariants: (strList(p.hookVariants).length ? strList(p.hookVariants) : [input.hook]).slice(0, 3),
       model: this.model,
     };
@@ -1049,7 +1070,7 @@ Call submit_story.`,
       title: String(result.title ?? outline.title ?? input.topic).slice(0, 120),
       script: cleanBeats.map((b) => b.text).join(" "),
       description: String(result.description ?? ""),
-      hashtags: strList(result.hashtags).slice(0, 6),
+      hashtags: hashList(result.hashtags),
       setting: String(result.setting ?? "").trim() || planSetting,
       beats: cleanBeats,
     };
@@ -1157,7 +1178,7 @@ Call submit_cook.`,
     return {
       title: String(result.title ?? input.dish).slice(0, 120),
       description: String(result.description ?? ""),
-      hashtags: strList(result.hashtags).slice(0, 6),
+      hashtags: hashList(result.hashtags),
       shots,
     };
   }
@@ -1442,7 +1463,7 @@ Call submit_call.`,
     return {
       title: String(result.title ?? input.idea).slice(0, 120),
       description: String(result.description ?? ""),
-      hashtags: strList(result.hashtags).slice(0, 6),
+      hashtags: hashList(result.hashtags),
       premise: String(result.premise ?? input.idea),
       setup: String(result.setup ?? ""),
       characters,

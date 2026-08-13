@@ -29,6 +29,20 @@ function triggerDownload(url: string) {
   a.remove();
 }
 
+/** One leading '#', no spaces — so an old clip whose hashtags were stored without
+ *  the '#' still copies correctly (the caption used to show a bare word). */
+function withHash(t: string): string {
+  const s = t.trim().replace(/^#+/, "").replace(/\s+/g, "");
+  return s ? "#" + s : "";
+}
+
+/** The copy-paste caption for a clip: title, description, then the hashtags.
+ *  Reads the clip's stored fields, so it works for previously-made videos too. */
+function buildCaption(clip: ClipDto): string {
+  const tags = (clip.hashtags ?? []).map(withHash).filter(Boolean).join(" ");
+  return [clip.title, clip.description, tags].filter(Boolean).join("\n\n");
+}
+
 function fmtDuration(sec: number | null): string {
   if (!sec || sec <= 0) return "—";
   const m = Math.floor(sec / 60);
@@ -442,6 +456,18 @@ function ClipCard({
   const notes = notesOf(clip).slice(0, 2);
   const scoreColor = clip.overallScore >= 75 ? "var(--success)" : clip.overallScore >= 55 ? "var(--warning)" : "var(--muted)";
   const [more, setMore] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const caption = buildCaption(clip);
+  async function copyCaption() {
+    if (!caption) return;
+    try {
+      await navigator.clipboard.writeText(caption);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked (insecure context) — no-op */
+    }
+  }
   // Freeze the video src for the card's lifetime. The clip list re-fetches every
   // few seconds and each poll can hand us a fresh preview URL; letting that reach
   // the <video> reloads it and playback jumps to the start. Capture the first
@@ -525,7 +551,7 @@ function ClipCard({
         )}
         {/* Primary actions stay visible; category + performance live under ⋯. */}
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               onClick={() => triggerDownload(clipExportUrl([clip.id]))}
               className="text-xs px-2.5 py-1.5 rounded-lg surface-2 border font-medium"
@@ -534,6 +560,16 @@ function ClipCard({
             >
               ⬇ Export
             </button>
+            {caption && (
+              <button
+                onClick={copyCaption}
+                className="text-xs px-2.5 py-1.5 rounded-lg surface-2 border font-medium"
+                style={{ borderColor: copied ? "var(--primary)" : "var(--border)", color: copied ? "var(--primary)" : undefined }}
+                title="Copy the caption (title, description, hashtags) to paste when posting"
+              >
+                {copied ? "✓ Copied" : "⧉ Caption"}
+              </button>
+            )}
             {onDistribute && (
               <button
                 onClick={onDistribute}
