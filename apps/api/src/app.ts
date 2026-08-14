@@ -21,6 +21,7 @@ import { campaignRoutes } from "./routes/campaigns.js";
 import { discoveryRoutes } from "./routes/discovery.js";
 import { storyRoutes } from "./routes/story.js";
 import { cookRoutes } from "./routes/cook.js";
+import { lostRoutes } from "./routes/lost.js";
 import { callRoutes } from "./routes/calls.js";
 import { animRoutes } from "./routes/anim.js";
 import { distributionRoutes } from "./routes/distribution.js";
@@ -145,6 +146,7 @@ export async function buildApp(container: Container) {
       discoveryRoutes(typed, deps);
       storyRoutes(typed, deps);
       cookRoutes(typed, deps);
+      lostRoutes(typed, deps);
       callRoutes(typed, deps);
       animRoutes(typed, deps);
       systemRoutes(typed, deps);

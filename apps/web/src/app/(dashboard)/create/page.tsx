@@ -119,11 +119,29 @@ function ListEditor({
   );
 }
 
+const LOST_SCENE_PRESETS = [
+  "an ancient library swallowed by a forest, golden light through a collapsed roof",
+  "an overgrown stone temple at dusk, vines and moss over the carvings, fireflies",
+  "a forgotten town square, a dry fountain, tall grass between the flagstones",
+  "sunken ruins in a shallow crystal lake, half-submerged pillars, koi weaving between them",
+  "a misty mountain village at sunrise, smoke from a few chimneys, terraced fields",
+  "a quiet seaside harbour at dawn, wooden boats, soft mist, a figure at the end of the pier",
+  "a snowbound village at night, lantern-lit windows, gentle falling snow",
+  "an old shrine courtyard under falling cherry blossoms, a stone basin, a wind chime",
+  "floating sky islands with a ruined temple, drifting clouds, a thin waterfall off the edge",
+  "a cliff-top lighthouse at twilight, sweeping beam, tall grass bending in the wind",
+  "a lone traveller on a hill overlooking an endless valley of ruins at low sun",
+  "a campfire beside ancient standing stones under an aurora, embers rising",
+  "rain on the porch of an old wooden house, dripping eaves, a cat by the door",
+  "a floating-lantern night on a still lake, lanterns lifting, mirrored in the water",
+  "a wooden boat drifting down a forest river, dappled light, a figure lying back",
+];
+
 export default function CreatePage() {
   const { data: cats } = useCategories();
   const categories = (cats ?? []).map((c) => c.name);
 
-  const [format, setFormat] = useState<"story" | "cook" | "call" | "anim">("story");
+  const [format, setFormat] = useState<"story" | "cook" | "call" | "anim" | "lost">("story");
   const [animShots, setAnimShots] = useState<AnimShot[]>([]);
   const [animMeta, setAnimMeta] = useState<
     { title: string; description: string; hashtags: string[]; setting: string; cast: string } | null
@@ -143,6 +161,18 @@ export default function CreatePage() {
   const [cookHashtags, setCookHashtags] = useState<string[]>([]);
   const [planning, setPlanning] = useState(false);
   const [planSec, setPlanSec] = useState(0);
+  // Lost Chronicles (calm anime Veo shorts) — cost-gated: plan (free) → preview
+  // still (cheap, iterate) → animate the approved still (one Veo call).
+  const [scene, setScene] = useState("");
+  const [lostDirection, setLostDirection] = useState("");
+  const [lostStill, setLostStill] = useState("");
+  const [lostMotion, setLostMotion] = useState("");
+  const [lostTitle, setLostTitle] = useState("");
+  const [lostDescription, setLostDescription] = useState("");
+  const [lostHashtags, setLostHashtags] = useState<string[]>([]);
+  const [lostStillUrl, setLostStillUrl] = useState<string | null>(null);
+  const [lostStillKey, setLostStillKey] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const [topic, setTopic] = useState("");
   const [direction, setDirection] = useState("");
   const [mode, setMode] = useState<"scenario" | "story">("scenario");
@@ -185,7 +215,9 @@ export default function CreatePage() {
         ? cookShots.length > 0
         : format === "anim"
           ? animShots.length > 0
-          : !!call && brief.trim().length > 20;
+          : format === "lost"
+            ? !!lostStillKey
+            : !!call && brief.trim().length > 20;
 
   async function planAnim() {
     if (topic.trim().length < 3) return;
@@ -301,6 +333,51 @@ export default function CreatePage() {
     }
   }
 
+  // Lost: plan the scene → editable still + motion prompts (free text call).
+  async function planLost() {
+    if (scene.trim().length < 3) return;
+    setPlanning(true);
+    setPlanSec(0);
+    setMsg(null);
+    try {
+      const plan = await runPlan<{
+        stillPrompt: string;
+        motionPrompt: string;
+        title: string;
+        description: string;
+        hashtags: string[];
+      }>("/lost", { scene: scene.trim(), direction: lostDirection.trim() || undefined }, { onTick: setPlanSec });
+      setLostStill(plan.stillPrompt);
+      setLostMotion(plan.motionPrompt);
+      setLostTitle(plan.title);
+      setLostDescription(plan.description);
+      setLostHashtags(plan.hashtags);
+      // A new plan invalidates any previously-approved still.
+      setLostStillUrl(null);
+      setLostStillKey(null);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't plan the scene");
+    } finally {
+      setPlanning(false);
+    }
+  }
+
+  // Lost: render the anime still (cheap — iterate until it's perfect BEFORE Veo).
+  async function previewLostStill() {
+    if (lostStill.trim().length < 3) return;
+    setPreviewing(true);
+    setMsg(null);
+    try {
+      const r = await runPlan<{ stillKey: string; url: string }>("/lost/preview", { stillPrompt: lostStill.trim() });
+      setLostStillUrl(r.url);
+      setLostStillKey(r.stillKey);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't render the still");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   async function generate() {
     if (!canGenerate) return;
     setBusy(true);
@@ -350,6 +427,23 @@ export default function CreatePage() {
         setCookShots([]);
         setCookTitle("");
         setCookDescription("");
+      } else if (format === "lost") {
+        await apiSend("/lost", "POST", {
+          scene: scene.trim(),
+          stillKey: lostStillKey,
+          stillPrompt: lostStill,
+          motionPrompt: lostMotion,
+          title: lostTitle || undefined,
+          description: lostDescription || undefined,
+          hashtags: lostHashtags,
+          category: category || undefined,
+        });
+        setScene("");
+        setLostDirection("");
+        setLostStill("");
+        setLostMotion("");
+        setLostStillUrl(null);
+        setLostStillKey(null);
       } else {
         await apiSend("/story", "POST", {
           topic: topic.trim(),
@@ -383,7 +477,7 @@ export default function CreatePage() {
 
       <Card className="mb-6 max-w-2xl">
         <div className="flex gap-1 mb-5 p-1 rounded-lg surface-2 border w-fit" style={{ borderColor: "var(--border)" }}>
-          {(["story", "anim", "cook", "call"] as const).map((f) => (
+          {(["story", "anim", "cook", "lost", "call"] as const).map((f) => (
             <button
               key={f}
               onClick={() => { setFormat(f); setMsg(null); }}
@@ -396,12 +490,14 @@ export default function CreatePage() {
                   ? "🎬 Animated short"
                   : f === "cook"
                     ? "🍳 Cook clip"
-                    : "📞 Prank call"}
+                    : f === "lost"
+                      ? "🌸 Lost Chronicles"
+                      : "📞 Prank call"}
             </button>
           ))}
         </div>
 
-        {(format === "cook" || format === "call" || format === "anim") && (
+        {(format === "cook" || format === "call" || format === "anim" || format === "lost") && (
           <div className="mb-5">
             <div className="flex items-center gap-2 flex-wrap">
               <Button onClick={checkProviders} disabled={checking} variant="secondary">
@@ -638,6 +734,104 @@ export default function CreatePage() {
               cuts. Renders in the background — it lands in the Library, track it in the Video Queue.
             </p>
           </>
+        )}
+        </>
+        )}
+
+        {format === "lost" && (
+        <>
+        <label className="block mb-2">
+          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Scene</span>
+          <textarea
+            value={scene}
+            onChange={(e) => setScene(e.target.value)}
+            rows={2}
+            maxLength={400}
+            placeholder="a calm anime scene from a lost, ancient world…"
+            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
+            style={{ borderColor: scene.trim() ? "var(--primary)" : "var(--border)" }}
+          />
+        </label>
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) setScene(e.target.value); }}
+          className="text-xs px-2 py-1.5 rounded-lg surface-2 border mb-3 w-full"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <option value="">✨ Pick a preset scene…</option>
+          {LOST_SCENE_PRESETS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <label className="block mb-3">
+          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Direction (optional)</span>
+          <textarea
+            value={lostDirection}
+            onChange={(e) => setLostDirection(e.target.value)}
+            rows={2}
+            maxLength={600}
+            placeholder="mood / details to include — e.g. 'very peaceful, warm sunset, a lone wanderer resting'"
+            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
+            style={{ borderColor: "var(--border)" }}
+          />
+        </label>
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <Button onClick={planLost} disabled={planning || scene.trim().length < 3} variant="secondary">
+            {planning ? `Planning… ${planSec}s` : lostStill ? "↻ Re-plan" : "🎬 Plan scene"}
+          </Button>
+          <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+            Free — writes the still + motion prompts for you to edit before any spend.
+          </span>
+        </div>
+
+        {lostStill && (
+        <>
+          <label className="block mb-3">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Still prompt — the frame that gets drawn</span>
+            <textarea value={lostStill} onChange={(e) => setLostStill(e.target.value)} rows={4}
+              className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y" style={{ borderColor: "var(--border)" }} />
+          </label>
+          <label className="block mb-3">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Motion — one gentle continuous motion (~8s)</span>
+            <textarea value={lostMotion} onChange={(e) => setLostMotion(e.target.value)} rows={3}
+              className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y" style={{ borderColor: "var(--border)" }} />
+          </label>
+          <label className="block mb-3">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Title</span>
+            <input value={lostTitle} onChange={(e) => setLostTitle(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
+          </label>
+
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <Button onClick={previewLostStill} disabled={previewing || lostStill.trim().length < 3} variant="secondary">
+              {previewing ? "Drawing…" : lostStillUrl ? "↻ Regenerate still" : "🖼 Preview still (~$0.04)"}
+            </Button>
+            <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+              Cheap — regenerate until the frame is perfect. Veo only runs when you hit Animate.
+            </span>
+          </div>
+
+          {lostStillUrl && (
+            <div className="mb-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={lostStillUrl} alt="preview still" className="rounded-lg border max-w-[220px] w-full" style={{ borderColor: "var(--primary)" }} />
+              <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>
+                ✓ This exact frame gets animated. Not right? Regenerate or tweak the still prompt.
+              </p>
+            </div>
+          )}
+
+          <label className="block mb-4 max-w-xs">
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
+            <select value={category} onChange={(e) => setCategory(e.target.value)}
+              className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
+              <option value="">— none —</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
+            One 8s Veo clip (~$0.80), stretched to ~13s for free — no captions (add music on the platform).
+            &ldquo;Animate the frame&rdquo; runs Veo ONCE, on the approved still. Iterate on the still first — that&rsquo;s the cost gate.
+          </p>
+        </>
         )}
         </>
         )}
@@ -1006,7 +1200,9 @@ export default function CreatePage() {
                   ? "📞 Make the call"
                   : format === "anim"
                     ? "🎬 Animate it"
-                    : "✨ Generate video"}
+                    : format === "lost"
+                      ? "🎞️ Animate the frame"
+                      : "✨ Generate video"}
           </Button>
           {msg && <span className="text-xs" style={{ color: "var(--muted)" }}>{msg}</span>}
         </div>

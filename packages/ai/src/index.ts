@@ -13,4 +13,5 @@ export * from "./google-image.js";
 export * from "./call-brief.js";
 export * from "./elevenlabs.js";
 export * from "./story-styles.js";
+export * from "./lost-styles.js";
 export * from "./story-narrators.js";

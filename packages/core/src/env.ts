@@ -82,6 +82,11 @@ const EnvSchema = z.object({
   //    prepended to every prompt so the glimpses stay consistent video-to-video;
   //    empty is fine (the style's generic "ordinary young man's hands" covers it).
   ANIME_LOOK: z.string().default(""),
+  // ── Lost Chronicles (calm anime Veo shorts). Veo is capped at 8s; the clip is
+  //    stretched to LOST_TARGET_SECONDS for free (no extra Veo cost). "slow" is
+  //    the calm slow-motion stretch; "loop" repeats the clip.
+  LOST_TARGET_SECONDS: z.coerce.number().min(8).max(30).default(13),
+  LOST_LENGTH_MODE: z.enum(["slow", "loop"]).default("slow"),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────
   // Google Veo via the Gemini API DIRECTLY (no fal reseller markup). Veo 3.1
   // Fast @ 720p ≈ $0.10/sec (~$0.80/8s clip). Provider AUTO-selects: set

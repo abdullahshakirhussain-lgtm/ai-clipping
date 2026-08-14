@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import {
+  LOST_NEGATIVE,
   narratorInstruction,
   solidPng,
   styledImagePrompt,
@@ -25,6 +26,7 @@ import {
   extractAudio,
   extractFrames,
   extractSmartThumbnail,
+  slowLoopToLength,
   mixMusic,
   renderStickman,
   resolveMusicFile,
@@ -1561,6 +1563,138 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
   } catch (err) {
     if (err instanceof StoryCancelledError) {
       ctx.logger.info({ sourceVideoId }, "cook generation cancelled");
+      return;
+    }
+    await failVideo(ctx, sourceVideoId, err);
+    throw err;
+  }
+}
+
+/** Lost Chronicles spec persisted on the SourceVideo (kind=lost). */
+interface LostSpec {
+  scene: string;
+  stillKey: string;
+  stillPrompt: string;
+  motionPrompt: string;
+  aspectRatio: string;
+  title?: string;
+  description?: string;
+  hashtags?: string[];
+}
+
+/**
+ * Lost Chronicles: animate ONE approved anime still into a calm ~10-20s loop.
+ * The still was already generated and approved in the create form (cost gate),
+ * so this stage does the single expensive thing — one Veo image-to-video call on
+ * the APPROVED frame — then stretches it to length for free (no captions, no
+ * narration; the creator adds music on the platform).
+ */
+export async function runLostGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+  const moved = await ctx.repos.sourceVideos.transition(
+    sourceVideoId,
+    [SourceVideoStatus.PENDING],
+    SourceVideoStatus.DETECTING,
+  );
+  if (!moved) return;
+
+  const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
+  if (!video) return;
+  const spec = (video.storySpec as LostSpec | null) ?? null;
+  if (!spec?.stillKey || !spec?.motionPrompt) {
+    await failVideo(ctx, sourceVideoId, new Error("lost video has no approved still/motion"));
+    return;
+  }
+
+  const workDir = join(ctx.workRoot, sourceVideoId);
+  const setProgress = async (stage: string, pct: number) => {
+    const cur = await ctx.repos.sourceVideos.byId(sourceVideoId);
+    if (!cur || cur.status !== SourceVideoStatus.DETECTING) throw new StoryCancelledError();
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      storySpec: { ...spec, progress: { stage, pct } } as never,
+    });
+  };
+  try {
+    await fs.mkdir(workDir, { recursive: true });
+
+    // 1. Load the APPROVED still (the exact frame the user signed off on).
+    await setProgress("Loading the approved frame", 10);
+    const stillFile = join(workDir, "still.png");
+    await ctx.storage.getToFile(spec.stillKey, stillFile);
+    const stillPng = await fs.readFile(stillFile);
+
+    // 2. The ONE paid render: animate that still with the gentle motion. Uses the
+    //    cheaper Veo Lite (animVideo) — calm anime motion doesn't need the premium
+    //    cook model. Image-to-video, so the result IS the approved frame moving.
+    await setProgress("Animating the scene", 30);
+    const rawClip = join(workDir, "raw.mp4");
+    const { video: bytes } = await ctx.animVideo.generate({
+      prompt: spec.motionPrompt,
+      aspectRatio: spec.aspectRatio || "9:16",
+      image: { png: stillPng },
+      negativePrompt: LOST_NEGATIVE,
+    });
+    await fs.writeFile(rawClip, bytes);
+
+    // 3. Stretch the 8s clip to the target length for FREE (no extra Veo spend).
+    await setProgress("Finishing the loop", 85);
+    const outPath = join(workDir, "lost.mp4");
+    await slowLoopToLength(rawClip, outPath, {
+      targetSec: ctx.config.lost.targetSeconds,
+      mode: ctx.config.lost.lengthMode,
+    });
+
+    // 4. Store + create a ready-to-distribute Clip (no captions).
+    const thumbPath = join(workDir, "thumb.jpg");
+    await extractSmartThumbnail(outPath, thumbPath);
+    const probed = await probe(outPath);
+    const totalDur = probed.durationSec > 0 ? probed.durationSec : ctx.config.lost.targetSeconds;
+    const title = spec.title || "Lost Chronicles";
+
+    const [clip] = await ctx.repos.clips.createMany([
+      {
+        sourceVideoId,
+        campaignId: video.campaignId,
+        startSec: 0,
+        endSec: totalDur,
+        status: ClipStatus.APPROVED,
+        detectionReason: title,
+        detectionSource: "lost",
+        captionStyle: video.captionStyle,
+        captionPosition: video.captionPosition,
+        commentaryMode: "off",
+        category: video.category,
+        hookScore: 80,
+        viralScore: 80,
+        overallScore: 80,
+        scoreBreakdown: { notes: ["lost-chronicles"] } as never,
+      },
+    ]);
+    await ctx.storage.putFile(clipKey(clip!.id), outPath, "video/mp4");
+    await ctx.storage.putFile(thumbKey(clip!.id), thumbPath, "image/jpeg");
+    await ctx.repos.clips.update(clip!.id, {
+      storageKey: clipKey(clip!.id),
+      thumbnailKey: thumbKey(clip!.id),
+      error: null,
+    });
+    await ctx.repos.clips.upsertEnhancement(clip!.id, {
+      title,
+      description: spec.description ?? "",
+      hashtags: spec.hashtags ?? [],
+      hooks: { variants: [title], selectedIndex: 0 } as never,
+      qualityScore: 80,
+      viralScore: 80,
+      estimatedEngagement: 80,
+      model: "lost",
+    });
+
+    await ctx.repos.sourceVideos.update(sourceVideoId, {
+      status: SourceVideoStatus.PROCESSED,
+      storySpec: { ...spec, progress: { stage: "Done", pct: 100 } } as never,
+    });
+    ctx.logger.info({ sourceVideoId, durationSec: Number(totalDur.toFixed(1)) }, "lost chronicles video generated");
+  } catch (err) {
+    if (err instanceof StoryCancelledError) {
+      ctx.logger.info({ sourceVideoId }, "lost generation cancelled");
       return;
     }
     await failVideo(ctx, sourceVideoId, err);

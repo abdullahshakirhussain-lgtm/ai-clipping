@@ -59,6 +59,7 @@ import { PublishService } from "./services/publish-service.js";
 import { ReviewService } from "./services/review-service.js";
 import { StoryService } from "./services/story-service.js";
 import { CookService } from "./services/cook-service.js";
+import { LostService } from "./services/lost-service.js";
 import { CallService } from "./services/call-service.js";
 import { AnimService } from "./services/anim-service.js";
 import { PlanJobs } from "./services/plan-jobs.js";
@@ -86,6 +87,7 @@ export interface Container {
     discovery: DiscoveryService;
     story: StoryService;
     cook: CookService;
+    lost: LostService;
     calls: CallService;
     anim: AnimService;
     /** Background runner for the (slow) Studio planners; polled by the client. */
@@ -433,6 +435,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
       hero: env.HERO_NAME || env.HERO_TRIGGER ? { name: env.HERO_NAME, desc: env.HERO_DESC, trigger: env.HERO_TRIGGER } : undefined,
       animeLook: env.ANIME_LOOK,
       animConcurrency: env.ANIM_CONCURRENCY,
+      lost: { targetSeconds: env.LOST_TARGET_SECONDS, lengthMode: env.LOST_LENGTH_MODE },
     },
   } as PipelineContext;
 
@@ -467,6 +470,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     }),
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS, cheapText, env.HERO_NAME),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
+    lost: new LostService(repos, llm, dispatcher, images, storage),
     calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
     anim: new AnimService(repos, llm, dispatcher, env.ANIM_MAX_SHOTS),
     planJobs: new PlanJobs(logger),

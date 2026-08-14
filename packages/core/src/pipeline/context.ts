@@ -80,6 +80,8 @@ export interface PipelineContext {
     animeLook: string;
     /** Parallel Veo calls for animation — the first dial to turn down on 429s. */
     animConcurrency: number;
+    /** Lost Chronicles: how long the 8s Veo clip is stretched to, and how. */
+    lost: { targetSeconds: number; lengthMode: "slow" | "loop" };
   };
 }
 

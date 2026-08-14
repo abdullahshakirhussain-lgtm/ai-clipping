@@ -7,6 +7,7 @@ export const QUEUE_NAMES = [
   "clip.enhance",
   "story.generate",
   "cook.generate",
+  "lost.generate",
   "call.generate",
   "anim.generate",
   "publish.execute",
@@ -23,6 +24,7 @@ export interface JobPayloads {
   "clip.enhance": { clipId: string };
   "story.generate": { sourceVideoId: string };
   "cook.generate": { sourceVideoId: string };
+  "lost.generate": { sourceVideoId: string };
   "call.generate": { sourceVideoId: string };
   "anim.generate": { sourceVideoId: string };
   "publish.execute": { publishJobId: string };

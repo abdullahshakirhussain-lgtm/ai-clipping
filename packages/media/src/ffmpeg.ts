@@ -75,6 +75,40 @@ export async function probe(filePath: string): Promise<ProbeResult> {
   };
 }
 
+/**
+ * Stretch a short clip to a target length WITHOUT another (paid) video render —
+ * the "Lost Chronicles" clips are one 8s Veo clip taken to 10-20s here for free.
+ *  - "slow": stretch the single clip to the target (setpts) — suits the calm vibe.
+ *  - "loop": repeat the clip until the target, then cut (seamless-ish ambient).
+ * Audio is DROPPED (`-an`): these are silent aesthetic loops; the creator adds
+ * music on the platform.
+ */
+export async function slowLoopToLength(
+  inFile: string,
+  outFile: string,
+  opts: { targetSec: number; mode: "slow" | "loop" },
+): Promise<void> {
+  const { durationSec } = await probe(inFile);
+  const clipDur = durationSec > 0 ? durationSec : 8;
+  const target = Math.max(clipDur, opts.targetSec);
+  const enc = ["-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-movflags", "+faststart"];
+  if (opts.mode === "loop") {
+    await run(
+      bin("ffmpeg"),
+      ["-y", "-stream_loop", "-1", "-i", inFile, "-t", target.toFixed(2), ...enc, outFile],
+      { timeoutMs: 120000 },
+    );
+    return;
+  }
+  // slow: PTS scaled by target/clip (>1 slows it down) to reach the target length.
+  const factor = (target / clipDur).toFixed(4);
+  await run(
+    bin("ffmpeg"),
+    ["-y", "-i", inFile, "-filter:v", `setpts=${factor}*PTS`, ...enc, outFile],
+    { timeoutMs: 120000 },
+  );
+}
+
 /** Generates a test source video (pattern + tone) — used by the mock download driver. */
 export async function synthesizeTestVideo(outPath: string, durationSec: number): Promise<void> {
   await run(bin("ffmpeg"), [

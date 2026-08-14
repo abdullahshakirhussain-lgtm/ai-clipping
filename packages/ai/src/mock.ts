@@ -14,6 +14,8 @@ import type {
   DetectHighlightsInput,
   ImageProvider,
   PlanCookInput,
+  PlanLostInput,
+  LostPlan,
   RefineImagePromptsInput,
   StoryScript,
   SuggestTopicsInput,
@@ -244,6 +246,16 @@ export class MockLlmProvider implements LlmProvider {
       description: `Cooking ${input.dish} outdoors, no talking. Follow for more.`,
       hashtags: ["#cooking", "#asmr", "#wild", "#fyp"],
       shots,
+    };
+  }
+
+  async planLostScene(input: PlanLostInput): Promise<LostPlan> {
+    return {
+      stillPrompt: `MOCK calm anime scene: ${input.scene.trim()}, a lone hooded figure seen from behind, soft light, richly detailed, utterly still.`,
+      motionPrompt: "gentle drifting mist and slowly rising embers; a very slow camera push-in; no cuts.",
+      title: "Lost Chronicles",
+      description: `A quiet moment from a forgotten world: ${input.scene.trim()}.`,
+      hashtags: ["#anime", "#lofi", "#peaceful", "#lostchronicles", "#aesthetic"],
     };
   }
 
