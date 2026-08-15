@@ -263,28 +263,44 @@ function buildImageProvider(env: Env, logger: Logger): ImageProvider {
  * (channel inert, falls back to the normal provider) until HERO_LORA_URL + FAL_KEY
  * are set.
  */
+// Default Ghibli Flux LoRA for Lost Chronicles: the public "GHIBSKY" illustration
+// LoRA (trained for Ghibli villages/skies/nature, and trained on fal so fal can
+// load it). Direct HF .safetensors + its trigger word. Used automatically when a
+// FAL_KEY is present and nothing is overridden, so the fal key alone is enough.
+const DEFAULT_LOST_LORA_URL =
+  "https://huggingface.co/aleksa-codes/flux-ghibsky-illustration/resolve/main/lora.safetensors";
+const DEFAULT_LOST_TRIGGER = "GHIBSKY style painting";
+
 /**
  * Lost Chronicles STILL model. gpt-image gives a flat, yellow-tinted anime; render
- * the still on fal instead for the real Ghibli/painterly look. A Flux STYLE LoRA
- * (LOST_LORA_URL → fal-ai/flux-lora) and/or a fal anime checkpoint (LOST_IMAGE_MODEL).
- * null (→ falls back to gpt-image) until FAL_KEY + one of those is set.
+ * the still on fal instead for the real Ghibli look. With a FAL_KEY set this
+ * DEFAULTS to the GHIBSKY Ghibli LoRA (no config needed); LOST_LORA_URL /
+ * LOST_IMAGE_MODEL / LOST_TRIGGER override it. Without a FAL_KEY it returns null
+ * (still falls back to gpt-image), so nothing breaks.
  */
-function buildLostImages(env: Env, logger: Logger): ImageProvider | null {
-  if (!env.LOST_LORA_URL && !env.LOST_IMAGE_MODEL) return null;
+function buildLostImages(env: Env, logger: Logger): { provider: ImageProvider | null; trigger: string } {
   if (!env.FAL_KEY) {
-    logger.warn("LOST_LORA_URL/LOST_IMAGE_MODEL set but FAL_KEY is missing — Lost still falls back to gpt-image");
-    return null;
+    if (env.LOST_LORA_URL || env.LOST_IMAGE_MODEL) {
+      logger.warn("LOST_LORA_URL/LOST_IMAGE_MODEL set but FAL_KEY is missing — Lost still falls back to gpt-image");
+    }
+    return { provider: null, trigger: env.LOST_TRIGGER };
   }
+  // No explicit override → use the built-in Ghibli LoRA so just having the fal key works.
+  const usingDefault = !env.LOST_LORA_URL && !env.LOST_IMAGE_MODEL;
+  const loraUrl = env.LOST_LORA_URL || (usingDefault ? DEFAULT_LOST_LORA_URL : "");
   logger.info(
-    { model: env.LOST_IMAGE_MODEL || "fal-ai/flux-lora", lora: !!env.LOST_LORA_URL },
+    { model: env.LOST_IMAGE_MODEL || "fal-ai/flux-lora", lora: !!loraUrl, default: usingDefault },
     "Lost Chronicles still: fal image model",
   );
-  return new FalImageProvider({
-    apiKey: env.FAL_KEY,
-    model: env.LOST_IMAGE_MODEL || undefined,
-    loraUrl: env.LOST_LORA_URL || undefined,
-    loraScale: env.LOST_LORA_SCALE,
-  });
+  return {
+    provider: new FalImageProvider({
+      apiKey: env.FAL_KEY,
+      model: env.LOST_IMAGE_MODEL || undefined,
+      loraUrl: loraUrl || undefined,
+      loraScale: env.LOST_LORA_SCALE,
+    }),
+    trigger: env.LOST_TRIGGER || (usingDefault ? DEFAULT_LOST_TRIGGER : ""),
+  };
 }
 
 function buildHeroImages(env: Env, logger: Logger): ImageProvider | null {
@@ -413,6 +429,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
   const ttsFor = buildTtsTiers(env, logger);
   const images = buildImageProvider(env, logger);
   const heroImages = buildHeroImages(env, logger);
+  const lostImages = buildLostImages(env, logger);
   // Cook holds an 8s shot of a single continuous cooking action; animation cuts
   // faster, so it runs shorter clips at the same per-second cost.
   const video = buildVideoProvider(env, logger, env.GEMINI_VEO_MODEL, "cook", env.VEO_DURATION_SECONDS);
@@ -494,7 +511,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     }),
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS, cheapText, env.HERO_NAME),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
-    lost: new LostService(repos, llm, dispatcher, images, storage, buildLostImages(env, logger), env.LOST_TRIGGER),
+    lost: new LostService(repos, llm, dispatcher, images, storage, lostImages.provider, lostImages.trigger),
     calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
     anim: new AnimService(repos, llm, dispatcher, env.ANIM_MAX_SHOTS),
     planJobs: new PlanJobs(logger),
