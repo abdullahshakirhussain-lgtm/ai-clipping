@@ -81,6 +81,15 @@ export const LostPreviewStatusSchema = z.object({
   error: z.string().optional(),
 });
 
+/** REFINE: keep the current still, add a small detail (image-to-image). Reuses
+ *  the preview response/status shapes (returns a new stillKey + url). */
+export const LostRefineRequestSchema = z.object({
+  stillKey: z.string().min(1),
+  stillPrompt: z.string().max(4000),
+  adjustment: z.string().min(1).max(600),
+});
+export type LostRefineRequest = z.infer<typeof LostRefineRequestSchema>;
+
 // ── Step 3: create — animate the APPROVED still, once ───────────────────────
 export const CreateLostInputSchema = z.object({
   scene: z.string().min(3).max(400),

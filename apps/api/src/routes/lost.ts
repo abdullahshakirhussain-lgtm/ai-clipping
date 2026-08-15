@@ -4,6 +4,7 @@ import {
   LostPlanStatusSchema,
   LostPreviewRequestSchema,
   LostPreviewStatusSchema,
+  LostRefineRequestSchema,
   LostSuggestRequestSchema,
   LostSuggestResponseSchema,
   PlanStartedSchema,
@@ -56,6 +57,22 @@ export const lostRoutes: RouteModule = (app, { container }): void => {
     (req) => {
       const job = planJobs.get<Awaited<ReturnType<typeof lost.previewStill>>>(req.params.planId);
       if (!job) return { status: "error" as const, elapsedMs: 0, error: "Preview expired — try again" };
+      return { status: job.status, elapsedMs: job.elapsedMs, plan: job.result, error: job.error };
+    },
+  );
+
+  // Refine the still: keep the composition, add a small detail (image-to-image).
+  app.post(
+    "/lost/refine/plan",
+    { schema: { tags: ["lost"], body: LostRefineRequestSchema, response: { 200: PlanStartedSchema } } },
+    (req) => planJobs.start("lost-refine", () => lost.refineStill(req.body.stillKey, req.body.stillPrompt, req.body.adjustment)),
+  );
+  app.get(
+    "/lost/refine/plan/:planId",
+    { schema: { tags: ["lost"], params: z.object({ planId: z.string() }), response: { 200: LostPreviewStatusSchema } } },
+    (req) => {
+      const job = planJobs.get<Awaited<ReturnType<typeof lost.refineStill>>>(req.params.planId);
+      if (!job) return { status: "error" as const, elapsedMs: 0, error: "Refine expired — try again" };
       return { status: job.status, elapsedMs: job.elapsedMs, plan: job.result, error: job.error };
     },
   );

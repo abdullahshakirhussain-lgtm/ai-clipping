@@ -42,23 +42,49 @@ export class FalImageProvider implements ImageProvider {
     this.model = opts.model || (this.loraUrl ? "fal-ai/flux-lora" : "fal-ai/flux/schnell");
   }
 
-  async generate(input: { prompt: string; size?: string }): Promise<{ image: Buffer; ext: "png" }> {
+  async generate(input: {
+    prompt: string;
+    size?: string;
+    referenceImage?: Buffer;
+  }): Promise<{ image: Buffer; ext: "png" }> {
     const { width, height } = parseSize(input.size);
-    const body: Record<string, unknown> = {
+    const loras = this.loraUrl ? { loras: [{ path: this.loraUrl, scale: this.loraScale }] } : {};
+
+    // REFINE (image-to-image): keep THIS picture's composition and apply the
+    // prompt's changes — for adding a small missing detail without re-rolling a
+    // whole new image. Strength 0.55 leaves most of the frame intact. Any failure
+    // falls back to a fresh text-to-image, so the worst case is the old behaviour.
+    if (input.referenceImage) {
+      try {
+        return await this.post(`${this.model}/image-to-image`, {
+          prompt: input.prompt,
+          image_url: `data:image/png;base64,${input.referenceImage.toString("base64")}`,
+          strength: 0.55,
+          image_size: { width, height },
+          num_images: 1,
+          output_format: "png",
+          ...loras,
+        });
+      } catch (err) {
+        console.warn(`[fal image] img2img refine failed, drawing fresh: ${String(err).slice(0, 200)}`);
+      }
+    }
+
+    return this.post(this.model, {
       prompt: input.prompt,
       // fal bills FLUX at $/megapixel rounded up; a clean 9:16 portrait.
       image_size: { width, height },
       num_images: 1,
       output_format: "png",
-    };
-    if (this.loraUrl) body.loras = [{ path: this.loraUrl, scale: this.loraScale }];
+      ...loras,
+    });
+  }
 
-    const res = await fetch(`https://fal.run/${this.model}`, {
+  /** POST a fal image request and fetch the resulting image to bytes. */
+  private async post(model: string, body: Record<string, unknown>): Promise<{ image: Buffer; ext: "png" }> {
+    const res = await fetch(`https://fal.run/${model}`, {
       method: "POST",
-      headers: {
-        Authorization: `Key ${this.opts.apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Key ${this.opts.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     if (!res.ok) {

@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ImageProvider, LlmProvider, LostPlan } from "@clipfactory/ai";
 import { lostStillPrompt } from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
@@ -83,6 +86,27 @@ export class LostService {
     const stillKey = `lost-still/${randomUUID()}.png`;
     await this.storage.putBuffer(stillKey, image, "image/png");
     return { stillKey, url: await this.storage.getUrl(stillKey) };
+  }
+
+  /** REFINE: keep the current still and ADD a small detail (image-to-image) — so
+   *  the user tweaks with a short note instead of rewriting the whole prompt and
+   *  losing the composition. Returns a NEW still (key + url). */
+  async refineStill(stillKey: string, stillPrompt: string, adjustment: string): Promise<LostPreviewDto> {
+    const provider = this.lostImages ?? this.images;
+    const trigger = this.styleTrigger?.trim() ? `${this.styleTrigger.trim()}, ` : "";
+    // Load the approved still so we edit THAT frame forward, not a fresh one.
+    const tmp = join(tmpdir(), `lost-refine-${randomUUID()}.png`);
+    await this.storage.getToFile(stillKey, tmp);
+    const referenceImage = await readFile(tmp);
+    const scene = adjustment.trim() ? `${stillPrompt.trim()}. Also include: ${adjustment.trim()}` : stillPrompt.trim();
+    const { image } = await provider.generate({
+      prompt: trigger + lostStillPrompt(scene, "portrait"),
+      size: "1024x1536",
+      referenceImage,
+    });
+    const newKey = `lost-still/${randomUUID()}.png`;
+    await this.storage.putBuffer(newKey, image, "image/png");
+    return { stillKey: newKey, url: await this.storage.getUrl(newKey) };
   }
 
   /** Step 3: enqueue the ONE Veo render of the approved still. */

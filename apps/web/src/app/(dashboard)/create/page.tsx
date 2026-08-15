@@ -177,6 +177,8 @@ export default function CreatePage() {
   const [lostHint, setLostHint] = useState("");
   const [lostScenes, setLostScenes] = useState<string[]>([]);
   const [suggestingLost, setSuggestingLost] = useState(false);
+  const [lostAdjust, setLostAdjust] = useState("");
+  const [refiningLost, setRefiningLost] = useState(false);
   const [topic, setTopic] = useState("");
   const [direction, setDirection] = useState("");
   const [mode, setMode] = useState<"scenario" | "story">("scenario");
@@ -395,6 +397,27 @@ export default function CreatePage() {
       setMsg(e instanceof Error ? e.message : "Couldn't render the still");
     } finally {
       setPreviewing(false);
+    }
+  }
+
+  // Lost: keep the current still, add a small detail (image-to-image refine).
+  async function refineLostStill() {
+    if (!lostStillKey || lostAdjust.trim().length < 2) return;
+    setRefiningLost(true);
+    setMsg(null);
+    try {
+      const r = await runPlan<{ stillKey: string; url: string }>("/lost/refine", {
+        stillKey: lostStillKey,
+        stillPrompt: lostStill.trim(),
+        adjustment: lostAdjust.trim(),
+      });
+      setLostStillUrl(r.url);
+      setLostStillKey(r.stillKey);
+      setLostAdjust("");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't refine the still");
+    } finally {
+      setRefiningLost(false);
     }
   }
 
@@ -861,7 +884,22 @@ export default function CreatePage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={lostStillUrl} alt="preview still" className="rounded-lg border max-w-[220px] w-full" style={{ borderColor: "var(--primary)" }} />
               <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>
-                ✓ This exact frame gets animated. Not right? Regenerate or tweak the still prompt.
+                ✓ This exact frame gets animated. Not right? Regenerate, or add a small detail below.
+              </p>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <input
+                  value={lostAdjust}
+                  onChange={(e) => setLostAdjust(e.target.value)}
+                  placeholder="add a small detail — e.g. 'add a water wheel, more flowers, warmer light'"
+                  className="flex-1 min-w-[180px] px-3 py-2 rounded-lg surface-2 border outline-none text-sm"
+                  style={{ borderColor: "var(--border)" }}
+                />
+                <Button onClick={refineLostStill} disabled={refiningLost || lostAdjust.trim().length < 2} variant="secondary">
+                  {refiningLost ? "Adding…" : "✨ Add detail"}
+                </Button>
+              </div>
+              <p className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
+                Keeps this exact picture and just adds/adjusts what you type — no rewriting the prompt.
               </p>
             </div>
           )}
