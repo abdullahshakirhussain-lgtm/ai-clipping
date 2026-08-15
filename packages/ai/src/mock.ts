@@ -252,8 +252,8 @@ export class MockLlmProvider implements LlmProvider {
 
   async planLostScene(input: PlanLostInput): Promise<LostPlan> {
     return {
-      stillPrompt: `MOCK cosy anime scene: ${input.scene.trim()}, people quietly tending gardens and carrying firewood (small, from behind), warm hearth light, no modern tech, richly detailed and lived-in.`,
-      motionPrompt: "gentle drifting woodsmoke and swaying grass; a very slow camera push-in; no cuts.",
+      stillPrompt: `MOCK aerial drone view from high above: ${input.scene.trim()}, the whole community packed into one bird's-eye frame, tiny people tending gardens and carrying firewood below, warm hearth light, no modern tech, richly detailed and lived-in.`,
+      motionPrompt: "a slow, smooth aerial drift over the whole scene; gentle woodsmoke and swaying grass; no cuts.",
       title: "Lost Chronicles",
       description: `A peaceful, self-sufficient life close to nature: ${input.scene.trim()}.`,
       hashtags: ["#anime", "#lofi", "#peaceful", "#lostchronicles", "#cottagecore"],

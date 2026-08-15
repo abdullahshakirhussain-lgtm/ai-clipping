@@ -15,6 +15,11 @@ describe("Lost Chronicles", () => {
     expect(LOST_STYLE_ANCHOR).toMatch(/NOT ruined|no modern technology/i);
   });
 
+  it("style anchor defaults to an AERIAL / drone framing, with a close-up exception", () => {
+    expect(LOST_STYLE_ANCHOR).toMatch(/aerial|drone|bird's-eye/i);
+    expect(LOST_STYLE_ANCHOR).toMatch(/close|intimate|stream/i);
+  });
+
   it("negative prompt blocks on-screen text, faces, modern tech and ruins", () => {
     expect(LOST_NEGATIVE).toMatch(/text/i);
     expect(LOST_NEGATIVE).toMatch(/face/i);
