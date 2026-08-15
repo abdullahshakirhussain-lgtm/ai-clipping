@@ -44,10 +44,15 @@ export class LostService {
     private readonly repos: Repositories,
     private readonly llm: LlmProvider,
     private readonly dispatcher: Dispatcher,
-    /** For the cheap preview still (gpt-image / the normal image provider). */
+    /** Default still model (gpt-image) — used when the fal LoRA isn't configured. */
     private readonly images: ImageProvider,
     /** Persist the approved still so the job animates the EXACT frame the user saw. */
     private readonly storage: ObjectStorage,
+    /** Preferred still model: a fal Flux STYLE-LoRA / anime checkpoint for the real
+     *  Ghibli look (LOST_LORA_URL). null → falls back to `images` (gpt-image). */
+    private readonly lostImages?: ImageProvider | null,
+    /** Optional LoRA style trigger word, prepended to the prompt. */
+    private readonly styleTrigger?: string,
   ) {}
 
   /** Suggest peaceful lived-in community scenes (present-day off-grid AND peaceful
@@ -69,8 +74,10 @@ export class LostService {
   /** Step 2: render the anime still and store it. Cheap — call as many times as
    *  needed until the frame is perfect; each call is a fresh still. */
   async previewStill(stillPrompt: string): Promise<LostPreviewDto> {
-    const { image } = await this.images.generate({
-      prompt: lostStillPrompt(stillPrompt, "portrait"),
+    const provider = this.lostImages ?? this.images;
+    const trigger = this.styleTrigger?.trim() ? `${this.styleTrigger.trim()}, ` : "";
+    const { image } = await provider.generate({
+      prompt: trigger + lostStillPrompt(stillPrompt, "portrait"),
       size: "1024x1536",
     });
     const stillKey = `lost-still/${randomUUID()}.png`;

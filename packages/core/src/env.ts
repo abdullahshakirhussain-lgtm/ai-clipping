@@ -87,6 +87,16 @@ const EnvSchema = z.object({
   //    the calm slow-motion stretch; "loop" repeats the clip.
   LOST_TARGET_SECONDS: z.coerce.number().min(8).max(30).default(13),
   LOST_LENGTH_MODE: z.enum(["slow", "loop"]).default("slow"),
+  // ── Lost Chronicles STILL model. gpt-image renders a flat, yellow-tinted anime;
+  //    for the real Ghibli/painterly look, render the still on fal instead. Set a
+  //    Flux STYLE LoRA (LOST_LORA_URL) — the provider then uses fal-ai/flux-lora —
+  //    and/or point LOST_IMAGE_MODEL at a fal anime checkpoint. Requires FAL_KEY.
+  //    LOST_TRIGGER is the LoRA's style trigger word, prepended to every prompt.
+  //    All empty → the still falls back to the normal image provider (gpt-image).
+  LOST_LORA_URL: z.string().optional().default(""),
+  LOST_LORA_SCALE: z.coerce.number().min(0).max(2).default(1),
+  LOST_IMAGE_MODEL: z.string().default(""),
+  LOST_TRIGGER: z.string().default(""),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────
   // Google Veo via the Gemini API DIRECTLY (no fal reseller markup). Veo 3.1
   // Fast @ 720p ≈ $0.10/sec (~$0.80/8s clip). Provider AUTO-selects: set

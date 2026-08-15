@@ -263,6 +263,30 @@ function buildImageProvider(env: Env, logger: Logger): ImageProvider {
  * (channel inert, falls back to the normal provider) until HERO_LORA_URL + FAL_KEY
  * are set.
  */
+/**
+ * Lost Chronicles STILL model. gpt-image gives a flat, yellow-tinted anime; render
+ * the still on fal instead for the real Ghibli/painterly look. A Flux STYLE LoRA
+ * (LOST_LORA_URL → fal-ai/flux-lora) and/or a fal anime checkpoint (LOST_IMAGE_MODEL).
+ * null (→ falls back to gpt-image) until FAL_KEY + one of those is set.
+ */
+function buildLostImages(env: Env, logger: Logger): ImageProvider | null {
+  if (!env.LOST_LORA_URL && !env.LOST_IMAGE_MODEL) return null;
+  if (!env.FAL_KEY) {
+    logger.warn("LOST_LORA_URL/LOST_IMAGE_MODEL set but FAL_KEY is missing — Lost still falls back to gpt-image");
+    return null;
+  }
+  logger.info(
+    { model: env.LOST_IMAGE_MODEL || "fal-ai/flux-lora", lora: !!env.LOST_LORA_URL },
+    "Lost Chronicles still: fal image model",
+  );
+  return new FalImageProvider({
+    apiKey: env.FAL_KEY,
+    model: env.LOST_IMAGE_MODEL || undefined,
+    loraUrl: env.LOST_LORA_URL || undefined,
+    loraScale: env.LOST_LORA_SCALE,
+  });
+}
+
 function buildHeroImages(env: Env, logger: Logger): ImageProvider | null {
   if (!env.HERO_LORA_URL) return null;
   if (!env.FAL_KEY) {
@@ -470,7 +494,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     }),
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS, cheapText, env.HERO_NAME),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
-    lost: new LostService(repos, llm, dispatcher, images, storage),
+    lost: new LostService(repos, llm, dispatcher, images, storage, buildLostImages(env, logger), env.LOST_TRIGGER),
     calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
     anim: new AnimService(repos, llm, dispatcher, env.ANIM_MAX_SHOTS),
     planJobs: new PlanJobs(logger),
