@@ -9,13 +9,23 @@ describe("Lost Chronicles", () => {
     expect(p.toLowerCase()).toContain("no text");
   });
 
-  it("style anchor keeps the protagonist FACELESS (relatability + Veo person-limit safe)", () => {
-    expect(LOST_STYLE_ANCHOR).toMatch(/FACELESS|from BEHIND|never a visible face/i);
+  it("style anchor is a PEACEFUL LIVED-IN community (not ruins), people shown small/from behind", () => {
+    expect(LOST_STYLE_ANCHOR).toMatch(/lived-in|self-sufficient|community/i);
+    expect(LOST_STYLE_ANCHOR).toMatch(/from BEHIND|small|distance/i);
+    expect(LOST_STYLE_ANCHOR).toMatch(/NOT ruined|no modern technology/i);
   });
 
-  it("negative prompt blocks on-screen text and faces", () => {
+  it("negative prompt blocks on-screen text, faces, modern tech and ruins", () => {
     expect(LOST_NEGATIVE).toMatch(/text/i);
     expect(LOST_NEGATIVE).toMatch(/face/i);
+    expect(LOST_NEGATIVE).toMatch(/modern technology|cars/i);
+    expect(LOST_NEGATIVE).toMatch(/ruined|abandoned/i);
+  });
+
+  it("scene suggester returns lived-in community ideas", async () => {
+    const scenes = await new MockLlmProvider().suggestLostScenes({ count: 8 });
+    expect(scenes.length).toBeGreaterThan(0);
+    expect(scenes.join(" ").toLowerCase()).toMatch(/village|homestead|community|hamlet/);
   });
 
   it("planner returns a still + ONE gentle motion + '#'-prefixed hashtags", async () => {

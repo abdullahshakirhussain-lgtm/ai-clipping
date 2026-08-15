@@ -18,6 +18,7 @@ import type {
   PlanCallInput,
   PlanCookInput,
   PlanLostInput,
+  SuggestLostInput,
   LostPlan,
   StoryScript,
   SuggestTopicsInput,
@@ -1089,11 +1090,11 @@ Call submit_story.`,
       description?: string;
       hashtags?: string[];
     }>(
-      `You are composing ONE calm, wistful ANIME scene for a "Lost Chronicles" short — a beautiful, peaceful fragment of a forgotten, ancient world (Ghibli / Makoto Shinkai "lo-fi peace" mood). No narration, no on-screen text; it exists to be gorgeous and tranquil. The scene: "${input.scene.trim()}".${direction}
+      `You are composing ONE calm, cosy ANIME scene for a "Lost Chronicles" short — a warm, peaceful, LIVED-IN community with NO modern technology (either simple present-day off-grid / self-sufficient living, OR an idyllic gentle PAST). The whole point is the feeling "ah, living HERE would be so peaceful": people quietly going about a content, self-sufficient life close to nature. NOT empty ruins, NOT abandoned or overgrown. No narration, no on-screen text. The scene: "${input.scene.trim()}".${direction}
 
 Write two prompts:
 
-1. "stillPrompt" — the SINGLE serene still (this becomes the first frame). Describe ONE quiet, richly detailed scene: the place, its concrete details (structures, plants, water, light, weather, the small props that make it real), and the time of day / mood. If a person belongs in it, they are a LONE FACELESS figure — seen from BEHIND or small in the distance (a hooded wanderer, someone resting) — NEVER a visible face or portrait. Positive, concrete description only; do NOT write art-style words (medium/palette are added automatically), and NO on-screen text. Keep it calm and still — a beautiful held moment, not an action scene.
+1. "stillPrompt" — the SINGLE warm, lived-in still (this becomes the first frame). Describe ONE cosy, richly detailed scene of a peaceful community: the place and its concrete life — homes, gardens, tended fields, animals, food, water, warm hearth/lantern light, the small everyday props that make it feel real — plus the time of day and season. PEOPLE are present and CONTENT (tending a garden, carrying firewood, sharing a meal, fishing, walking home), but shown SMALL, at a distance, or from BEHIND — NEVER a close-up face or portrait. Show NO modern technology (no cars, phones, screens, power lines, plastic). Positive, concrete description only; do NOT write art-style words (medium/palette are added automatically), and NO on-screen text. Calm and still — a beautiful, inviting held moment you'd want to step into.
 
 2. "motionPrompt" — ONE single, continuous, GENTLE motion for that exact frame, and nothing else: e.g. drifting petals or snow, rolling mist, rising embers/sparks, slow water ripples, tall grass swaying in a soft breeze, a slow camera push-in, a cloak stirring. It must be subtle and loop-friendly — NO cuts, no fast action, no new elements entering, no camera shake. One quiet motion over the still.
 
@@ -1124,6 +1125,30 @@ Also give a short evocative "title", a 1-2 sentence "description" (a soft note i
       description: String(result.description ?? "").trim(),
       hashtags: hashList(result.hashtags),
     };
+  }
+
+  async suggestLostScenes(input: SuggestLostInput): Promise<string[]> {
+    const count = Math.max(4, Math.min(12, input.count));
+    const hint = input.hint?.trim()
+      ? `\n\nSTEER toward: "${input.hint.trim()}" — every idea must fit that, while staying peaceful and tech-free.`
+      : "";
+    const result = await this.callTool<{ scenes?: string[] }>(
+      `Suggest ${count} scene ideas for a "Lost Chronicles" calm anime short. Each is a PEACEFUL, LIVED-IN, self-sufficient community with NO modern technology — the "ah, living here would be so peaceful" feeling. Cover BOTH kinds: some PRESENT-DAY off-grid / self-sufficient living (a modern homestead, an off-grid cabin community, a simple farming village today) AND some idyllic PEACEFUL PAST (a gentle historical village, a cosy old town). ALWAYS people quietly living a content life close to nature — gardens, fields, animals, hearths, water, markets. NEVER ruins, abandoned, overgrown or empty; never any modern tech (no cars, phones, screens).${hint}
+
+Each idea is ONE concrete line, 8-16 words, naming the place + time of day + the gentle human life in it (e.g. "a snowy alpine hamlet at dusk, warm windows, someone clearing the path"). Vary the setting (mountains, coast, forest, desert, plains, canals, islands) and the season. Call submit_scenes.`,
+      {
+        name: "submit_scenes",
+        description: "Submit the list of peaceful lived-in community scene ideas.",
+        input_schema: {
+          type: "object",
+          properties: { scenes: { type: "array", items: { type: "string" } } },
+          required: ["scenes"],
+        },
+      },
+      1500,
+      { model: this.commentaryModel, temperature: 1 },
+    );
+    return strList(result.scenes).slice(0, count);
   }
 
   async planCookShots(input: PlanCookInput): Promise<CookPlan> {

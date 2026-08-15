@@ -15,6 +15,7 @@ import type {
   ImageProvider,
   PlanCookInput,
   PlanLostInput,
+  SuggestLostInput,
   LostPlan,
   RefineImagePromptsInput,
   StoryScript,
@@ -251,12 +252,22 @@ export class MockLlmProvider implements LlmProvider {
 
   async planLostScene(input: PlanLostInput): Promise<LostPlan> {
     return {
-      stillPrompt: `MOCK calm anime scene: ${input.scene.trim()}, a lone hooded figure seen from behind, soft light, richly detailed, utterly still.`,
-      motionPrompt: "gentle drifting mist and slowly rising embers; a very slow camera push-in; no cuts.",
+      stillPrompt: `MOCK cosy anime scene: ${input.scene.trim()}, people quietly tending gardens and carrying firewood (small, from behind), warm hearth light, no modern tech, richly detailed and lived-in.`,
+      motionPrompt: "gentle drifting woodsmoke and swaying grass; a very slow camera push-in; no cuts.",
       title: "Lost Chronicles",
-      description: `A quiet moment from a forgotten world: ${input.scene.trim()}.`,
-      hashtags: ["#anime", "#lofi", "#peaceful", "#lostchronicles", "#aesthetic"],
+      description: `A peaceful, self-sufficient life close to nature: ${input.scene.trim()}.`,
+      hashtags: ["#anime", "#lofi", "#peaceful", "#lostchronicles", "#cottagecore"],
     };
+  }
+
+  async suggestLostScenes(input: SuggestLostInput): Promise<string[]> {
+    const base = [
+      "a cosy mountain village at golden hour, smoke from the chimneys, people tending gardens",
+      "an off-grid forest homestead at dawn, chickens, a vegetable patch, someone carrying firewood",
+      "a coastal fishing village at sunrise, boats coming in, nets drying, the market opening",
+      "a snowy alpine hamlet at dusk, warm windows, someone clearing the path, woodsmoke",
+    ];
+    return base.slice(0, Math.max(4, Math.min(12, input.count)));
   }
 
   async expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]> {

@@ -4,6 +4,8 @@ import {
   LostPlanStatusSchema,
   LostPreviewRequestSchema,
   LostPreviewStatusSchema,
+  LostSuggestRequestSchema,
+  LostSuggestResponseSchema,
   PlanStartedSchema,
 } from "@clipfactory/core";
 import { z } from "zod";
@@ -18,6 +20,13 @@ import type { RouteModule } from "./types.js";
 export const lostRoutes: RouteModule = (app, { container }): void => {
   const lost = container.services.lost;
   const planJobs = container.services.planJobs;
+
+  // Scene suggester (cheap, synchronous under a deadline; optional ?hint=).
+  app.get(
+    "/lost/suggest",
+    { schema: { tags: ["lost"], querystring: LostSuggestRequestSchema, response: { 200: LostSuggestResponseSchema } } },
+    async (req) => ({ scenes: await lost.suggestScenes(req.query.hint) }),
+  );
 
   // Step 1: plan the scene → editable still + motion prompts (no video spend).
   app.post(

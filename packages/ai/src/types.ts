@@ -311,10 +311,16 @@ export interface LostPlan {
 }
 
 export interface PlanLostInput {
-  /** The scene (a preset like "an ancient library swallowed by a forest" or free text). */
+  /** The scene (a preset or free text — a peaceful lived-in community, no tech). */
   scene: string;
   /** Optional creator direction — what to include, the exact mood wanted. */
   direction?: string;
+}
+
+export interface SuggestLostInput {
+  /** Optional steer, e.g. "coastal", "past", "snow", "off-grid modern". */
+  hint?: string;
+  count: number;
 }
 
 export interface PlanCookInput {
@@ -620,6 +626,9 @@ export interface LlmProvider {
   /** "Lost Chronicles": from a scene, write one still prompt + one gentle motion
    *  prompt + caption meta for a calm anime Veo short (cheap text, no video spend). */
   planLostScene(input: PlanLostInput): Promise<LostPlan>;
+  /** "Lost Chronicles": suggest peaceful lived-in community scenes (present-day
+   *  off-grid AND peaceful past), optionally steered by a hint. */
+  suggestLostScenes(input: SuggestLostInput): Promise<string[]>;
   /**
    * Break a beat's single image prompt into `count` successive MOMENTS of that
    * same beat, so a long sentence isn't one static picture. Returns one array

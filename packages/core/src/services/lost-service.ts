@@ -4,7 +4,20 @@ import { lostStillPrompt } from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
 import type { Dispatcher } from "@clipfactory/queue";
 import type { ObjectStorage } from "@clipfactory/storage";
-import type { CreateLostInput, LostPreviewDto, LostPlanRequest } from "../contracts/lost.js";
+import { LOST_SCENES, type CreateLostInput, type LostPreviewDto, type LostPlanRequest } from "../contracts/lost.js";
+
+/** Reject if `p` hasn't settled in `ms` — a slow model call can't hang the
+ *  interactive Suggest button past the proxy's cutoff. */
+function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+function pickFallbackScenes(n: number): string[] {
+  return [...LOST_SCENES].sort(() => Math.random() - 0.5).slice(0, n);
+}
 
 /** Lost Chronicles spec persisted on the SourceVideo (kind=lost) and read by the generator. */
 export interface LostSpec {
@@ -36,6 +49,17 @@ export class LostService {
     /** Persist the approved still so the job animates the EXACT frame the user saw. */
     private readonly storage: ObjectStorage,
   ) {}
+
+  /** Suggest peaceful lived-in community scenes (present-day off-grid AND peaceful
+   *  past). Always returns something — model, else a canned set — under a deadline. */
+  async suggestScenes(hint?: string): Promise<string[]> {
+    try {
+      const scenes = await withDeadline(this.llm.suggestLostScenes({ hint: hint?.trim() || undefined, count: 8 }), 18000);
+      return scenes.length ? scenes : pickFallbackScenes(8);
+    } catch {
+      return pickFallbackScenes(8);
+    }
+  }
 
   /** Step 1: scene → editable still + motion prompts + caption (no spend but text). */
   async plan(input: LostPlanRequest): Promise<LostPlan> {

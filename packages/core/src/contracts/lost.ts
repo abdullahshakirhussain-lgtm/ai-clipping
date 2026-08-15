@@ -10,25 +10,36 @@ import { z } from "zod";
  * so a slow model call can't hit the proxy's ~30s cutoff.
  */
 
-/** Curated starter scenes (the UI also allows free text). */
+/**
+ * Curated starter scenes (the UI also allows free text + a suggester). These are
+ * PEACEFUL, LIVED-IN, self-sufficient communities without modern tech — the "I'd
+ * love to live here" feeling, NOT empty ruins.
+ */
 export const LOST_SCENES = [
-  "an ancient library swallowed by a forest, golden light through a collapsed roof",
-  "an overgrown stone temple at dusk, vines and moss over the carvings, fireflies",
-  "a forgotten town square, a dry fountain, tall grass between the flagstones",
-  "sunken ruins in a shallow crystal lake, half-submerged pillars, koi weaving between them",
-  "a misty mountain village at sunrise, smoke from a few chimneys, terraced fields",
-  "a quiet seaside harbour at dawn, wooden boats, soft mist, a figure at the end of the pier",
-  "a snowbound village at night, lantern-lit windows, gentle falling snow",
-  "an old shrine courtyard under falling cherry blossoms, a stone basin, a wind chime",
-  "floating sky islands with a ruined temple, drifting clouds, a thin waterfall off the edge",
-  "a cliff-top lighthouse at twilight, sweeping beam, tall grass bending in the wind",
-  "a lone traveller on a hill overlooking an endless valley of ruins at low sun",
-  "a desert caravan resting among half-buried statues at sunset",
-  "a campfire beside ancient standing stones under an aurora, embers rising",
-  "rain on the porch of an old wooden house, dripping eaves, a cat by the door",
-  "a floating-lantern night on a still lake, lanterns lifting, mirrored in the water",
-  "a wooden boat drifting down a forest river, dappled light, a figure lying back",
+  "a cosy self-sufficient mountain village at golden hour, smoke from the chimneys, people tending their gardens",
+  "a warm evening on a valley homestead, lantern light, a family sharing a meal at an outdoor table",
+  "a peaceful riverside village, wooden houses, people fishing and washing by the water, children playing",
+  "an off-grid forest homestead at dawn, chickens in the yard, a vegetable patch, someone carrying firewood",
+  "terraced rice fields around a small village in soft morning mist, farmers wading the paddies",
+  "a snowy alpine hamlet at dusk, warm glowing windows, someone clearing a path, woodsmoke in the air",
+  "a coastal fishing village at sunrise, boats coming in, nets drying, the little market opening",
+  "a desert oasis town in the evening, date palms, people drawing water from the well, warm lamplight",
+  "a highland shepherd's hamlet, stone cottages, flocks coming home at sunset, a shared fire",
+  "a cottage with a garden in full bloom in early summer, washing on the line, bees, a cat asleep on the step",
+  "a lakeside cabin community in autumn, canoes on still water, someone splitting wood, orange leaves",
+  "an old-town bakery street at dawn, warm bread in the window, cobblestones, the first customers",
+  "a self-sufficient island village, terraced gardens, goats, fishing boats, a windmill turning",
+  "a prairie homestead at golden hour, a windmill, horses grazing, someone resting on the porch",
+  "a canal village, little boats, flower boxes on the bridges, neighbours chatting from doorways",
+  "a hillside vineyard village at harvest, baskets of grapes, long tables set outside, warm light",
 ] as const;
+
+// ── Scene suggester (cheap; optional hint) ──────────────────────────────────
+export const LostSuggestRequestSchema = z.object({
+  /** Optional steer, e.g. "coastal", "past", "snow", "off-grid modern". */
+  hint: z.string().max(200).optional(),
+});
+export const LostSuggestResponseSchema = z.object({ scenes: z.array(z.string()) });
 
 // ── Step 1: plan (background + poll) ────────────────────────────────────────
 export const LostPlanRequestSchema = z.object({

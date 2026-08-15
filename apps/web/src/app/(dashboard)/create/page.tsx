@@ -120,21 +120,22 @@ function ListEditor({
 }
 
 const LOST_SCENE_PRESETS = [
-  "an ancient library swallowed by a forest, golden light through a collapsed roof",
-  "an overgrown stone temple at dusk, vines and moss over the carvings, fireflies",
-  "a forgotten town square, a dry fountain, tall grass between the flagstones",
-  "sunken ruins in a shallow crystal lake, half-submerged pillars, koi weaving between them",
-  "a misty mountain village at sunrise, smoke from a few chimneys, terraced fields",
-  "a quiet seaside harbour at dawn, wooden boats, soft mist, a figure at the end of the pier",
-  "a snowbound village at night, lantern-lit windows, gentle falling snow",
-  "an old shrine courtyard under falling cherry blossoms, a stone basin, a wind chime",
-  "floating sky islands with a ruined temple, drifting clouds, a thin waterfall off the edge",
-  "a cliff-top lighthouse at twilight, sweeping beam, tall grass bending in the wind",
-  "a lone traveller on a hill overlooking an endless valley of ruins at low sun",
-  "a campfire beside ancient standing stones under an aurora, embers rising",
-  "rain on the porch of an old wooden house, dripping eaves, a cat by the door",
-  "a floating-lantern night on a still lake, lanterns lifting, mirrored in the water",
-  "a wooden boat drifting down a forest river, dappled light, a figure lying back",
+  "a cosy self-sufficient mountain village at golden hour, smoke from the chimneys, people tending their gardens",
+  "a warm evening on a valley homestead, lantern light, a family sharing a meal at an outdoor table",
+  "a peaceful riverside village, wooden houses, people fishing and washing by the water, children playing",
+  "an off-grid forest homestead at dawn, chickens in the yard, a vegetable patch, someone carrying firewood",
+  "terraced rice fields around a small village in soft morning mist, farmers wading the paddies",
+  "a snowy alpine hamlet at dusk, warm glowing windows, someone clearing a path, woodsmoke in the air",
+  "a coastal fishing village at sunrise, boats coming in, nets drying, the little market opening",
+  "a desert oasis town in the evening, date palms, people drawing water from the well, warm lamplight",
+  "a highland shepherd's hamlet, stone cottages, flocks coming home at sunset, a shared fire",
+  "a cottage with a garden in full bloom in early summer, washing on the line, bees, a cat asleep on the step",
+  "a lakeside cabin community in autumn, canoes on still water, someone splitting wood, orange leaves",
+  "an old-town bakery street at dawn, warm bread in the window, cobblestones, the first customers",
+  "a self-sufficient island village, terraced gardens, goats, fishing boats, a windmill turning",
+  "a prairie homestead at golden hour, a windmill, horses grazing, someone resting on the porch",
+  "a canal village, little boats, flower boxes on the bridges, neighbours chatting from doorways",
+  "a hillside vineyard village at harvest, baskets of grapes, long tables set outside, warm light",
 ];
 
 export default function CreatePage() {
@@ -173,6 +174,9 @@ export default function CreatePage() {
   const [lostStillUrl, setLostStillUrl] = useState<string | null>(null);
   const [lostStillKey, setLostStillKey] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [lostHint, setLostHint] = useState("");
+  const [lostScenes, setLostScenes] = useState<string[]>([]);
+  const [suggestingLost, setSuggestingLost] = useState(false);
   const [topic, setTopic] = useState("");
   const [direction, setDirection] = useState("");
   const [mode, setMode] = useState<"scenario" | "story">("scenario");
@@ -330,6 +334,22 @@ export default function CreatePage() {
       setMsg(e instanceof Error ? e.message : "Couldn't plan the shots");
     } finally {
       setPlanning(false);
+    }
+  }
+
+  // Lost: suggest peaceful lived-in community scenes (present-day + past).
+  async function suggestLostScenes() {
+    setSuggestingLost(true);
+    setMsg(null);
+    try {
+      const r = await apiGet<{ scenes: string[] }>(
+        `/lost/suggest${lostHint.trim() ? `?hint=${encodeURIComponent(lostHint.trim())}` : ""}`,
+      );
+      setLostScenes(r.scenes);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't fetch scenes");
+    } finally {
+      setSuggestingLost(false);
     }
   }
 
@@ -761,6 +781,33 @@ export default function CreatePage() {
           <option value="">✨ Pick a preset scene…</option>
           {LOST_SCENE_PRESETS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <input
+            value={lostHint}
+            onChange={(e) => setLostHint(e.target.value)}
+            placeholder="steer the suggestions (optional): coastal, past, snow, off-grid…"
+            className="flex-1 min-w-[180px] px-3 py-2 rounded-lg surface-2 border outline-none text-sm"
+            style={{ borderColor: "var(--border)" }}
+          />
+          <Button onClick={suggestLostScenes} disabled={suggestingLost} variant="secondary">
+            {suggestingLost ? "Finding…" : "✨ Suggest scenes"}
+          </Button>
+        </div>
+        {lostScenes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {lostScenes.map((s) => (
+              <button
+                key={s}
+                onClick={() => setScene(s)}
+                className="text-[11px] px-2 py-1 rounded-lg surface-2 border text-left"
+                style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+                title="Use this scene"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
         <label className="block mb-3">
           <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Direction (optional)</span>
           <textarea
