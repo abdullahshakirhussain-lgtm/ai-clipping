@@ -12,6 +12,10 @@ export interface FalImageOptions {
   loraUrl?: string;
   /** LoRA strength, 0..~1.5 (default 1). */
   loraScale?: number;
+  /** Image-to-image denoise strength for refines: 1.0 = fully remake, 0.0 = keep
+   *  the original untouched. Needs to be fairly HIGH (~0.75) or "add a detail" does
+   *  nothing (flux just preserves the frame). Default 0.75. */
+  imgToImgStrength?: number;
 }
 
 /** "1024x1536" → {width,height}; falls back to a ~1MP 9:16 portrait. */
@@ -34,10 +38,12 @@ export class FalImageProvider implements ImageProvider {
   private readonly model: string;
   private readonly loraUrl?: string;
   private readonly loraScale: number;
+  private readonly imgStrength: number;
 
   constructor(private readonly opts: FalImageOptions) {
     this.loraUrl = opts.loraUrl?.trim() || undefined;
     this.loraScale = opts.loraScale ?? 1;
+    this.imgStrength = opts.imgToImgStrength ?? 0.75;
     // A LoRA requires the flux-lora endpoint; otherwise the plain schnell default.
     this.model = opts.model || (this.loraUrl ? "fal-ai/flux-lora" : "fal-ai/flux/schnell");
   }
@@ -59,7 +65,7 @@ export class FalImageProvider implements ImageProvider {
         return await this.post(`${this.model}/image-to-image`, {
           prompt: input.prompt,
           image_url: `data:image/png;base64,${input.referenceImage.toString("base64")}`,
-          strength: 0.55,
+          strength: this.imgStrength,
           image_size: { width, height },
           num_images: 1,
           output_format: "png",

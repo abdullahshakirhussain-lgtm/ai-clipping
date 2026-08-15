@@ -95,6 +95,10 @@ const EnvSchema = z.object({
   //    All empty → the still falls back to the normal image provider (gpt-image).
   LOST_LORA_URL: z.string().optional().default(""),
   LOST_LORA_SCALE: z.coerce.number().min(0).max(2).default(1),
+  // "Add detail" refine strength: 1 = fully remake, 0 = keep the frame untouched.
+  // ~0.75 actually paints the added detail in; lower it toward 0.5 for subtler
+  // tweaks (0.55 was too low — nothing changed).
+  LOST_REFINE_STRENGTH: z.coerce.number().min(0.05).max(1).default(0.75),
   LOST_IMAGE_MODEL: z.string().default(""),
   LOST_TRIGGER: z.string().default(""),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────

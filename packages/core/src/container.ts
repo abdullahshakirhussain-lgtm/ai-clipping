@@ -298,6 +298,7 @@ function buildLostImages(env: Env, logger: Logger): { provider: ImageProvider | 
       model: env.LOST_IMAGE_MODEL || undefined,
       loraUrl: loraUrl || undefined,
       loraScale: env.LOST_LORA_SCALE,
+      imgToImgStrength: env.LOST_REFINE_STRENGTH,
     }),
     trigger: env.LOST_TRIGGER || (usingDefault ? DEFAULT_LOST_TRIGGER : ""),
   };
