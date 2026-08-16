@@ -6,12 +6,16 @@ import { join } from "node:path";
 /**
  * Chunk size for a single TTS request, in characters.
  *
- * gpt-4o-mini-tts caps input at 2000 TOKENS (~8000 chars), and ElevenLabs has
- * its own per-request ceiling. 4000 chars is roughly 1000 tokens — half the
- * tighter limit — which leaves room for the tokenizer being less efficient on
- * names and numbers than a chars/4 estimate suggests.
+ * SMALLER IS BETTER for quality: ElevenLabs degrades ("glitchy", rushed) on long
+ * inputs — a few hundred words in one call comes out worse than the same text in
+ * shorter pieces. ~900 chars (~150 words) sits near that sweet spot. Splitting
+ * this small used to cause a second problem — consecutive chunks sounding
+ * DIFFERENT — but that's handled now: each chunk is conditioned on its neighbours
+ * (previous_text/next_text) and stability is up, so many small chunks still read
+ * as one continuous voice. (OpenAI TTS is gone, so its old 2000-token cap no
+ * longer bounds this.)
  */
-const CHUNK_CHARS = 4000;
+const CHUNK_CHARS = 900;
 
 /**
  * Split narration into TTS-sized pieces at SENTENCE boundaries.

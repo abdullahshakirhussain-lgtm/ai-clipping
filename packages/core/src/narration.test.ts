@@ -48,12 +48,14 @@ describe("splitNarration", () => {
     expect(splitNarration("   \n\n  ")).toEqual([]);
   });
 
-  it("keeps an 8-minute script within a handful of requests", () => {
-    // ~1200 words ≈ 7000 chars — a small number of joins, not dozens.
+  it("splits an 8-minute script into small chunks (better TTS quality), still bounded", () => {
+    // ~1200 words ≈ 7000 chars. At ~900 chars/chunk that's ~8 pieces — SMALL on
+    // purpose (ElevenLabs sounds better on short inputs; continuity keeps them
+    // consistent). Bounded, not one-per-sentence.
     const words = 1200;
     const text = Array.from({ length: Math.ceil(words / 11) }, (_, i) => sentence(i + 1)).join(" ");
     const chunks = splitNarration(text);
-    expect(chunks.length).toBeLessThanOrEqual(4);
     expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.length).toBeLessThanOrEqual(12);
   });
 });
