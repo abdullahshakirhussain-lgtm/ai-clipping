@@ -120,22 +120,22 @@ function ListEditor({
 }
 
 const LOST_SCENE_PRESETS = [
-  "a cosy self-sufficient mountain village at golden hour, smoke from the chimneys, people tending their gardens",
-  "a warm evening on a valley homestead, lantern light, a family sharing a meal at an outdoor table",
-  "a peaceful riverside village, wooden houses, people fishing and washing by the water, children playing",
-  "an off-grid forest homestead at dawn, chickens in the yard, a vegetable patch, someone carrying firewood",
-  "terraced rice fields around a small village in soft morning mist, farmers wading the paddies",
-  "a snowy alpine hamlet at dusk, warm glowing windows, someone clearing a path, woodsmoke in the air",
-  "a coastal fishing village at sunrise, boats coming in, nets drying, the little market opening",
-  "a desert oasis town in the evening, date palms, people drawing water from the well, warm lamplight",
-  "a highland shepherd's hamlet, stone cottages, flocks coming home at sunset, a shared fire",
-  "a cottage with a garden in full bloom in early summer, washing on the line, bees, a cat asleep on the step",
-  "a lakeside cabin community in autumn, canoes on still water, someone splitting wood, orange leaves",
-  "an old-town bakery street at dawn, warm bread in the window, cobblestones, the first customers",
-  "a self-sufficient island village, terraced gardens, goats, fishing boats, a windmill turning",
-  "a prairie homestead at golden hour, a windmill, horses grazing, someone resting on the porch",
-  "a canal village, little boats, flower boxes on the bridges, neighbours chatting from doorways",
-  "a hillside vineyard village at harvest, baskets of grapes, long tables set outside, warm light",
+  "a Tuscan hillside village at golden hour, terracotta rooftops, cypress trees and vineyards",
+  "a Swiss alpine hamlet in summer, timber chalets with flower boxes, cows in green meadows, snow peaks",
+  "a Japanese satoyama mountain village in autumn, tiled farmhouses, rice terraces and a small shrine",
+  "a Greek island town at dusk, white cubic houses with blue doors, steps down to a calm sea",
+  "a Nepali Himalayan village in morning mist, stone-and-timber houses, terraced fields, prayer flags",
+  "an Irish coastal village, whitewashed stone cottages, green cliffs and fishing boats in a small harbour",
+  "a Moroccan oasis kasbah at evening, earthen houses, date palms and irrigation channels, warm light",
+  "a Vietnamese highland village at dawn, stilt houses, terraced rice paddies and water buffalo in the mist",
+  "an English Cotswold village in spring, honey-stone cottages, a village green and a brook",
+  "a Scandinavian fjord hamlet, red wooden houses, a jetty on still water, pine forest and steep cliffs",
+  "an Andean village in Peru, adobe houses with tiled roofs, terraced fields and llamas on green mountains",
+  "a Kerala backwater village, palm-thatched houses along the water, coconut palms and a wooden canoe",
+  "a Bavarian alpine village, timber-framed houses, an onion-dome church and wildflower meadows",
+  "a Provençal farming village in summer, a stone town, lavender rows and plane trees, cicada heat",
+  "a New England coastal village in autumn, clapboard houses, a white steeple and a harbour of small boats",
+  "an old Silk Road oasis town at sunset, mud-brick houses, a bustling little bazaar and camels resting",
 ];
 
 export default function CreatePage() {

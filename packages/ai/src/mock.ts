@@ -262,10 +262,10 @@ export class MockLlmProvider implements LlmProvider {
 
   async suggestLostScenes(input: SuggestLostInput): Promise<string[]> {
     const base = [
-      "a cosy mountain village at golden hour, smoke from the chimneys, people tending gardens",
-      "an off-grid forest homestead at dawn, chickens, a vegetable patch, someone carrying firewood",
-      "a coastal fishing village at sunrise, boats coming in, nets drying, the market opening",
-      "a snowy alpine hamlet at dusk, warm windows, someone clearing the path, woodsmoke",
+      "a Tuscan hillside village at golden hour, terracotta rooftops and cypress trees",
+      "a Swiss alpine hamlet in summer, timber chalets and cows in green meadows",
+      "a Japanese satoyama mountain village in autumn, tiled farmhouses and rice terraces",
+      "a Greek island town at dusk, white houses with blue doors by a calm sea",
     ];
     return base.slice(0, Math.max(4, Math.min(12, input.count)));
   }

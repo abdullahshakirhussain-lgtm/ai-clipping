@@ -94,7 +94,9 @@ const EnvSchema = z.object({
   //    LOST_TRIGGER is the LoRA's style trigger word, prepended to every prompt.
   //    All empty → the still falls back to the normal image provider (gpt-image).
   LOST_LORA_URL: z.string().optional().default(""),
-  LOST_LORA_SCALE: z.coerce.number().min(0).max(2).default(1),
+  // ~0.7 keeps the Ghibli look while letting more TINY PEOPLE through (a full 1.0
+  // suppresses figures); tune 0.6 (more people/realistic) .. 1.0 (more stylised).
+  LOST_LORA_SCALE: z.coerce.number().min(0).max(2).default(0.7),
   // "Add detail" refine strength: 1 = fully remake, 0 = keep the frame untouched.
   // ~0.75 actually paints the added detail in; lower it toward 0.5 for subtler
   // tweaks (0.55 was too low — nothing changed).
