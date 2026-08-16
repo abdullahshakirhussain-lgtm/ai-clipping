@@ -52,6 +52,7 @@ export class FalImageProvider implements ImageProvider {
     prompt: string;
     size?: string;
     referenceImage?: Buffer;
+    strength?: number;
   }): Promise<{ image: Buffer; ext: "png" }> {
     const { width, height } = parseSize(input.size);
     const loras = this.loraUrl ? { loras: [{ path: this.loraUrl, scale: this.loraScale }] } : {};
@@ -65,7 +66,7 @@ export class FalImageProvider implements ImageProvider {
         return await this.post(`${this.model}/image-to-image`, {
           prompt: input.prompt,
           image_url: `data:image/png;base64,${input.referenceImage.toString("base64")}`,
-          strength: this.imgStrength,
+          strength: input.strength ?? this.imgStrength,
           image_size: { width, height },
           num_images: 1,
           output_format: "png",

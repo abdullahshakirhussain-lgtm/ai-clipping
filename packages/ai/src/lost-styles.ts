@@ -35,3 +35,19 @@ export function lostStillPrompt(scenePrompt: string, orientation: LostOrientatio
   const frame = orientation === "landscape" ? "Horizontal 16:9 widescreen" : "Vertical 9:16 portrait";
   return `${scenePrompt.trim()}. Style: ${LOST_STYLE_ANCHOR} ${frame}, a single calm composition, no text anywhere.`;
 }
+
+/**
+ * STAGE 1 prompt (gpt-image). gpt-image is the one that reliably draws PEOPLE and
+ * an accurate village; the cues here fix its two flaws — the yellow cast (cool,
+ * NOT sepia) and over-crowding (a MODEST number). A light Ghibli restyle (stage 2)
+ * then adds the vibrant graphics.
+ */
+export function lostGptPrompt(scenePrompt: string, orientation: LostOrientation = "portrait"): string {
+  const frame = orientation === "landscape" ? "Horizontal 16:9 widescreen" : "Vertical 9:16 portrait";
+  return `Studio Ghibli style anime painting, richly detailed painterly film background, cool fresh natural light, NOT sepia or yellow-tinted, full clean colour, a MODEST number of tiny villagers going about their day (not a crowd). ${scenePrompt.trim()}. ${frame}, no on-screen text.`;
+}
+
+/** STAGE 2 prompt (light GHIBSKY img2img restyle) — repaints stage 1 into vibrant
+ *  Ghibli graphics while KEEPING the people and layout. The trigger is prepended. */
+export const LOST_RESTYLE_PROMPT =
+  "vibrant richly detailed Studio Ghibli village illustration, crisp clean colours, keep the people and the layout, no yellow tint, no on-screen text";

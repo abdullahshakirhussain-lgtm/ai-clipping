@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lostStillPrompt, LOST_STYLE_ANCHOR, LOST_NEGATIVE, MockLlmProvider } from "@clipfactory/ai";
+import { lostStillPrompt, lostGptPrompt, LOST_STYLE_ANCHOR, LOST_NEGATIVE, MockLlmProvider } from "@clipfactory/ai";
 
 describe("Lost Chronicles", () => {
   it("still prompt embeds the scene, the anime anchor, and forbids on-screen text", () => {
@@ -13,6 +13,13 @@ describe("Lost Chronicles", () => {
     expect(LOST_STYLE_ANCHOR).toMatch(/ghibli/i);
     expect(LOST_STYLE_ANCHOR).toMatch(/no flat yellow|yellow\/sepia wash/i);
     expect(LOST_STYLE_ANCHOR).toMatch(/no on-screen text/i);
+  });
+
+  it("gpt-stage prompt fixes the yellow + crowd (cool light, NOT sepia, modest people)", () => {
+    const p = lostGptPrompt("a Tuscan hillside village");
+    expect(p).toContain("a Tuscan hillside village");
+    expect(p).toMatch(/NOT sepia|yellow-tinted/i);
+    expect(p).toMatch(/modest/i);
   });
 
   it("negative prompt blocks on-screen text, faces, modern tech and ruins", () => {

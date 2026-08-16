@@ -101,6 +101,9 @@ const EnvSchema = z.object({
   // ~0.75 actually paints the added detail in; lower it toward 0.5 for subtler
   // tweaks (0.55 was too low — nothing changed).
   LOST_REFINE_STRENGTH: z.coerce.number().min(0.05).max(1).default(0.75),
+  // Stage-2 Ghibli restyle strength over the gpt-image base. ~0.3 adds vibrant
+  // graphics while KEEPING the people; 0.5+ erases them. Tune 0.25..0.4.
+  LOST_RESTYLE_STRENGTH: z.coerce.number().min(0.05).max(1).default(0.3),
   LOST_IMAGE_MODEL: z.string().default(""),
   LOST_TRIGGER: z.string().default(""),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────

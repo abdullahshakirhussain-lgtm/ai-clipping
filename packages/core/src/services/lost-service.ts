@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ImageProvider, LlmProvider, LostPlan } from "@clipfactory/ai";
-import { lostStillPrompt } from "@clipfactory/ai";
+import { lostStillPrompt, lostGptPrompt, LOST_RESTYLE_PROMPT } from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
 import type { Dispatcher } from "@clipfactory/queue";
 import type { ObjectStorage } from "@clipfactory/storage";
@@ -56,6 +56,9 @@ export class LostService {
     private readonly lostImages?: ImageProvider | null,
     /** Optional LoRA style trigger word, prepended to the prompt. */
     private readonly styleTrigger?: string,
+    /** LIGHT img2img strength for the Ghibli restyle (~0.3): strong enough to add
+     *  vibrant graphics, light enough to KEEP the people gpt-image drew. */
+    private readonly restyleStrength = 0.3,
   ) {}
 
   /** Suggest peaceful lived-in community scenes (present-day off-grid AND peaceful
@@ -77,12 +80,30 @@ export class LostService {
   /** Step 2: render the anime still and store it. Cheap — call as many times as
    *  needed until the frame is perfect; each call is a fresh still. */
   async previewStill(stillPrompt: string): Promise<LostPreviewDto> {
-    const provider = this.lostImages ?? this.images;
-    const trigger = this.styleTrigger?.trim() ? `${this.styleTrigger.trim()}, ` : "";
-    const { image } = await provider.generate({
-      prompt: trigger + lostStillPrompt(stillPrompt, "portrait"),
+    // STAGE 1 — gpt-image draws the PEOPLE + an accurate village, cool and uncrowded
+    // (the Ghibli LoRA alone can't populate a scene; gpt-image can).
+    const gpt = await this.images.generate({
+      prompt: lostGptPrompt(stillPrompt, "portrait"),
       size: "1024x1536",
     });
+    // STAGE 2 — a LIGHT (~0.3) GHIBSKY img2img restyle for the vibrant Ghibli
+    // graphics, KEEPING the people and layout. Skipped (gpt still kept) when no fal
+    // model is configured or on any error.
+    let image = gpt.image;
+    if (this.lostImages) {
+      try {
+        const trigger = this.styleTrigger?.trim() ? `${this.styleTrigger.trim()}, ` : "";
+        const restyled = await this.lostImages.generate({
+          prompt: trigger + LOST_RESTYLE_PROMPT,
+          size: "1024x1536",
+          referenceImage: gpt.image,
+          strength: this.restyleStrength,
+        });
+        image = restyled.image;
+      } catch {
+        /* keep the gpt-image still */
+      }
+    }
     const stillKey = `lost-still/${randomUUID()}.png`;
     await this.storage.putBuffer(stillKey, image, "image/png");
     return { stillKey, url: await this.storage.getUrl(stillKey) };

@@ -473,6 +473,10 @@ export interface ImageProvider {
      * simply draw the prompt — so callers can always pass it.
      */
     referenceImage?: Buffer;
+    /** Image-to-image denoise strength (0..1) when referenceImage is set — 1 fully
+     *  remakes, low values keep the frame. Overrides the provider default; ignored
+     *  by providers that don't do strength-based img2img. */
+    strength?: number;
   }): Promise<{ image: Buffer; ext: "png" }>;
 }
 

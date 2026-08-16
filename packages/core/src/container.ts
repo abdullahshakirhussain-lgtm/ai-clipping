@@ -512,7 +512,7 @@ export function createContainer(opts?: { withHandlers?: boolean }): Container {
     }),
     story: new StoryService(repos, llm, dispatcher, env.STORY_MAX_BEATS, cheapText, env.HERO_NAME),
     cook: new CookService(repos, llm, dispatcher, env.COOK_MAX_SHOTS),
-    lost: new LostService(repos, llm, dispatcher, images, storage, lostImages.provider, lostImages.trigger),
+    lost: new LostService(repos, llm, dispatcher, images, storage, lostImages.provider, lostImages.trigger, env.LOST_RESTYLE_STRENGTH),
     calls: new CallService(repos, llm, dispatcher, env.CALL_MAX_SECONDS),
     anim: new AnimService(repos, llm, dispatcher, env.ANIM_MAX_SHOTS),
     planJobs: new PlanJobs(logger),
