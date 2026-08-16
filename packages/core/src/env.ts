@@ -50,6 +50,10 @@ const EnvSchema = z.object({
   // eleven_v3 performs inline audio tags ("[shouts]") — the expressive model.
   // Switch on with TTS_PROVIDER=elevenlabs + ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID.
   ELEVENLABS_MODEL: z.string().default("eleven_v3"),
+  // Voice stability 0..1. 0.0 ("Creative") made a long narration's chunks drift and
+  // sound different; ~0.5 keeps them consistent. Raise toward 0.7 for max sameness,
+  // lower toward 0.3 for more expressive (but less consistent) tagged reads.
+  ELEVENLABS_STABILITY: z.coerce.number().min(0).max(1).default(0.5),
 
   // ── Story Studio (generated videos) ────────────────────────────────────────
   // Image generation for narrated slideshows. "openai" = gpt-image-1-mini

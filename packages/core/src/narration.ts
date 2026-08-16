@@ -105,6 +105,10 @@ export async function synthesizeNarration(input: {
       text: chunks[i]!,
       ...(input.voice ? { voice: input.voice } : {}),
       ...(input.instructions ? { instructions: input.instructions } : {}),
+      // Give each chunk its neighbours so consecutive chunks of one narration match
+      // in tone at the joins (ElevenLabs previous_text/next_text) instead of drifting.
+      ...(i > 0 ? { previousText: chunks[i - 1]!.slice(-400) } : {}),
+      ...(i < chunks.length - 1 ? { nextText: chunks[i + 1]!.slice(0, 400) } : {}),
     });
     const file = join(input.workDir, `narration-${i}.${part.ext}`);
     await fs.writeFile(file, part.audio);

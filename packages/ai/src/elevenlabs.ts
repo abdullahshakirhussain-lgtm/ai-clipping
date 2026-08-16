@@ -5,6 +5,12 @@ export interface ElevenLabsTtsOptions {
   /** Voice id from your ElevenLabs account. */
   voiceId: string;
   model?: string;
+  /**
+   * Voice stability 0..1. LOW (0.0 "Creative") maximizes emotional range but makes
+   * SEPARATE requests drift — which is why the chunks of a long narration sounded
+   * different. ~0.5 keeps them consistent while staying natural. Default 0.5.
+   */
+  stability?: number;
 }
 
 /** ElevenLabs character-alignment payload (from the with-timestamps endpoint). */
@@ -52,14 +58,17 @@ export function alignmentToWords(a: CharAlignment): TtsWord[] {
  */
 export class ElevenLabsTtsProvider implements TtsProvider {
   private readonly model: string;
+  private readonly stability: number;
   readonly speaksTags: boolean;
 
   constructor(private readonly opts: ElevenLabsTtsOptions) {
     this.model = opts.model || "eleven_v3";
     this.speaksTags = this.model.startsWith("eleven_v3");
+    // 0.5 ("Natural") by default — consistent across the chunks of one narration.
+    this.stability = opts.stability ?? 0.5;
   }
 
-  async synthesize(input: { text: string; voice?: string }): Promise<TtsResult> {
+  async synthesize(input: { text: string; voice?: string; previousText?: string; nextText?: string }): Promise<TtsResult> {
     const voice = input.voice || this.opts.voiceId;
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}/with-timestamps`, {
       method: "POST",
@@ -70,9 +79,15 @@ export class ElevenLabsTtsProvider implements TtsProvider {
       body: JSON.stringify({
         text: input.text,
         model_id: this.model,
+        // Condition each chunk on its neighbours so a long narration's chunks match
+        // in tone/prosody at the joins instead of each starting cold.
+        ...(input.previousText ? { previous_text: input.previousText } : {}),
+        ...(input.nextText ? { next_text: input.nextText } : {}),
+        // A fixed seed makes generations more reproducible/consistent request to request.
+        seed: 12345,
         voice_settings: this.speaksTags
-          ? { stability: 0.0 }
-          : { stability: 0.4, similarity_boost: 0.75, style: 0.35 },
+          ? { stability: this.stability, use_speaker_boost: true }
+          : { stability: this.stability, similarity_boost: 0.85, style: 0.2, use_speaker_boost: true },
       }),
     });
     if (!res.ok) {

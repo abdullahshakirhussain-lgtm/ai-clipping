@@ -202,6 +202,7 @@ function buildTtsProvider(env: Env, logger: Logger): TtsProvider {
       apiKey: env.ELEVENLABS_API_KEY,
       voiceId: env.ELEVENLABS_VOICE_ID,
       model: env.ELEVENLABS_MODEL,
+      stability: env.ELEVENLABS_STABILITY,
     });
   }
   if (env.TTS_PROVIDER === "elevenlabs") {
@@ -231,6 +232,7 @@ function buildTtsTiers(env: Env, logger: Logger): (tier: string) => TtsProvider 
       apiKey: env.ELEVENLABS_API_KEY,
       voiceId: env.ELEVENLABS_VOICE_ID,
       model: env.ELEVENLABS_MODEL,
+      stability: env.ELEVENLABS_STABILITY,
     });
   } else {
     logger.info("premium voice not configured — premium tier falls back to standard");

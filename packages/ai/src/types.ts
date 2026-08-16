@@ -584,7 +584,16 @@ export interface TtsProvider {
    * to a provider without this.
    */
   readonly speaksTags?: boolean;
-  synthesize(input: { text: string; voice?: string; instructions?: string }): Promise<TtsResult>;
+  synthesize(input: {
+    text: string;
+    voice?: string;
+    instructions?: string;
+    /** Preceding / following narration text — lets a provider condition this chunk
+     *  on its neighbours so consecutive chunks of one long narration match in tone
+     *  (ElevenLabs previous_text/next_text). Honoured by providers that support it. */
+    previousText?: string;
+    nextText?: string;
+  }): Promise<TtsResult>;
 }
 
 /** LLM reasoning tasks (Claude in production). */
