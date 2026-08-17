@@ -86,30 +86,6 @@ const EnvSchema = z.object({
   //    prepended to every prompt so the glimpses stay consistent video-to-video;
   //    empty is fine (the style's generic "ordinary young man's hands" covers it).
   ANIME_LOOK: z.string().default(""),
-  // ── Lost Chronicles (calm anime Veo shorts). Veo is capped at 8s; the clip is
-  //    stretched to LOST_TARGET_SECONDS for free (no extra Veo cost). "slow" is
-  //    the calm slow-motion stretch; "loop" repeats the clip.
-  LOST_TARGET_SECONDS: z.coerce.number().min(8).max(30).default(13),
-  LOST_LENGTH_MODE: z.enum(["slow", "loop"]).default("slow"),
-  // ── Lost Chronicles STILL model. gpt-image renders a flat, yellow-tinted anime;
-  //    for the real Ghibli/painterly look, render the still on fal instead. Set a
-  //    Flux STYLE LoRA (LOST_LORA_URL) — the provider then uses fal-ai/flux-lora —
-  //    and/or point LOST_IMAGE_MODEL at a fal anime checkpoint. Requires FAL_KEY.
-  //    LOST_TRIGGER is the LoRA's style trigger word, prepended to every prompt.
-  //    All empty → the still falls back to the normal image provider (gpt-image).
-  LOST_LORA_URL: z.string().optional().default(""),
-  // ~0.7 keeps the Ghibli look while letting more TINY PEOPLE through (a full 1.0
-  // suppresses figures); tune 0.6 (more people/realistic) .. 1.0 (more stylised).
-  LOST_LORA_SCALE: z.coerce.number().min(0).max(2).default(0.7),
-  // "Add detail" refine strength: 1 = fully remake, 0 = keep the frame untouched.
-  // ~0.75 actually paints the added detail in; lower it toward 0.5 for subtler
-  // tweaks (0.55 was too low — nothing changed).
-  LOST_REFINE_STRENGTH: z.coerce.number().min(0.05).max(1).default(0.75),
-  // Stage-2 Ghibli restyle strength over the gpt-image base. ~0.3 adds vibrant
-  // graphics while KEEPING the people; 0.5+ erases them. Tune 0.25..0.4.
-  LOST_RESTYLE_STRENGTH: z.coerce.number().min(0.05).max(1).default(0.3),
-  LOST_IMAGE_MODEL: z.string().default(""),
-  LOST_TRIGGER: z.string().default(""),
   // ── Cook Studio (generated cook-in-the-wild videos) ────────────────────────
   // Google Veo via the Gemini API DIRECTLY (no fal reseller markup). Veo 3.1
   // Fast @ 720p ≈ $0.10/sec (~$0.80/8s clip). Provider AUTO-selects: set

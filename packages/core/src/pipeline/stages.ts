@@ -1,7 +1,6 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import {
-  LOST_NEGATIVE,
   narratorInstruction,
   solidPng,
   styledImagePrompt,
@@ -15,6 +14,7 @@ import {
   analyzeLoudness,
   applyPhoneFilter,
   assembleClips,
+  assembleManualVideo,
   assembleNarratedClips,
   assembleSlideshow,
   buildAss,
@@ -1570,26 +1570,25 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
   }
 }
 
-/** Lost Chronicles spec persisted on the SourceVideo (kind=lost). */
-interface LostSpec {
-  scene: string;
-  stillKey: string;
-  stillPrompt: string;
-  motionPrompt: string;
-  aspectRatio: string;
-  title?: string;
+/** Manual clip spec persisted on the SourceVideo (kind="manual"). */
+interface ManualSpecShape {
+  format: "video" | "cook";
+  title: string;
   description?: string;
   hashtags?: string[];
+  aspect: "16:9" | "9:16";
+  clips: Array<{ prompt: string; seconds: number }>;
+  narrationText?: string;
+  uploaded: Array<string | null>;
 }
 
 /**
- * Lost Chronicles: animate ONE approved anime still into a calm ~10-20s loop.
- * The still was already generated and approved in the create form (cost gate),
- * so this stage does the single expensive thing — one Veo image-to-video call on
- * the APPROVED frame — then stretches it to length for free (no captions, no
- * narration; the creator adds music on the platform).
+ * Manual clip workflow — assemble the user's UPLOADED clips into the finished
+ * video. No paid generation here (that happened externally); this just stitches:
+ * VIDEO lays the auto voiceover over the clips (native audio dropped, no music);
+ * COOK keeps the clips' native audio as-is.
  */
-export async function runLostGenerate(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
+export async function runManualAssemble(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
   const moved = await ctx.repos.sourceVideos.transition(
     sourceVideoId,
     [SourceVideoStatus.PENDING],
@@ -1599,9 +1598,9 @@ export async function runLostGenerate(ctx: PipelineContext, sourceVideoId: strin
 
   const video = await ctx.repos.sourceVideos.byId(sourceVideoId);
   if (!video) return;
-  const spec = (video.storySpec as LostSpec | null) ?? null;
-  if (!spec?.stillKey || !spec?.motionPrompt) {
-    await failVideo(ctx, sourceVideoId, new Error("lost video has no approved still/motion"));
+  const spec = (video.storySpec as ManualSpecShape | null) ?? null;
+  if (!spec?.clips?.length) {
+    await failVideo(ctx, sourceVideoId, new Error("manual video has no clips"));
     return;
   }
 
@@ -1616,39 +1615,41 @@ export async function runLostGenerate(ctx: PipelineContext, sourceVideoId: strin
   try {
     await fs.mkdir(workDir, { recursive: true });
 
-    // 1. Load the APPROVED still (the exact frame the user signed off on).
-    await setProgress("Loading the approved frame", 10);
-    const stillFile = join(workDir, "still.png");
-    await ctx.storage.getToFile(spec.stillKey, stillFile);
-    const stillPng = await fs.readFile(stillFile);
+    // 1. Download the uploaded clips, in order (skip any still missing).
+    await setProgress("Fetching your clips", 15);
+    const clipFiles: string[] = [];
+    for (let i = 0; i < spec.uploaded.length; i++) {
+      const key = spec.uploaded[i];
+      if (!key) continue;
+      const f = join(workDir, `clip-${i}.mp4`);
+      await ctx.storage.getToFile(key, f);
+      clipFiles.push(f);
+    }
+    if (clipFiles.length === 0) {
+      await failVideo(ctx, sourceVideoId, new Error("manual: no clips were uploaded"));
+      return;
+    }
 
-    // 2. The ONE paid render: animate that still with the gentle motion. Uses the
-    //    cheaper Veo Lite (animVideo) — calm anime motion doesn't need the premium
-    //    cook model. Image-to-video, so the result IS the approved frame moving.
-    await setProgress("Animating the scene", 30);
-    const rawClip = join(workDir, "raw.mp4");
-    const { video: bytes } = await ctx.animVideo.generate({
-      prompt: spec.motionPrompt,
-      aspectRatio: spec.aspectRatio || "9:16",
-      image: { png: stillPng },
-      negativePrompt: LOST_NEGATIVE,
-    });
-    await fs.writeFile(rawClip, bytes);
+    // 2. Assemble — video gets the auto voiceover; cook keeps native audio.
+    await setProgress("Putting it together", 55);
+    const outPath = join(workDir, "manual.mp4");
+    if (spec.format === "video") {
+      const tts = ctx.ttsFor("standard");
+      const text = spec.narrationText?.trim() || spec.title;
+      const speakable = tts.speaksTags ? text : stripAudioTags(text);
+      const voice = await synthesizeNarration({ tts, text: speakable, workDir });
+      await assembleManualVideo({ clips: clipFiles, voiceFile: voice.audioFile, outPath, workDir, aspect: spec.aspect });
+    } else {
+      await assembleClips({ clips: clipFiles, outPath, workDir });
+    }
 
-    // 3. Stretch the 8s clip to the target length for FREE (no extra Veo spend).
-    await setProgress("Finishing the loop", 85);
-    const outPath = join(workDir, "lost.mp4");
-    await slowLoopToLength(rawClip, outPath, {
-      targetSec: ctx.config.lost.targetSeconds,
-      mode: ctx.config.lost.lengthMode,
-    });
-
-    // 4. Store + create a ready-to-distribute Clip (no captions).
+    // 3. Store + create a ready-to-distribute Clip (mirrors Cook's finalize).
+    await setProgress("Finishing up", 90);
     const thumbPath = join(workDir, "thumb.jpg");
     await extractSmartThumbnail(outPath, thumbPath);
     const probed = await probe(outPath);
-    const totalDur = probed.durationSec > 0 ? probed.durationSec : ctx.config.lost.targetSeconds;
-    const title = spec.title || "Lost Chronicles";
+    const totalDur = probed.durationSec > 0 ? probed.durationSec : clipFiles.length * 8;
+    const title = spec.title || "Manual video";
 
     const [clip] = await ctx.repos.clips.createMany([
       {
@@ -1658,7 +1659,7 @@ export async function runLostGenerate(ctx: PipelineContext, sourceVideoId: strin
         endSec: totalDur,
         status: ClipStatus.APPROVED,
         detectionReason: title,
-        detectionSource: "lost",
+        detectionSource: "manual",
         captionStyle: video.captionStyle,
         captionPosition: video.captionPosition,
         commentaryMode: "off",
@@ -1666,7 +1667,7 @@ export async function runLostGenerate(ctx: PipelineContext, sourceVideoId: strin
         hookScore: 80,
         viralScore: 80,
         overallScore: 80,
-        scoreBreakdown: { notes: ["lost-chronicles"] } as never,
+        scoreBreakdown: { notes: ["manual-upload"] } as never,
       },
     ]);
     await ctx.storage.putFile(clipKey(clip!.id), outPath, "video/mp4");
@@ -1684,17 +1685,17 @@ export async function runLostGenerate(ctx: PipelineContext, sourceVideoId: strin
       qualityScore: 80,
       viralScore: 80,
       estimatedEngagement: 80,
-      model: "lost",
+      model: "manual",
     });
 
     await ctx.repos.sourceVideos.update(sourceVideoId, {
       status: SourceVideoStatus.PROCESSED,
       storySpec: { ...spec, progress: { stage: "Done", pct: 100 } } as never,
     });
-    ctx.logger.info({ sourceVideoId, durationSec: Number(totalDur.toFixed(1)) }, "lost chronicles video generated");
+    ctx.logger.info({ sourceVideoId, clips: clipFiles.length, durationSec: Number(totalDur.toFixed(1)) }, "manual video assembled");
   } catch (err) {
     if (err instanceof StoryCancelledError) {
-      ctx.logger.info({ sourceVideoId }, "lost generation cancelled");
+      ctx.logger.info({ sourceVideoId }, "manual assembly cancelled");
       return;
     }
     await failVideo(ctx, sourceVideoId, err);

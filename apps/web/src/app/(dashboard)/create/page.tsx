@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { apiGet, apiSend, revalidateAll, runPlan, useCategories } from "@/lib/api";
 import { Button, Card, PageHeader } from "@/components/ui";
+import { ManualClips } from "./ManualClips";
 
 const STYLES = [
   { value: "stick-openai", label: "Stick + colourful (OpenAI)" },
@@ -142,7 +143,7 @@ export default function CreatePage() {
   const { data: cats } = useCategories();
   const categories = (cats ?? []).map((c) => c.name);
 
-  const [format, setFormat] = useState<"story" | "cook" | "call" | "anim" | "lost">("story");
+  const [format, setFormat] = useState<"story" | "video" | "cook">("story");
   const [animShots, setAnimShots] = useState<AnimShot[]>([]);
   const [animMeta, setAnimMeta] = useState<
     { title: string; description: string; hashtags: string[]; setting: string; cast: string } | null
@@ -214,16 +215,9 @@ export default function CreatePage() {
     }
   }
 
-  const canGenerate =
-    format === "story"
-      ? topic.trim().length >= 3
-      : format === "cook"
-        ? cookShots.length > 0
-        : format === "anim"
-          ? animShots.length > 0
-          : format === "lost"
-            ? !!lostStillKey
-            : !!call && brief.trim().length > 20;
+  // Only the Slideshow (story) format uses this shared Generate button; Video and
+  // Cooking drive their own plan/upload/assemble inside <ManualClips>.
+  const canGenerate = format === "story" && topic.trim().length >= 3;
 
   async function planAnim() {
     if (topic.trim().length < 3) return;
@@ -426,82 +420,20 @@ export default function CreatePage() {
     setBusy(true);
     setMsg(null);
     try {
-      if (format === "anim") {
-        await apiSend("/anim", "POST", {
-          topic: topic.trim(),
-          title: animMeta?.title,
-          description: animMeta?.description,
-          hashtags: animMeta?.hashtags,
-          setting: animMeta?.setting,
-          cast: animMeta?.cast,
-          shots: animShots,
-          style,
-          narrator,
-          voiceTier,
-          music,
-          category: category || undefined,
-          captionStyle,
-          captionPosition,
-        });
-        setTopic("");
-        setAnimShots([]);
-        setAnimMeta(null);
-      } else if (format === "call") {
-        await apiSend("/calls", "POST", {
-          ...call,
-          brief,
-          category: category || undefined,
-          captionStyle,
-          captionPosition,
-        });
-        setIdea("");
-        setCall(null);
-        setBrief("");
-      } else if (format === "cook") {
-        await apiSend("/cook", "POST", {
-          dish: dish.trim(),
-          title: cookTitle || undefined,
-          description: cookDescription || undefined,
-          hashtags: cookHashtags,
-          shots: cookShots.map((s) => ({ prompt: s.prompt, imagePrompt: s.imagePrompt })),
-          category: category || undefined,
-        });
-        setDish("");
-        setCookShots([]);
-        setCookTitle("");
-        setCookDescription("");
-      } else if (format === "lost") {
-        await apiSend("/lost", "POST", {
-          scene: scene.trim(),
-          stillKey: lostStillKey,
-          stillPrompt: lostStill,
-          motionPrompt: lostMotion,
-          title: lostTitle || undefined,
-          description: lostDescription || undefined,
-          hashtags: lostHashtags,
-          category: category || undefined,
-        });
-        setScene("");
-        setLostDirection("");
-        setLostStill("");
-        setLostMotion("");
-        setLostStillUrl(null);
-        setLostStillKey(null);
-      } else {
-        await apiSend("/story", "POST", {
-          topic: topic.trim(),
-          direction: direction.trim() || undefined,
-          mode,
-          length,
-          style,
-          narrator,
-          category: category || undefined,
-          captionStyle,
-          captionPosition,
-        });
-        setTopic("");
-        setDirection("");
-      }
+      // Only Slideshow (story) runs through this button; Video + Cooking use ManualClips.
+      await apiSend("/story", "POST", {
+        topic: topic.trim(),
+        direction: direction.trim() || undefined,
+        mode,
+        length,
+        style,
+        narrator,
+        category: category || undefined,
+        captionStyle,
+        captionPosition,
+      });
+      setTopic("");
+      setDirection("");
       setMsg("Generating… it'll appear in the Library when done. Track progress in the Video Queue.");
       await revalidateAll();
     } catch (e) {
@@ -520,7 +452,7 @@ export default function CreatePage() {
 
       <Card className="mb-6 max-w-2xl">
         <div className="flex gap-1 mb-5 p-1 rounded-lg surface-2 border w-fit" style={{ borderColor: "var(--border)" }}>
-          {(["story", "anim", "cook", "lost", "call"] as const).map((f) => (
+          {(["story", "video", "cook"] as const).map((f) => (
             <button
               key={f}
               onClick={() => { setFormat(f); setMsg(null); }}
@@ -529,41 +461,12 @@ export default function CreatePage() {
             >
               {f === "story"
                 ? "📖 Slideshow"
-                : f === "anim"
-                  ? "🎬 Animated short"
-                  : f === "cook"
-                    ? "🍳 Cook clip"
-                    : f === "lost"
-                      ? "🌸 Lost Chronicles"
-                      : "📞 Prank call"}
+                : f === "video"
+                  ? "🎬 Video"
+                  : "🍳 Cooking"}
             </button>
           ))}
         </div>
-
-        {(format === "cook" || format === "call" || format === "anim" || format === "lost") && (
-          <div className="mb-5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button onClick={checkProviders} disabled={checking} variant="secondary">
-                {checking ? "Checking…" : "🔌 Check API models"}
-              </Button>
-              <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-                Confirms the Google key can see the exact models before you spend anything on a render.
-              </span>
-            </div>
-            {checks && (
-              <div className="mt-2 space-y-1">
-                {checks.checks.map((c) => (
-                  <div key={c.purpose + c.model} className="text-[11px] flex gap-2">
-                    <span>{c.ok ? "✅" : "❌"}</span>
-                    <span style={{ color: "var(--muted)" }}>{c.purpose}</span>
-                    <code>{c.model}</code>
-                    <span style={{ color: "var(--muted)" }}>{c.detail}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {format === "story" && (
         <>
@@ -682,615 +585,19 @@ export default function CreatePage() {
         </>
         )}
 
-        {format === "cook" && (
-        <>
-        <label className="block mb-3">
-          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Dish</span>
-          <textarea
-            value={dish}
-            onChange={(e) => setDish(e.target.value)}
-            rows={2}
-            maxLength={200}
-            placeholder="e.g. trout grilled on a river stone, campfire flatbread"
-            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
-            style={{ borderColor: dish.trim() ? "var(--primary)" : "var(--border)" }}
-          />
-        </label>
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <Button onClick={planShots} disabled={planning || dish.trim().length < 3} variant="secondary">
-            {planning ? `Planning… ${planSec}s` : cookShots.length ? "↻ Re-plan shots" : "🎬 Plan shots"}
-          </Button>
-          <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-            {planning
-              ? "Thinking through the shot list — this takes a couple of minutes. Leave the page open."
-              : "Free to plan — review & edit every prompt before any video is generated."}
-          </span>
-        </div>
 
-        {cookShots.length > 0 && (
-          <>
-            <label className="block mb-3">
-              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Title</span>
-              <input value={cookTitle} onChange={(e) => setCookTitle(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
-            </label>
-            <div className="mb-3">
-              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>
-                Shots ({cookShots.length}) — edit each prompt; these go to the video model verbatim
-              </span>
-              <div className="space-y-2">
-                {cookShots.map((s, i) => (
-                  <div key={i} className="flex gap-2 items-start">
-                    <span className="text-[11px] mt-2 w-4 shrink-0 text-right" style={{ color: "var(--muted)" }}>{i + 1}</span>
-                    <div className="flex-1 space-y-1.5">
-                      <div>
-                        <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>
-                          First frame — the still that gets drawn, then animated
-                        </span>
-                        <textarea
-                          value={s.imagePrompt ?? ""}
-                          onChange={(e) =>
-                            setCookShots((prev) => prev.map((p, j) => (j === i ? { ...p, imagePrompt: e.target.value } : p)))
-                          }
-                          rows={4}
-                          className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y"
-                          style={{ borderColor: "var(--border)" }}
-                        />
-                      </div>
-                      <div>
-                        <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>
-                          Motion — what happens across the 8 seconds
-                        </span>
-                        <textarea
-                          value={s.prompt}
-                          onChange={(e) =>
-                            setCookShots((prev) => prev.map((p, j) => (j === i ? { ...p, prompt: e.target.value } : p)))
-                          }
-                          rows={5}
-                          className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y"
-                          style={{ borderColor: "var(--border)" }}
-                        />
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setCookShots((prev) => prev.filter((_, j) => j !== i))}
-                      className="text-xs mt-2 px-1.5" style={{ color: "var(--danger)" }} title="Remove shot"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <label className="block mb-4 max-w-xs">
-              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
-              <select value={category} onChange={(e) => setCategory(e.target.value)}
-                className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
-                <option value="">— none —</option>
-                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-              {cookShots.length} shots × ~8s = {cookShots.length * 8}s ≈ $
-              {(cookShots.length * 0.8 + cookShots.length * 0.039).toFixed(2)} on Veo 3.1 Fast (clips + first-frame
-              stills). Each still is drawn as an edit of the one before it, so the stone, fire and props stay put across
-              cuts. Renders in the background — it lands in the Library, track it in the Video Queue.
-            </p>
-          </>
-        )}
-        </>
+        {(format === "video" || format === "cook") && (
+          <ManualClips format={format} categories={categories} />
         )}
 
-        {format === "lost" && (
-        <>
-        <label className="block mb-2">
-          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Scene</span>
-          <textarea
-            value={scene}
-            onChange={(e) => setScene(e.target.value)}
-            rows={2}
-            maxLength={400}
-            placeholder="a calm anime scene from a lost, ancient world…"
-            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
-            style={{ borderColor: scene.trim() ? "var(--primary)" : "var(--border)" }}
-          />
-        </label>
-        <select
-          value=""
-          onChange={(e) => { if (e.target.value) setScene(e.target.value); }}
-          className="text-xs px-2 py-1.5 rounded-lg surface-2 border mb-3 w-full"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <option value="">✨ Pick a preset scene…</option>
-          {LOST_SCENE_PRESETS.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <input
-            value={lostHint}
-            onChange={(e) => setLostHint(e.target.value)}
-            placeholder="steer the suggestions (optional): coastal, past, snow, off-grid…"
-            className="flex-1 min-w-[180px] px-3 py-2 rounded-lg surface-2 border outline-none text-sm"
-            style={{ borderColor: "var(--border)" }}
-          />
-          <Button onClick={suggestLostScenes} disabled={suggestingLost} variant="secondary">
-            {suggestingLost ? "Finding…" : "✨ Suggest scenes"}
-          </Button>
-        </div>
-        {lostScenes.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {lostScenes.map((s) => (
-              <button
-                key={s}
-                onClick={() => setScene(s)}
-                className="text-[11px] px-2 py-1 rounded-lg surface-2 border text-left"
-                style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-                title="Use this scene"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-        <label className="block mb-3">
-          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Direction (optional)</span>
-          <textarea
-            value={lostDirection}
-            onChange={(e) => setLostDirection(e.target.value)}
-            rows={2}
-            maxLength={600}
-            placeholder="mood / details to include — e.g. 'very peaceful, warm sunset, a lone wanderer resting'"
-            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
-            style={{ borderColor: "var(--border)" }}
-          />
-        </label>
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <Button onClick={planLost} disabled={planning || scene.trim().length < 3} variant="secondary">
-            {planning ? `Planning… ${planSec}s` : lostStill ? "↻ Re-plan" : "🎬 Plan scene"}
-          </Button>
-          <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-            Free — writes the still + motion prompts for you to edit before any spend.
-          </span>
-        </div>
-
-        {lostStill && (
-        <>
-          <label className="block mb-3">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Still prompt — the frame that gets drawn</span>
-            <textarea value={lostStill} onChange={(e) => setLostStill(e.target.value)} rows={4}
-              className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y" style={{ borderColor: "var(--border)" }} />
-          </label>
-          <label className="block mb-3">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Motion — one gentle continuous motion (~8s)</span>
-            <textarea value={lostMotion} onChange={(e) => setLostMotion(e.target.value)} rows={3}
-              className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y" style={{ borderColor: "var(--border)" }} />
-          </label>
-          <label className="block mb-3">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Title</span>
-            <input value={lostTitle} onChange={(e) => setLostTitle(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
-          </label>
-
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <Button onClick={previewLostStill} disabled={previewing || lostStill.trim().length < 3} variant="secondary">
-              {previewing ? "Drawing…" : lostStillUrl ? "↻ Regenerate still" : "🖼 Preview still (~$0.04)"}
+        {format === "story" && (
+          <div className="flex items-center gap-3">
+            <Button onClick={generate} disabled={busy || !canGenerate}>
+              {busy ? "Starting…" : "✨ Generate video"}
             </Button>
-            <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-              Cheap — regenerate until the frame is perfect. Veo only runs when you hit Animate.
-            </span>
+            {msg && <span className="text-xs" style={{ color: "var(--muted)" }}>{msg}</span>}
           </div>
-
-          {lostStillUrl && (
-            <div className="mb-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={lostStillUrl} alt="preview still" className="rounded-lg border max-w-[220px] w-full" style={{ borderColor: "var(--primary)" }} />
-              <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>
-                ✓ This exact frame gets animated. Not right? Regenerate, or add a small detail below.
-              </p>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <input
-                  value={lostAdjust}
-                  onChange={(e) => setLostAdjust(e.target.value)}
-                  placeholder="add a small detail — e.g. 'add a water wheel, more flowers, warmer light'"
-                  className="flex-1 min-w-[180px] px-3 py-2 rounded-lg surface-2 border outline-none text-sm"
-                  style={{ borderColor: "var(--border)" }}
-                />
-                <Button onClick={refineLostStill} disabled={refiningLost || lostAdjust.trim().length < 2} variant="secondary">
-                  {refiningLost ? "Adding…" : "✨ Add detail"}
-                </Button>
-              </div>
-              <p className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
-                Keeps this exact picture and just adds/adjusts what you type — no rewriting the prompt.
-              </p>
-            </div>
-          )}
-
-          <label className="block mb-4 max-w-xs">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
-            <select value={category} onChange={(e) => setCategory(e.target.value)}
-              className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
-              <option value="">— none —</option>
-              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </label>
-          <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-            One 8s Veo clip (~$0.80), stretched to ~13s for free — no captions (add music on the platform).
-            &ldquo;Animate the frame&rdquo; runs Veo ONCE, on the approved still. Iterate on the still first — that&rsquo;s the cost gate.
-          </p>
-        </>
         )}
-        </>
-        )}
-
-        {format === "anim" && (
-        <>
-        <label className="block mb-3">
-          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Topic</span>
-          <textarea
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            rows={2}
-            maxLength={300}
-            placeholder="e.g. the diver who found a WWII submarine in a lake"
-            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
-            style={{ borderColor: topic.trim() ? "var(--primary)" : "var(--border)" }}
-          />
-        </label>
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <Button onClick={planAnim} disabled={planning || topic.trim().length < 3} variant="secondary">
-            {planning ? `Planning… ${planSec}s` : animShots.length ? "↻ Re-plan" : "🎬 Plan the animation"}
-          </Button>
-          <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-            {planning
-              ? "Writing the story, then the shot list — a couple of minutes. Leave the page open."
-              : "Free to plan. Each beat becomes one ~8s animated clip; review every prompt before anything is generated."}
-          </span>
-        </div>
-
-        {animShots.length > 0 && (
-          <>
-            {animMeta && (
-              <label className="block mb-3">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Title</span>
-                <input value={animMeta.title} onChange={(e) => setAnimMeta({ ...animMeta, title: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
-              </label>
-            )}
-            {animMeta && (
-              <label className="block mb-4">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>
-                  World — repeated into every frame so the look holds across clips
-                </span>
-                <textarea value={animMeta.setting} onChange={(e) => setAnimMeta({ ...animMeta, setting: e.target.value })} rows={2}
-                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-y" style={{ borderColor: "var(--border)" }} />
-              </label>
-            )}
-            {animMeta && (
-              <label className="block mb-4">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>
-                  Cast — how each figure looks, repeated into every shot. This is what keeps them
-                  recognisable across clips, so keep the descriptions concrete and distinct.
-                </span>
-                <textarea value={animMeta.cast} onChange={(e) => setAnimMeta({ ...animMeta, cast: e.target.value })} rows={3}
-                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-y" style={{ borderColor: "var(--border)" }} />
-              </label>
-            )}
-            <div className="mb-3">
-              <span className="block text-xs mb-2" style={{ color: "var(--muted)" }}>
-                {animShots.length} beats — each becomes one ~8s clip
-              </span>
-              <div className="space-y-3">
-                {animShots.map((s, i) => (
-                  <div key={i} className="p-3 rounded-lg surface-2 border space-y-2" style={{ borderColor: "var(--border)" }}>
-                    <div className="flex items-start gap-2">
-                      <span className="text-[11px] mt-2 w-4 shrink-0 text-right" style={{ color: "var(--muted)" }}>{i + 1}</span>
-                      <div className="flex-1 space-y-2">
-                        <div>
-                          <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Narration</span>
-                          <textarea
-                            value={s.text}
-                            onChange={(e) => setAnimShots((p) => p.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
-                            rows={2}
-                            className="w-full px-2.5 py-1.5 rounded surface-1 border outline-none text-[12px] leading-snug resize-y"
-                            style={{ borderColor: "var(--border)" }}
-                          />
-                        </div>
-                        <div>
-                          <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>First frame</span>
-                          <textarea
-                            value={s.imagePrompt}
-                            onChange={(e) => setAnimShots((p) => p.map((x, j) => (j === i ? { ...x, imagePrompt: e.target.value } : x)))}
-                            rows={3}
-                            className="w-full px-2.5 py-1.5 rounded surface-1 border outline-none text-[12px] leading-snug resize-y"
-                            style={{ borderColor: "var(--border)" }}
-                          />
-                        </div>
-                        <div>
-                          <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Motion — what moves over the 8s</span>
-                          <textarea
-                            value={s.motionPrompt}
-                            onChange={(e) => setAnimShots((p) => p.map((x, j) => (j === i ? { ...x, motionPrompt: e.target.value } : x)))}
-                            rows={3}
-                            className="w-full px-2.5 py-1.5 rounded surface-1 border outline-none text-[12px] leading-snug resize-y"
-                            style={{ borderColor: "var(--border)" }}
-                          />
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setAnimShots((p) => p.filter((_, j) => j !== i))}
-                        className="text-xs mt-2 px-1.5" style={{ color: "var(--danger)" }} title="Remove beat"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Art style</span>
-                <select value={style} onChange={(e) => setStyle(e.target.value)}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-                  {STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Narrator</span>
-                <select value={narrator} onChange={(e) => setNarrator(e.target.value)}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-                  {NARRATORS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Voice</span>
-                <select value={voiceTier} onChange={(e) => setVoiceTier(e.target.value as "standard" | "premium")}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-                  <option value="standard">Standard (OpenAI)</option>
-                  <option value="premium">Premium (ElevenLabs)</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Music</span>
-                <select value={music} onChange={(e) => setMusic(e.target.value)}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-                  {MUSIC.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Caption style</span>
-                <select value={captionStyle} onChange={(e) => setCaptionStyle(e.target.value)}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-                  {CAPTION_STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Caption position</span>
-                <select value={captionPosition} onChange={(e) => setCaptionPosition(e.target.value)}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-                  {CAPTION_POSITIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
-                <select value={category} onChange={(e) => setCategory(e.target.value)}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
-                  <option value="">— none —</option>
-                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
-            </div>
-            <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-              {animShots.length} clips × ~8s = {animShots.length * 8}s ≈ ${(animShots.length * 0.4).toFixed(2)} on Veo 3.1
-              Lite. Each clip starts from its own drawn frame, so the figures stay the same across cuts, and the video
-              model&apos;s own audio is dropped in favour of the narration.
-            </p>
-          </>
-        )}
-        </>
-        )}
-
-        {format === "call" && (
-        <>
-        <label className="block mb-3">
-          <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>The idea — one line is enough</span>
-          <textarea
-            value={idea}
-            onChange={(e) => setIdea(e.target.value)}
-            rows={2}
-            maxLength={300}
-            placeholder="e.g. rage bait a scammer who called about my car warranty"
-            className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
-            style={{ borderColor: idea.trim() ? "var(--primary)" : "var(--border)" }}
-          />
-        </label>
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <Button onClick={planCall} disabled={planning || idea.trim().length < 3} variant="secondary">
-            {planning ? `Writing… ${planSec}s` : call ? "↻ Re-write the call" : "🎭 Write the call"}
-          </Button>
-          <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-            {planning
-              ? "Casting and writing the escalation — this takes a couple of minutes. Leave the page open."
-              : "Free to plan. The AI picks the cast, accents, voices and escalation — all of it editable below."}
-          </span>
-        </div>
-
-        {call && (
-          <>
-            <label className="block mb-3">
-              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Title</span>
-              <input value={call.title} onChange={(e) => patchCall({ title: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
-            </label>
-            <label className="block mb-3">
-              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Premise</span>
-              <input value={call.premise} onChange={(e) => patchCall({ premise: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
-            </label>
-            <label className="block mb-4">
-              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Setup — what the viewer must get in 3 seconds</span>
-              <textarea value={call.setup} onChange={(e) => patchCall({ setup: e.target.value })} rows={2}
-                className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-y" style={{ borderColor: "var(--border)" }} />
-            </label>
-
-            <div className="mb-4 space-y-3">
-              <span className="block text-xs" style={{ color: "var(--muted)" }}>
-                The two voices — different accent, tempo and vocabulary is what makes them read as real people
-              </span>
-              {call.characters.map((c, i) => (
-                <div key={i} className="p-3 rounded-lg surface-2 border space-y-2" style={{ borderColor: "var(--border)" }}>
-                  <div className="grid grid-cols-4 gap-2">
-                    <label className="block">
-                      <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Name</span>
-                      <input value={c.name} onChange={(e) => patchCharacter(i, { name: e.target.value })}
-                        className="w-full px-2 py-1.5 rounded surface-1 border outline-none text-xs" style={{ borderColor: "var(--border)" }} />
-                    </label>
-                    <label className="block">
-                      <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Gender</span>
-                      <select value={c.gender} onChange={(e) => patchCharacter(i, { gender: e.target.value as "male" | "female" })}
-                        className="w-full px-2 py-1.5 rounded surface-1 border text-xs" style={{ borderColor: "var(--border)" }}>
-                        <option value="male">male</option>
-                        <option value="female">female</option>
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Age</span>
-                      <input value={c.age} onChange={(e) => patchCharacter(i, { age: e.target.value })}
-                        className="w-full px-2 py-1.5 rounded surface-1 border outline-none text-xs" style={{ borderColor: "var(--border)" }} />
-                    </label>
-                    <label className="block">
-                      <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Voice</span>
-                      <select value={c.voice} onChange={(e) => patchCharacter(i, { voice: e.target.value })}
-                        className="w-full px-2 py-1.5 rounded surface-1 border text-xs" style={{ borderColor: "var(--border)" }}>
-                        {VOICES.map((v) => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </label>
-                  </div>
-                  <label className="block">
-                    <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Role</span>
-                    <input value={c.role} onChange={(e) => patchCharacter(i, { role: e.target.value })}
-                      className="w-full px-2 py-1.5 rounded surface-1 border outline-none text-xs" style={{ borderColor: "var(--border)" }} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Accent &amp; delivery</span>
-                    <textarea value={c.accent} onChange={(e) => patchCharacter(i, { accent: e.target.value })} rows={2}
-                      className="w-full px-2 py-1.5 rounded surface-1 border outline-none text-xs resize-y" style={{ borderColor: "var(--border)" }} />
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <label className="block">
-                      <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Personality</span>
-                      <textarea value={c.personality} onChange={(e) => patchCharacter(i, { personality: e.target.value })} rows={2}
-                        className="w-full px-2 py-1.5 rounded surface-1 border outline-none text-xs resize-y" style={{ borderColor: "var(--border)" }} />
-                    </label>
-                    <label className="block">
-                      <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Wants</span>
-                      <textarea value={c.agenda} onChange={(e) => patchCharacter(i, { agenda: e.target.value })} rows={2}
-                        className="w-full px-2 py-1.5 rounded surface-1 border outline-none text-xs resize-y" style={{ borderColor: "var(--border)" }} />
-                    </label>
-                    <label className="block">
-                      <span className="block text-[10px] mb-0.5" style={{ color: "var(--muted)" }}>Speech habits</span>
-                      <textarea value={c.quirks} onChange={(e) => patchCharacter(i, { quirks: e.target.value })} rows={2}
-                        className="w-full px-2 py-1.5 rounded surface-1 border outline-none text-xs resize-y" style={{ borderColor: "var(--border)" }} />
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <ListEditor
-              label="How it escalates (beats, not lines)"
-              items={call.escalation}
-              onChange={(escalation) => patchCall({ escalation })}
-            />
-            <ListEditor
-              label="The details that make people comment"
-              items={call.ragebait}
-              onChange={(ragebait) => patchCall({ ragebait })}
-            />
-
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Ending — cut on the peak</span>
-                <textarea value={call.ending} onChange={(e) => patchCall({ ending: e.target.value })} rows={2}
-                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-y" style={{ borderColor: "var(--border)" }} />
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Performance direction</span>
-                <textarea value={call.direction} onChange={(e) => patchCall({ direction: e.target.value })} rows={2}
-                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-y" style={{ borderColor: "var(--border)" }} />
-              </label>
-            </div>
-
-            <ListEditor
-              label="On-screen stills (the video is audio-led)"
-              items={call.imagePrompts}
-              onChange={(imagePrompts) => patchCall({ imagePrompts })}
-            />
-
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Length (s)</span>
-                <input type="number" min={20} max={90} value={call.durationSeconds}
-                  onChange={(e) => patchCall({ durationSeconds: Math.max(20, Math.min(90, Number(e.target.value) || 45)) })}
-                  className="w-full px-2 py-2 rounded-lg surface-2 border outline-none text-sm" style={{ borderColor: "var(--border)" }} />
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Caption style</span>
-                <select value={captionStyle} onChange={(e) => setCaptionStyle(e.target.value)}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full" style={{ borderColor: "var(--border)" }}>
-                  {CAPTION_STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Category</span>
-                <select value={category} onChange={(e) => setCategory(e.target.value)}
-                  className="text-sm px-2 py-2 rounded-lg surface-2 border w-full capitalize" style={{ borderColor: "var(--border)" }}>
-                  <option value="">— none —</option>
-                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
-            </div>
-
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <Button onClick={rebuildBrief} variant="secondary">↻ Rebuild brief from fields</Button>
-              <button onClick={() => setShowBrief((s) => !s)} className="text-xs underline" style={{ color: "var(--muted)" }}>
-                {showBrief ? "Hide" : "Show"} the exact prompt that gets sent
-              </button>
-            </div>
-            {showBrief && (
-              <textarea
-                value={brief}
-                onChange={(e) => setBrief(e.target.value)}
-                rows={18}
-                className="w-full px-2.5 py-2 mb-3 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y font-mono"
-                style={{ borderColor: "var(--border)" }}
-              />
-            )}
-            <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-              This brief is sent verbatim — the voice model improvises the dialogue from it, which is why it reads like a
-              real call instead of a script. ~{call.durationSeconds}s ≈ 2¢ of Gemini audio. Keep it clearly fictional:
-              invented names only, and label it as AI-made in the caption.
-            </p>
-          </>
-        )}
-        </>
-        )}
-
-        <div className="flex items-center gap-3">
-          <Button onClick={generate} disabled={busy || !canGenerate}>
-            {busy
-              ? "Starting…"
-              : format === "cook"
-                ? "🍳 Generate cook video"
-                : format === "call"
-                  ? "📞 Make the call"
-                  : format === "anim"
-                    ? "🎬 Animate it"
-                    : format === "lost"
-                      ? "🎞️ Animate the frame"
-                      : "✨ Generate video"}
-          </Button>
-          {msg && <span className="text-xs" style={{ color: "var(--muted)" }}>{msg}</span>}
-        </div>
       </Card>
     </div>
   );

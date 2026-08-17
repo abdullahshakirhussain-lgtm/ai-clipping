@@ -17,9 +17,6 @@ import type {
   ExpandImagePromptsInput,
   PlanCallInput,
   PlanCookInput,
-  PlanLostInput,
-  SuggestLostInput,
-  LostPlan,
   StoryScript,
   SuggestTopicsInput,
   WriteStoryInput,
@@ -1077,78 +1074,6 @@ Call submit_story.`,
       setting: String(result.setting ?? "").trim() || planSetting,
       beats: cleanBeats,
     };
-  }
-
-  async planLostScene(input: PlanLostInput): Promise<LostPlan> {
-    const direction = input.direction?.trim()
-      ? `\n\nCREATOR'S DIRECTION (follow it — what to include, the exact mood): "${input.direction.trim()}"`
-      : "";
-    const result = await this.callTool<{
-      stillPrompt?: string;
-      motionPrompt?: string;
-      title?: string;
-      description?: string;
-      hashtags?: string[];
-    }>(
-      `You are composing ONE aerial anime scene for a "Lost Chronicles" short — a high BIRD'S-EYE view of a REAL, recognisable small village or community where people live a peaceful, self-sufficient life WITHOUT modern technology (either simple present-day off-grid living, OR an idyllic gentle PAST). The whole point is "ah, living HERE would be so peaceful" — a real place, ALIVE with people going about their day. The scene: "${input.scene.trim()}".${direction}
-
-Write two prompts:
-
-1. "stillPrompt" — the SINGLE still (this becomes the first frame). It MUST be a HIGH AERIAL BIRD'S-EYE VIEW looking DOWN over the village — begin the prompt with "a high aerial bird's-eye view looking down over…". Ground it in a REAL, recognisable place and CULTURE (name it — e.g. a Tuscan hillside village, a Swiss alpine hamlet, a Japanese mountain village, a Greek island town, a Nepali terraced village) with that culture's authentic architecture and materials (roof type, walls, layout). PACK IT with life and detail: MANY TINY PEOPLE going about their day in the streets and a little market square (walking, carrying baskets, market stalls, a cart, children playing, someone hanging washing), VARIED houses at different heights and angles, winding streets and courtyards, gardens, animals, wells, flower boxes, carts, all surrounded by the real landscape (fields, forest, hills, water). From this height the people are TINY figures — never a close-up face. Give the time of day and season. Positive, concrete description only; do NOT write art-style words (medium/palette are added automatically); NO on-screen text and NO modern technology (no cars, phones, power lines).
-
-2. "motionPrompt" — ONE single, continuous, GENTLE motion for the aerial shot and nothing else: a slow, smooth aerial drift over the village, or a very slow descent, with soft ambient life (drifting woodsmoke from the chimneys, a gentle sway of the trees, birds). Subtle and loop-friendly — NO cuts, no fast action, no camera shake.
-
-Also give a short evocative "title", a 1-2 sentence "description" (a soft note is fine), and up to 6 "hashtags" (each starting with #). Call submit_lost.`,
-      {
-        name: "submit_lost",
-        description: "Submit the calm anime scene's still prompt, one gentle motion, and caption meta.",
-        input_schema: {
-          type: "object",
-          properties: {
-            stillPrompt: { type: "string", description: "a HIGH AERIAL bird's-eye view of a real, recognisable village, packed with varied houses and MANY tiny people; no art-style words; no text" },
-            motionPrompt: { type: "string", description: "one single continuous gentle motion over the still; loop-friendly; no cuts" },
-            title: { type: "string" },
-            description: { type: "string" },
-            hashtags: { type: "array", items: { type: "string", description: "with #" } },
-          },
-          required: ["stillPrompt", "motionPrompt", "title", "description", "hashtags"],
-        },
-      },
-      2000,
-      { model: this.commentaryModel, temperature: 1 },
-    );
-    const stillPrompt = String(result.stillPrompt ?? "").trim() || input.scene.trim();
-    return {
-      stillPrompt,
-      motionPrompt: String(result.motionPrompt ?? "").trim() || "a slow, gentle camera push-in; soft ambient motion only",
-      title: String(result.title ?? "").trim() || "Lost Chronicles",
-      description: String(result.description ?? "").trim(),
-      hashtags: hashList(result.hashtags),
-    };
-  }
-
-  async suggestLostScenes(input: SuggestLostInput): Promise<string[]> {
-    const count = Math.max(4, Math.min(12, input.count));
-    const hint = input.hint?.trim()
-      ? `\n\nSTEER toward: "${input.hint.trim()}" — every idea must fit that, while staying peaceful and tech-free.`
-      : "";
-    const result = await this.callTool<{ scenes?: string[] }>(
-      `Suggest ${count} scene ideas for a "Lost Chronicles" calm anime short. Each names a REAL, RECOGNISABLE place and CULTURE — a real kind of village people would know — where life is peaceful and self-sufficient with NO modern technology. The "ah, living here would be so peaceful" feeling depends on it being a REAL place, not a generic fantasy village. Cover BOTH kinds: some PRESENT-DAY simple/off-grid living AND some idyllic PEACEFUL PAST. Span the WORLD for variety: e.g. a Tuscan hillside village, a Swiss alpine hamlet, a Japanese satoyama mountain village, a Greek island town, a Nepali Himalayan terraced village, an Irish coastal cottage village, a Moroccan oasis kasbah, a Vietnamese highland rice village, an English Cotswold village, a Scandinavian fjord hamlet, an Andean village, a Kerala backwater village. NEVER ruins, abandoned or empty; never modern tech.${hint}
-
-Each idea is ONE concrete line, 8-16 words, naming the REAL place/culture + time of day + season (e.g. "a Tuscan hillside village at golden hour, terracotta rooftops and cypress trees"). Vary the region, culture and season across the list. Call submit_scenes.`,
-      {
-        name: "submit_scenes",
-        description: "Submit the list of peaceful lived-in community scene ideas.",
-        input_schema: {
-          type: "object",
-          properties: { scenes: { type: "array", items: { type: "string" } } },
-          required: ["scenes"],
-        },
-      },
-      1500,
-      { model: this.commentaryModel, temperature: 1 },
-    );
-    return strList(result.scenes).slice(0, count);
   }
 
   async planCookShots(input: PlanCookInput): Promise<CookPlan> {

@@ -299,30 +299,6 @@ export interface CookPlan {
   shots: CookShot[];
 }
 
-/** "Lost Chronicles" — a single calm anime scene: one still + one gentle motion. */
-export interface LostPlan {
-  /** The still (first-frame) prompt: ONE serene scene, art style added by the caller. */
-  stillPrompt: string;
-  /** ONE continuous gentle motion for the Veo pass (drifting mist, rising embers…). */
-  motionPrompt: string;
-  title: string;
-  description: string;
-  hashtags: string[];
-}
-
-export interface PlanLostInput {
-  /** The scene (a preset or free text — a peaceful lived-in community, no tech). */
-  scene: string;
-  /** Optional creator direction — what to include, the exact mood wanted. */
-  direction?: string;
-}
-
-export interface SuggestLostInput {
-  /** Optional steer, e.g. "coastal", "past", "snow", "off-grid modern". */
-  hint?: string;
-  count: number;
-}
-
 export interface PlanCookInput {
   /** The dish / recipe, e.g. "trout on a river stone". */
   dish: string;
@@ -636,12 +612,6 @@ export interface LlmProvider {
    * inconsistencies between cuts — retrying doesn't fix that, the script must.
    */
   planCookShots(input: PlanCookInput): Promise<CookPlan>;
-  /** "Lost Chronicles": from a scene, write one still prompt + one gentle motion
-   *  prompt + caption meta for a calm anime Veo short (cheap text, no video spend). */
-  planLostScene(input: PlanLostInput): Promise<LostPlan>;
-  /** "Lost Chronicles": suggest peaceful lived-in community scenes (present-day
-   *  off-grid AND peaceful past), optionally steered by a hint. */
-  suggestLostScenes(input: SuggestLostInput): Promise<string[]>;
   /**
    * Break a beat's single image prompt into `count` successive MOMENTS of that
    * same beat, so a long sentence isn't one static picture. Returns one array

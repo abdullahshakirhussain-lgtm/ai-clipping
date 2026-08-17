@@ -14,9 +14,6 @@ import type {
   DetectHighlightsInput,
   ImageProvider,
   PlanCookInput,
-  PlanLostInput,
-  SuggestLostInput,
-  LostPlan,
   RefineImagePromptsInput,
   StoryScript,
   SuggestTopicsInput,
@@ -248,26 +245,6 @@ export class MockLlmProvider implements LlmProvider {
       hashtags: ["#cooking", "#asmr", "#wild", "#fyp"],
       shots,
     };
-  }
-
-  async planLostScene(input: PlanLostInput): Promise<LostPlan> {
-    return {
-      stillPrompt: `MOCK aerial drone view from high above: ${input.scene.trim()}, the whole community packed into one bird's-eye frame, tiny people tending gardens and carrying firewood below, warm hearth light, no modern tech, richly detailed and lived-in.`,
-      motionPrompt: "a slow, smooth aerial drift over the whole scene; gentle woodsmoke and swaying grass; no cuts.",
-      title: "Lost Chronicles",
-      description: `A peaceful, self-sufficient life close to nature: ${input.scene.trim()}.`,
-      hashtags: ["#anime", "#lofi", "#peaceful", "#lostchronicles", "#cottagecore"],
-    };
-  }
-
-  async suggestLostScenes(input: SuggestLostInput): Promise<string[]> {
-    const base = [
-      "a Tuscan hillside village at golden hour, terracotta rooftops and cypress trees",
-      "a Swiss alpine hamlet in summer, timber chalets and cows in green meadows",
-      "a Japanese satoyama mountain village in autumn, tiled farmhouses and rice terraces",
-      "a Greek island town at dusk, white houses with blue doors by a calm sea",
-    ];
-    return base.slice(0, Math.max(4, Math.min(12, input.count)));
   }
 
   async expandImagePrompts(input: ExpandImagePromptsInput): Promise<string[][]> {

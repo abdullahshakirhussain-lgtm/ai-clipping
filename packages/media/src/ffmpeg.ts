@@ -1086,6 +1086,47 @@ export async function assembleClips(input: {
 }
 
 /**
+ * Manual-upload VIDEO assembly: concatenate the user's uploaded clips (their own
+ * audio DROPPED) at the target aspect and lay the auto voiceover over the whole
+ * thing, trimmed to whichever ends first. No captions/music by design — the
+ * creator adds those. (Cooking keeps native clip audio and uses assembleClips.)
+ */
+export async function assembleManualVideo(input: {
+  clips: string[];
+  voiceFile: string;
+  outPath: string;
+  workDir: string;
+  aspect?: "16:9" | "9:16";
+}): Promise<void> {
+  const { clips, voiceFile, workDir } = input;
+  if (clips.length === 0) throw new Error("assembleManualVideo: no clips");
+  const [w, h] = input.aspect === "16:9" ? [1920, 1080] : [1080, 1920];
+  const args: string[] = ["-y"];
+  for (const c of clips) args.push("-i", c);
+  args.push("-i", voiceFile);
+  const parts: string[] = [];
+  const labels: string[] = [];
+  clips.forEach((_, i) => {
+    parts.push(
+      `[${i}:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,fps=24,format=yuv420p[v${i}]`,
+    );
+    labels.push(`[v${i}]`);
+  });
+  parts.push(`${labels.join("")}concat=n=${clips.length}:v=1:a=0[vo]`);
+  args.push(
+    "-filter_complex", parts.join(";"),
+    "-map", "[vo]",
+    "-map", `${clips.length}:a`, // the voiceover (last input)
+    "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+    "-shortest",
+    "-movflags", "+faststart",
+    input.outPath,
+  );
+  await run(bin("ffmpeg"), args, { cwd: workDir, timeoutMs: 12 * 60 * 1000 });
+}
+
+/**
  * Concatenate finished clips (each video+audio) into one. Used to append the
  * reused like/subscribe/follow outro after a story. Re-encodes through the concat
  * filter and normalises each input to the same size/sar/fps, so clips that differ
