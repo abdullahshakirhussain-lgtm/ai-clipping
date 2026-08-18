@@ -165,6 +165,10 @@ export class ManualService {
     const hookParts = [plan.place, plan.date, plan.timeOfDay].map((s) => s.trim()).filter(Boolean);
     const hook = hookParts.join(" · ");
 
+    // The immutable world lock, prepended byte-identical to every clip so the 12
+    // separately-generated clips share one weather/time/light/outfit. Continuity
+    // across cuts lives here — the strongest lever when clips are made apart.
+    const bible = plan.worldBible.trim();
     const clips = plan.shots.slice(0, maxShots).map((s, i) => {
       // On-screen text is rendered by the video model, then removed — like a film's
       // establishing card. The opening beat carries the place/date title; later
@@ -177,13 +181,14 @@ export class ManualService {
             : `No on-screen text, no subtitles, no watermark.`;
       const prompt = [
         `First-person POV. You are ${plan.role || "an ordinary person"} in ${plan.place}.`,
-        `${s.scene}.`,
+        bible ? `LOCKED WORLD (identical every clip): ${bible}` : "",
+        `THIS BEAT — ${s.scene}.`,
         `Motion over ~8 seconds: ${s.motion}.`,
         `Ambient sound: ${s.audio}.`,
         onScreen,
         `Style: ${anchor}`,
         `Vertical 9:16 portrait.`,
-      ].join(" ");
+      ].filter(Boolean).join(" ");
       return { prompt, seconds: 8 };
     });
 

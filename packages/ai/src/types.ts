@@ -333,6 +333,13 @@ export interface PovPlan {
   timeOfDay: string;
   /** Who the viewer is ("a dock worker", "a novice monk") — sets the POV context. */
   role: string;
+  /**
+   * The immutable world lock, repeated byte-identical on EVERY clip so 12
+   * separately-generated clips share one weather, time-of-day, light, season,
+   * palette and the viewer's own clothing/hands. Continuity lives here — the
+   * clips are generated apart, so anything unpinned drifts between cuts.
+   */
+  worldBible: string;
   /** Ordered beats: wake → rise → cross → the world reveals itself. */
   shots: PovShot[];
   /** Short informative lines shown as overlays across the clips (the teaching part). */

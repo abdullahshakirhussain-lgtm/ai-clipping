@@ -71,6 +71,7 @@ function harness() {
       date: "29 May 1453",
       timeOfDay: "Dawn",
       role: "a Genoese dock worker",
+      worldBible: "clear cold spring dawn, low golden light from the east, no clouds, your own flat stick-figure hands in a plain blue sleeve — identical every clip.",
       // A full journey (10-14 beats), not a single reveal.
       shots: Array.from({ length: input.maxShots }, (_, i) => ({
         scene: `historic beat ${i + 1}`,
@@ -142,6 +143,10 @@ describe("ManualService", () => {
     expect(dto.clips[0]!.prompt.toLowerCase()).toContain("dissolves");
     // Later clips carry the informative fact captions.
     expect(dto.clips[1]!.prompt).toContain("The last dawn of the Roman Empire");
+    // The locked world (weather/time/outfit) is repeated verbatim on EVERY clip so
+    // the separately-generated clips don't drift between cuts.
+    expect(dto.clips.every((c) => c.prompt.includes("plain blue sleeve"))).toBe(true);
+    expect(dto.clips.every((c) => c.prompt.includes("clear cold spring dawn"))).toBe(true);
     // Hook + facts surface to the UI.
     expect(dto.hook).toBe("Constantinople · 29 May 1453 · Dawn");
     expect(dto.facts).toContain("50,000 people remain inside the walls");

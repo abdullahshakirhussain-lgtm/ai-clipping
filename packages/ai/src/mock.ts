@@ -274,6 +274,7 @@ export class MockLlmProvider implements LlmProvider {
       date: "a real date",
       timeOfDay: "Dawn",
       role: "an ordinary person",
+      worldBible: `MOCK world lock for ${input.topic}: clear cold dawn, low golden light from the east, your own flat stick-figure hands in a plain grey sleeve, same weather every clip.`,
       shots,
       facts: ["MOCK fact one about the moment", "MOCK fact two that lands", "MOCK fact three"],
     };

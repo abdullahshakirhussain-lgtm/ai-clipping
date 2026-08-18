@@ -1196,6 +1196,7 @@ Call submit_cook.`,
       date?: string;
       timeOfDay?: string;
       role?: string;
+      worldBible?: string;
       shots?: Array<{ scene?: string; motion?: string; audio?: string }>;
       facts?: string[];
     }>(
@@ -1208,6 +1209,14 @@ Pin these OVERLAY facts (they get shown on screen, so keep them tight and true):
 - "date" — a specific date or year that matters, e.g. "29 May 1453" (pick a day with weight when the subject implies one).
 - "timeOfDay" — e.g. "Dawn".
 - "role" — who the viewer is, in-world, e.g. "a Genoese dock worker". First-person, ordinary person.
+
+Then "worldBible" — ONE dense block, the IMMUTABLE look repeated on EVERY clip. The clips are generated SEPARATELY, so anything you leave unpinned drifts between cuts (the sky clears in one shot and rains the next, your sleeve changes colour). The whole journey happens over a short span of the SAME morning, so time and weather are CONSTANT — lock all of:
+   - PLACE: the exact setting and its architecture/materials, fixed.
+   - DATE + TIME OF DAY: e.g. "just after dawn"; and the EXACT LIGHT it gives — direction, height and quality (e.g. "low golden sunlight raking from the east, long soft shadows"). Keep this light identical every shot.
+   - WEATHER + SEASON: pin it explicitly (e.g. "clear cold early-spring air, a light breeze off the water, no clouds") — the SAME weather in every shot, never changing.
+   - YOUR OWN BODY: "your own hands and forearms are the only body seen, drawn as a simple flat cartoon stick figure, [state the plain clothing + a fixed sleeve colour]; no face, no reflection, no second protagonist." Keep the clothing/sleeve identical every shot.
+   - PALETTE + CAMERA: the colour range and "first-person eye-level POV, 9:16 vertical, natural handheld".
+   - HARD RULES: "everything consistent across cuts; the weather, light and time never change through the journey; no on-screen text except where a shot directs it; no music, no voices."
 
 Then "shots" — the ordered POV beats (EXACTLY ${maxShots}). The ARC is a continuous first-person JOURNEY through the day, not a single reveal:
   1. WAKE in an intimate interior (the bed, the dim room).
@@ -1237,6 +1246,10 @@ Call submit_pov.`,
             date: { type: "string" },
             timeOfDay: { type: "string" },
             role: { type: "string" },
+            worldBible: {
+              type: "string",
+              description: "the immutable world lock — place, date/time+light, weather+season, the viewer's body/clothing, palette, camera, hard rules — repeated verbatim on every clip",
+            },
             shots: {
               type: "array",
               items: {
@@ -1251,7 +1264,7 @@ Call submit_pov.`,
             },
             facts: { type: "array", items: { type: "string" }, description: "short true informative overlay lines" },
           },
-          required: ["title", "description", "hashtags", "place", "date", "timeOfDay", "role", "shots", "facts"],
+          required: ["title", "description", "hashtags", "place", "date", "timeOfDay", "role", "worldBible", "shots", "facts"],
         },
       },
       3000,
@@ -1276,6 +1289,7 @@ Call submit_pov.`,
       date: String(result.date ?? "").trim(),
       timeOfDay: String(result.timeOfDay ?? "").trim(),
       role: String(result.role ?? "").trim(),
+      worldBible: String(result.worldBible ?? "").trim(),
       shots,
       facts: (result.facts ?? []).map((f) => String(f).trim()).filter(Boolean).slice(0, 8),
     };
