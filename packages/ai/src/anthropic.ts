@@ -1207,7 +1207,7 @@ This is an EDUCATIONAL immersion piece and a FULL journey — it runs over a min
 First give a "logline" — ONE sentence describing what the viewer experiences start to finish (who they are, where/when they wake, and the journey they take). This is shown to the creator for APPROVAL before anything else, so make it a clear, honest summary of the whole short.
 
 Pin these HOOK details (ONLY the place + date appear on screen — as the opening title card; the rest steer the writing):
-- "place" — the exact place (city + specific spot), e.g. "Constantinople — a harbourside warehouse".
+- "place" — SHORT, for the on-screen title card: just the city (+ country), e.g. "Edo, Japan" or "Constantinople". Keep it a few words — put the specific spot (the warehouse, the back-lane lodging) in the worldBible, NOT here.
 - "date" — a specific date or year that matters, e.g. "29 May 1453" (pick a day with weight when the subject implies one).
 - "timeOfDay" — e.g. "Dawn".
 - "role" — who the viewer is, in-world, e.g. "a Genoese dock worker". First-person, ordinary person.
@@ -1218,16 +1218,16 @@ Then "worldBible" — ONE dense block, the IMMUTABLE look repeated on EVERY clip
    - WEATHER + SEASON: pin it explicitly (e.g. "clear cold early-spring air, a light breeze off the water, no clouds") — the SAME weather in every shot, never changing.
    - YOUR OWN BODY: "your own hands and forearms are the only body seen, drawn as a simple flat cartoon stick figure, [state the plain clothing + a fixed sleeve colour]; no face, no reflection, no second protagonist." Keep the clothing/sleeve identical every shot.
    - PALETTE + CAMERA: the colour range and "first-person eye-level POV, 9:16 vertical, natural handheld".
-   - HARD RULES: "everything consistent across cuts; the weather, light and time never change through the journey; no on-screen text except where a shot directs it; no music, no voices."
+   - HARD RULES: "STRICTLY FIRST-PERSON every shot — the camera IS your own eyes and NEVER pulls back, orbits, or cuts to a third-person/outside view; your torso, back, head, legs or full body are NEVER shown — only your forearms and hands enter from the lower edge. Everything consistent across cuts; the weather, light and time never change through the journey; no on-screen text except where a shot directs it; no music, no voices."
 
 Then "shots" — the ordered POV beats (EXACTLY ${maxShots}). The ARC is a continuous first-person JOURNEY through the day, not a single reveal:
-  1. WAKE in an intimate interior (the bed, the dim room).
+  1. WAKE looking FORWARD into the dim room — the camera already faces forward/level into the space (your eyes open on the room, or you are already sitting). Do NOT lie flat and haul yourself upright — that motion forces the camera to swing and the model breaks to a third-person shot of you. Keep it gentle and forward-facing: your hands simply come up and push the cover down and away from you.
   2. RISE and cross to an opening (window/door) — the wider world is REVEALED (the early payoff).
   3. STEP OUT and MOVE THROUGH the place: walk the street/dock/market, your hands touching real things (a door latch, market goods, a rope, coins), passing people and architecture, small encounters — a sequence of distinct first-person moments that TOUR the historical world.
   4. END on a strong, memorable final image (a landmark up close, the harbour, a threshold).
 Every beat is a NEW location or action that moves you forward — never repeat the same view. Each beat pins:
 - "scene": the STILL world in front of you at the start of the beat — a still-photograph description, no motion verbs. Historically specific props and architecture, DIFFERENT each beat as you move.
-- "motion": ONE continuous ~8s FIRST-PERSON motion (sitting up, hands pushing off the bed, crossing to the shutters, stepping through a doorway, walking down a lane, reaching for a market stall, climbing steps). Written as motion, always moving forward through the world.
+- "motion": ONE continuous ~8s FIRST-PERSON motion the camera can show WITHOUT ever turning to look at yourself — forward-facing only: walking forward, reaching a hand out toward something, opening a door/shutter, looking across a view, climbing steps. Your hands/forearms may enter from the bottom, but the camera NEVER pulls back to reveal your body and NEVER shows a third-person view. AVOID motions that only read in third person (sitting up from lying flat, standing from a bow, turning to see your own back).
 - "audio": the native ambient sound for this beat (a crackling lamp, floorboards, gulls, market chatter, cart wheels on stone) — ambient only, never music or voices.
 Do NOT describe the protagonist's face or a third person as the subject — it is first-person (other people can appear around you). Do NOT mention art style — that is added later. There is NO on-screen text on any beat except the opening title card (place + date), which is added separately — do not put captions or writing into the scenes.
 

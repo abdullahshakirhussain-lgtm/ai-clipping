@@ -193,6 +193,7 @@ export class ManualService {
         bible ? `LOCKED WORLD (identical every clip): ${bible}` : "",
         `THIS BEAT — ${s.scene}.`,
         `Motion over ~8 seconds: ${s.motion}.`,
+        `The camera stays STRICTLY first-person the entire clip — your own eyes looking forward; it NEVER pulls back, orbits, or cuts to a third-person/outside view, and your torso, head or full body are never shown (only forearms/hands from the lower edge).`,
         `Ambient sound: ${s.audio}.`,
         onScreen,
         `Style: ${anchor}`,
