@@ -60,10 +60,14 @@ export class ElevenLabsTtsProvider implements TtsProvider {
   private readonly model: string;
   private readonly stability: number;
   readonly speaksTags: boolean;
+  /** eleven_v3 rejects previous_text/next_text ("unsupported_model", 400). Only
+   *  the v2-era models accept the neighbour-conditioning params. */
+  private readonly supportsContext: boolean;
 
   constructor(private readonly opts: ElevenLabsTtsOptions) {
     this.model = opts.model || "eleven_v3";
     this.speaksTags = this.model.startsWith("eleven_v3");
+    this.supportsContext = !this.model.startsWith("eleven_v3");
     // 0.5 ("Natural") by default — consistent across the chunks of one narration.
     this.stability = opts.stability ?? 0.5;
   }
@@ -80,9 +84,10 @@ export class ElevenLabsTtsProvider implements TtsProvider {
         text: input.text,
         model_id: this.model,
         // Condition each chunk on its neighbours so a long narration's chunks match
-        // in tone/prosody at the joins instead of each starting cold.
-        ...(input.previousText ? { previous_text: input.previousText } : {}),
-        ...(input.nextText ? { next_text: input.nextText } : {}),
+        // in tone/prosody at the joins instead of each starting cold. Only sent on
+        // models that accept it — eleven_v3 rejects these params (400).
+        ...(this.supportsContext && input.previousText ? { previous_text: input.previousText } : {}),
+        ...(this.supportsContext && input.nextText ? { next_text: input.nextText } : {}),
         // A fixed seed makes generations more reproducible/consistent request to request.
         seed: 12345,
         voice_settings: this.speaksTags

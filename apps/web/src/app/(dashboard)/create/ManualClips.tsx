@@ -158,9 +158,9 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
                 <textarea
                   value={direction}
                   onChange={(e) => setDirection(e.target.value)}
-                  rows={4}
-                  maxLength={2000}
-                  placeholder="the path to take — what to write, the angle/tone, what to mention or avoid (e.g. 'a calm second-person pep-talk, concrete and practical, no clichés, end on one clear action')"
+                  rows={8}
+                  maxLength={12000}
+                  placeholder="the path to take — what to write, the angle/tone, what to mention or avoid (e.g. 'a calm second-person pep-talk, concrete and practical, no clichés, end on one clear action'). Write as much as you like — a full brief is fine."
                   className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
                   style={{ borderColor: "var(--border)" }}
                 />

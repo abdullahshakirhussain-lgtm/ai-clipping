@@ -15,8 +15,9 @@ export const ManualPlanRequestSchema = z.object({
   /** Topic (video) or dish (cook). */
   topic: z.string().min(3).max(300),
   /** Video only: free-text direction — what to write, the angle/tone, what to
-   *  mention or avoid. Honoured on top of the doctrine, without overriding it. */
-  direction: z.string().max(2000).optional(),
+   *  mention or avoid. Honoured on top of the doctrine, without overriding it.
+   *  Roomy (~1500 words) so a full brief fits. */
+  direction: z.string().max(12000).optional(),
   length: z.enum(["short", "long"]).default("short"),
   category: z.string().max(60).optional(),
 });

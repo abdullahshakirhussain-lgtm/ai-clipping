@@ -488,9 +488,9 @@ export default function CreatePage() {
           <textarea
             value={direction}
             onChange={(e) => setDirection(e.target.value)}
-            rows={4}
-            maxLength={2000}
-            placeholder="how you want it told — what to mention, what to avoid, the angle/tone (e.g. 'focus on the food and the family, keep it very calm, don't mention the war')"
+            rows={8}
+            maxLength={12000}
+            placeholder="how you want it told — what to mention, what to avoid, the angle/tone (e.g. 'focus on the food and the family, keep it very calm, don't mention the war'). Write as much as you like — a full brief is fine."
             className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
             style={{ borderColor: "var(--border)" }}
           />

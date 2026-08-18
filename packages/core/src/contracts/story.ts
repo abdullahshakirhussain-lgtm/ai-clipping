@@ -43,7 +43,7 @@ export const CreateStoryInputSchema = z.object({
   topic: z.string().min(3).max(300),
   /** Optional free-text direction from the user — what to mention, what to avoid,
    *  the angle/tone to take. Woven into the writer's prompt as extra instruction. */
-  direction: z.string().max(2000).optional(),
+  direction: z.string().max(12000).optional(),
   mode: z.enum(STORY_MODES).default("scenario"),
   // Short form (9:16) is the default — that's what we publish. A story may still
   // run a bit past 2 min when that's what a complete telling needs.
