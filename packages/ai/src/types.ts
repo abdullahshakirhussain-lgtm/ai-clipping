@@ -320,8 +320,8 @@ export interface PovShot {
 
 /**
  * A "POV: you wake up in <place/time>" short — the trademark first-person format.
- * Informative by design: `place`/`date`/`timeOfDay`/`role` and `facts` become the
- * burned-in text overlays, so the short teaches while it immerses.
+ * `place`/`date` become the opening on-screen title card (the only text on screen);
+ * `role` and the world lock steer the writing. A minute-plus first-person journey.
  */
 export interface PovPlan {
   title: string;
@@ -345,8 +345,6 @@ export interface PovPlan {
   worldBible: string;
   /** Ordered beats: wake → rise → cross → the world reveals itself. */
   shots: PovShot[];
-  /** Short informative lines shown as overlays across the clips (the teaching part). */
-  facts: string[];
 }
 
 export interface PlanPovInput {
@@ -664,9 +662,9 @@ export interface LlmProvider {
   planCookShots(input: PlanCookInput): Promise<CookPlan>;
   /**
    * Plan a "POV: you wake up in <place/time>" short — the trademark first-person
-   * format. Returns the structured overlay facts (place/date/role + teaching
-   * lines) and the ordered wake → reveal beats; the service composes each beat
-   * into a stick-figure-POV video prompt. Informative by design.
+   * format. Returns the hook (place/date/role), the locked world bible and the
+   * ordered wake → journey beats; the service composes each beat into a
+   * stick-figure-POV video prompt. The place/date title is the only on-screen text.
    */
   planPovShort(input: PlanPovInput): Promise<PovPlan>;
   /**

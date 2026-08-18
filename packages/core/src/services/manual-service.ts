@@ -26,8 +26,6 @@ export interface ManualSpec {
   logline?: string;
   /** POV only: short per-clip labels (what each beat shows), for the summary. */
   beatLabels?: string[];
-  /** POV only: the informative overlay lines (also asked for on-screen in Veo). */
-  facts?: string[];
   /** Storage keys of uploaded clips, index-aligned to `clips` (null = pending). */
   uploaded: Array<string | null>;
   category?: string;
@@ -155,9 +153,9 @@ export class ManualService {
 
   /**
    * POV short: "you wake up in <place/time>". Trademark first-person stick-figure
-   * look, 9:16, native clip audio (NO voiceover). The place/date and the facts are
-   * rendered ON SCREEN BY VEO — a cinematic intro title that fades out, and brief
-   * fading captions — so nothing is burned in post.
+   * look, 9:16, native clip audio (NO voiceover). The ONLY on-screen text is the
+   * opening place/date title, rendered BY VEO as a cinematic card that fades out —
+   * nothing is burned in post, and no other captions appear.
    */
   private async planPov(input: ManualPlanRequest): Promise<ManualSpec> {
     // A POV short is a minute-plus journey: 8s per clip → 12 clips ≈ 96s.
@@ -178,15 +176,13 @@ export class ManualService {
     // across cuts lives here — the strongest lever when clips are made apart.
     const bible = plan.worldBible.trim();
     const clips = plan.shots.slice(0, maxShots).map((s, i) => {
-      // On-screen text is rendered by the video model, then removed — like a film's
-      // establishing card. The opening beat carries the place/date title; later
-      // beats carry one short informative caption each.
+      // The ONLY on-screen text is the opening title (place + date), rendered by
+      // the video model like a film's establishing card, then dissolved away.
+      // Every other beat is clean — no captions, no subtitles.
       const onScreen =
         i === 0
           ? `ON-SCREEN TEXT: as the shot opens, an elegant cinematic title fades in — "${plan.place}"${plan.date ? `, and below it "${plan.date}${plan.timeOfDay ? ` · ${plan.timeOfDay}` : ""}"` : ""} — held briefly like a film's establishing title card, then gently DISSOLVES AWAY before the shot ends. No other text.`
-          : plan.facts[i - 1]
-            ? `ON-SCREEN TEXT: a small clean caption fades in reading "${plan.facts[i - 1]}", holds about two seconds, then fades out. No other text.`
-            : `No on-screen text, no subtitles, no watermark.`;
+          : `No on-screen text, no subtitles, no captions, no watermark.`;
       const prompt = [
         `First-person POV. You are ${plan.role || "an ordinary person"} in ${plan.place}.`,
         bible ? `LOCKED WORLD (identical every clip): ${bible}` : "",
@@ -230,7 +226,6 @@ export class ManualService {
       hook: hook || undefined,
       logline: plan.logline || undefined,
       beatLabels: plan.shots.slice(0, maxShots).map((s) => s.scene),
-      facts: plan.facts,
       uploaded: clips.map(() => null),
       category: input.category?.trim() || undefined,
     };
@@ -278,7 +273,6 @@ export class ManualService {
       hook: spec.hook ?? null,
       logline: spec.logline ?? null,
       beatLabels: spec.beatLabels ?? [],
-      facts: spec.facts ?? [],
       uploaded: spec.uploaded,
     };
   }

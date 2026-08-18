@@ -42,9 +42,6 @@ export const ManualPlanSchema = z.object({
   /** POV only: a short one-line label per clip (what that beat shows) — the
    *  approval summary lists these instead of the full verbose prompts. */
   beatLabels: z.array(z.string()).optional(),
-  /** POV only: the informative overlay lines the clips display, for the creator's
-   *  reference (the Veo prompts already ask for them on screen). */
-  facts: z.array(z.string()).optional(),
   /** Storage keys already uploaded, index-aligned to clips (null = not yet). */
   uploaded: z.array(z.string().nullable()),
 });

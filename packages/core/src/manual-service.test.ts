@@ -79,7 +79,6 @@ function harness() {
         motion: `first-person move ${i + 1}`,
         audio: "harbour ambience",
       })),
-      facts: ["The last dawn of the Roman Empire", "50,000 people remain inside the walls"],
     }),
   } as never;
 
@@ -129,7 +128,7 @@ describe("ManualService", () => {
     expect(dto.clips.length).toBeGreaterThan(0);
   });
 
-  it("plans a POV short: 9:16, native audio (no narration), on-screen hook + facts baked into prompts", async () => {
+  it("plans a POV short: 9:16, native audio (no narration), place/date title as the only on-screen text", async () => {
     const { svc, videos } = harness();
     const dto = await svc.plan({ format: "pov", topic: "Constantinople, 1453", length: "short" });
 
@@ -142,15 +141,15 @@ describe("ManualService", () => {
     expect(dto.clips[0]!.prompt).toContain("Constantinople");
     expect(dto.clips[0]!.prompt).toContain("29 May 1453");
     expect(dto.clips[0]!.prompt.toLowerCase()).toContain("dissolves");
-    // Later clips carry the informative fact captions.
-    expect(dto.clips[1]!.prompt).toContain("The last dawn of the Roman Empire");
+    // The ONLY on-screen text is the opening title — later clips are clean.
+    expect(dto.clips[1]!.prompt.toLowerCase()).toContain("no on-screen text");
+    expect(dto.clips.slice(1).every((c) => !c.prompt.includes("ON-SCREEN TEXT:"))).toBe(true);
     // The locked world (weather/time/outfit) is repeated verbatim on EVERY clip so
     // the separately-generated clips don't drift between cuts.
     expect(dto.clips.every((c) => c.prompt.includes("plain blue sleeve"))).toBe(true);
     expect(dto.clips.every((c) => c.prompt.includes("clear cold spring dawn"))).toBe(true);
-    // Hook + facts surface to the UI.
+    // Hook surfaces to the UI.
     expect(dto.hook).toBe("Constantinople · 29 May 1453 · Dawn");
-    expect(dto.facts).toContain("50,000 people remain inside the walls");
     // The approval summary: a logline + one label per beat.
     expect(dto.logline).toContain("dock worker in Constantinople");
     expect(dto.beatLabels!.length).toBe(dto.clips.length);

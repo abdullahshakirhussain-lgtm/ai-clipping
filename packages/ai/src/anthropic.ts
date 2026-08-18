@@ -1199,7 +1199,6 @@ Call submit_cook.`,
       role?: string;
       worldBible?: string;
       shots?: Array<{ scene?: string; motion?: string; audio?: string }>;
-      facts?: string[];
     }>(
       `You are the SHOT PLANNER for a "POV: you wake up in <a real time and place in history>" short-form video (9:16 vertical, first-person, hard cut every ~8 seconds, NO narration — native ambient sound + on-screen text only). The subject: "${input.topic}".
 ${input.direction?.trim() ? `\nCREATOR DIRECTION (honour this — the angle, tone, what to show or avoid): ${input.direction.trim()}\n` : ""}
@@ -1207,7 +1206,7 @@ This is an EDUCATIONAL immersion piece and a FULL journey — it runs over a min
 
 First give a "logline" — ONE sentence describing what the viewer experiences start to finish (who they are, where/when they wake, and the journey they take). This is shown to the creator for APPROVAL before anything else, so make it a clear, honest summary of the whole short.
 
-Pin these OVERLAY facts (they get shown on screen, so keep them tight and true):
+Pin these HOOK details (ONLY the place + date appear on screen — as the opening title card; the rest steer the writing):
 - "place" — the exact place (city + specific spot), e.g. "Constantinople — a harbourside warehouse".
 - "date" — a specific date or year that matters, e.g. "29 May 1453" (pick a day with weight when the subject implies one).
 - "timeOfDay" — e.g. "Dawn".
@@ -1230,15 +1229,13 @@ Every beat is a NEW location or action that moves you forward — never repeat t
 - "scene": the STILL world in front of you at the start of the beat — a still-photograph description, no motion verbs. Historically specific props and architecture, DIFFERENT each beat as you move.
 - "motion": ONE continuous ~8s FIRST-PERSON motion (sitting up, hands pushing off the bed, crossing to the shutters, stepping through a doorway, walking down a lane, reaching for a market stall, climbing steps). Written as motion, always moving forward through the world.
 - "audio": the native ambient sound for this beat (a crackling lamp, floorboards, gulls, market chatter, cart wheels on stone) — ambient only, never music or voices.
-Do NOT describe the protagonist's face or a third person as the subject — it is first-person (other people can appear around you). Do NOT mention art style — that is added later.
-
-Then "facts" — 5 to 8 SHORT informative lines (max ~8 words each) that teach the moment: what is happening this day, a number that lands (population, the size of a fleet), what is about to happen, a vivid true detail. These become on-screen captions spread across the journey. Real facts only.
+Do NOT describe the protagonist's face or a third person as the subject — it is first-person (other people can appear around you). Do NOT mention art style — that is added later. There is NO on-screen text on any beat except the opening title card (place + date), which is added separately — do not put captions or writing into the scenes.
 
 Also give a scroll-stopping "title", a 1-2 sentence "description", and up to 6 "hashtags".
 Call submit_pov.`,
       {
         name: "submit_pov",
-        description: "Submit the historically grounded POV overlay facts and the wake→reveal beat list.",
+        description: "Submit the historically grounded POV overlay facts and the wake→reveal journey beats.",
         input_schema: {
           type: "object",
           properties: {
@@ -1266,9 +1263,8 @@ Call submit_pov.`,
                 required: ["scene", "motion", "audio"],
               },
             },
-            facts: { type: "array", items: { type: "string" }, description: "short true informative overlay lines" },
           },
-          required: ["title", "description", "hashtags", "logline", "place", "date", "timeOfDay", "role", "worldBible", "shots", "facts"],
+          required: ["title", "description", "hashtags", "logline", "place", "date", "timeOfDay", "role", "worldBible", "shots"],
         },
       },
       3000,
@@ -1296,7 +1292,6 @@ Call submit_pov.`,
       role: String(result.role ?? "").trim(),
       worldBible: String(result.worldBible ?? "").trim(),
       shots,
-      facts: (result.facts ?? []).map((f) => String(f).trim()).filter(Boolean).slice(0, 8),
     };
   }
 

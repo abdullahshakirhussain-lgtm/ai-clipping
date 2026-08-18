@@ -13,7 +13,6 @@ type ManualPlan = {
   hook?: string | null;
   logline?: string | null;
   beatLabels?: string[];
-  facts?: string[];
   uploaded: (string | null)[];
 };
 
@@ -275,17 +274,9 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
             {plan.beatLabels && plan.beatLabels.length > 0 && (
               <>
                 <div className="text-[11px] font-medium mb-1" style={{ color: "var(--muted)" }}>The {plan.beatLabels.length} beats ({plan.clips.length * 8}s total)</div>
-                <ol className="text-[12px] list-decimal pl-4 mb-3 space-y-0.5">
+                <ol className="text-[12px] list-decimal pl-4 space-y-0.5">
                   {plan.beatLabels.map((b, i) => <li key={i}>{b}</li>)}
                 </ol>
-              </>
-            )}
-            {plan.facts && plan.facts.length > 0 && (
-              <>
-                <div className="text-[11px] font-medium mb-1" style={{ color: "var(--muted)" }}>On-screen facts</div>
-                <ul className="text-[11px] list-disc pl-4" style={{ color: "var(--muted)" }}>
-                  {plan.facts.map((f, i) => <li key={i}>{f}</li>)}
-                </ul>
               </>
             )}
           </div>
@@ -309,18 +300,11 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
             </div>
           )}
 
-          {isPov && (plan.hook || (plan.facts && plan.facts.length > 0)) && (
+          {isPov && plan.hook && (
             <div className="mb-4 p-3 rounded-lg surface-2 border" style={{ borderColor: "var(--border)" }}>
-              {plan.hook && (
-                <div className="text-sm font-semibold mb-1">🎬 On-screen intro: {plan.hook}</div>
-              )}
-              {plan.facts && plan.facts.length > 0 && (
-                <ul className="text-[11px] list-disc pl-4" style={{ color: "var(--muted)" }}>
-                  {plan.facts.map((f, i) => <li key={i}>{f}</li>)}
-                </ul>
-              )}
-              <p className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>
-                The prompts ask the video model to flash these on screen and fade them out — no editing needed.
+              <div className="text-sm font-semibold mb-1">🎬 On-screen intro: {plan.hook}</div>
+              <p className="text-[11px]" style={{ color: "var(--muted)" }}>
+                The opening clip’s prompt asks the video model to flash this title and fade it out — it’s the only on-screen text. No editing needed.
               </p>
             </div>
           )}
