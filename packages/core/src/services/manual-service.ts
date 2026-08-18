@@ -72,6 +72,7 @@ export class ManualService {
     const style = DEFAULT_STYLE;
     const story = await this.llm.writeStory({
       topic: input.topic.trim(),
+      direction: input.direction?.trim() || undefined,
       style,
       maxBeats: maxShots,
       minBeats: maxShots,

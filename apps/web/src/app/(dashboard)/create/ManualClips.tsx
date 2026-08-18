@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { apiSend, apiUpload, revalidateAll, runPlan } from "@/lib/api";
+import { apiGet, apiSend, apiUpload, revalidateAll, runPlan } from "@/lib/api";
 import { Button } from "@/components/ui";
 
 type ManualPlan = {
@@ -20,8 +20,12 @@ type ManualPlan = {
  */
 export function ManualClips({ format, categories }: { format: "video" | "cook"; categories: string[] }) {
   const [topic, setTopic] = useState("");
+  const [direction, setDirection] = useState("");
   const [length, setLength] = useState<"short" | "long">("short");
   const [category, setCategory] = useState("");
+  const [niche, setNiche] = useState("");
+  const [topics, setTopics] = useState<string[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [planSec, setPlanSec] = useState(0);
   const [plan, setPlan] = useState<ManualPlan | null>(null);
@@ -31,7 +35,7 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
   const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const noun = format === "cook" ? "dish" : "topic";
+  const isVideo = format === "video";
 
   async function doPlan() {
     if (topic.trim().length < 3) return;
@@ -41,7 +45,13 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
     try {
       const p = await runPlan<ManualPlan>(
         "/manual",
-        { format, topic: topic.trim(), length, category: category || undefined },
+        {
+          format,
+          topic: topic.trim(),
+          direction: isVideo ? direction.trim() || undefined : undefined,
+          length,
+          category: category || undefined,
+        },
         { onTick: setPlanSec },
       );
       setPlan(p);
@@ -50,6 +60,24 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
       setMsg(e instanceof Error ? e.message : "Couldn't plan");
     } finally {
       setPlanning(false);
+    }
+  }
+
+  // Reuse the Slideshow topic suggester (Video only — cook ideas differ). A typed
+  // niche wins over the category dropdown for tailored ideas.
+  async function suggest() {
+    setSuggesting(true);
+    setMsg(null);
+    try {
+      const seed = niche.trim() || category;
+      const r = await apiGet<{ topics: string[] }>(
+        `/story/topics${seed ? `?category=${encodeURIComponent(seed)}` : ""}`,
+      );
+      setTopics(r.topics);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't get ideas");
+    } finally {
+      setSuggesting(false);
     }
   }
 
@@ -122,6 +150,52 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
               style={{ borderColor: topic.trim() ? "var(--primary)" : "var(--border)" }}
             />
           </label>
+
+          {isVideo && (
+            <>
+              <label className="block mb-3">
+                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Description (optional)</span>
+                <textarea
+                  value={direction}
+                  onChange={(e) => setDirection(e.target.value)}
+                  rows={4}
+                  maxLength={2000}
+                  placeholder="the path to take — what to write, the angle/tone, what to mention or avoid (e.g. 'a calm second-person pep-talk, concrete and practical, no clichés, end on one clear action')"
+                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
+                  style={{ borderColor: "var(--border)" }}
+                />
+              </label>
+
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  value={niche}
+                  onChange={(e) => setNiche(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void suggest(); } }}
+                  placeholder="niche for ideas — e.g. discipline, stoicism, focus, morning routines"
+                  className="flex-1 px-3 py-2 rounded-lg surface-2 border outline-none text-sm"
+                  style={{ borderColor: "var(--border)" }}
+                />
+                <Button onClick={suggest} disabled={suggesting} variant="secondary">
+                  {suggesting ? "Thinking…" : "💡 Suggest"}
+                </Button>
+              </div>
+              {topics.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {topics.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTopic(t)}
+                      className="text-[11px] px-2 py-1 rounded-lg surface-2 border text-left"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--surface-2)" }}>
               {(["short", "long"] as const).map((l) => (

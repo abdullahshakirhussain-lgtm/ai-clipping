@@ -14,6 +14,9 @@ export const ManualPlanRequestSchema = z.object({
   format: z.enum(MANUAL_FORMATS),
   /** Topic (video) or dish (cook). */
   topic: z.string().min(3).max(300),
+  /** Video only: free-text direction — what to write, the angle/tone, what to
+   *  mention or avoid. Honoured on top of the doctrine, without overriding it. */
+  direction: z.string().max(2000).optional(),
   length: z.enum(["short", "long"]).default("short"),
   category: z.string().max(60).optional(),
 });
