@@ -63,7 +63,7 @@ function harness() {
         { prompt: "trout over open flame" },
       ],
     }),
-    planPovShort: async () => ({
+    planPovShort: async (input: { maxShots: number }) => ({
       title: "POV: Constantinople, 1453",
       description: "desc",
       hashtags: ["#pov", "#history"],
@@ -71,11 +71,12 @@ function harness() {
       date: "29 May 1453",
       timeOfDay: "Dawn",
       role: "a Genoese dock worker",
-      shots: [
-        { scene: "a dim harbourside room", motion: "you sit up", audio: "quiet room tone" },
-        { scene: "the shuttered window", motion: "you cross to it", audio: "floorboards" },
-        { scene: "the closed shutters", motion: "you push them open onto the harbour", audio: "gulls" },
-      ],
+      // A full journey (10-14 beats), not a single reveal.
+      shots: Array.from({ length: input.maxShots }, (_, i) => ({
+        scene: `historic beat ${i + 1}`,
+        motion: `first-person move ${i + 1}`,
+        audio: "harbour ambience",
+      })),
       facts: ["The last dawn of the Roman Empire", "50,000 people remain inside the walls"],
     }),
   } as never;
@@ -132,7 +133,8 @@ describe("ManualService", () => {
 
     expect(dto.format).toBe("pov");
     expect(dto.aspect).toBe("9:16");
-    expect(dto.clips.length).toBe(3);
+    // A POV short is a minute-plus journey — at least 10 clips (8s each).
+    expect(dto.clips.length).toBeGreaterThanOrEqual(10);
     // The place/date title is rendered by the video model on the opening clip, then removed.
     expect(dto.clips[0]!.prompt).toContain("ON-SCREEN TEXT");
     expect(dto.clips[0]!.prompt).toContain("Constantinople");

@@ -250,14 +250,22 @@ export class MockLlmProvider implements LlmProvider {
   }
 
   async planPovShort(input: PlanPovInput): Promise<PovPlan> {
-    const n = Math.max(2, Math.min(input.maxShots, 4));
+    const n = Math.max(8, Math.min(input.maxShots, 16));
     const arc = [
       { scene: "a dim interior, a low bed and shuttered window", motion: "you sit up, hands pushing off the bed" },
       { scene: "the room around you, a chest and a lamp", motion: "you rise and cross toward the shutters" },
       { scene: "the closed shutters ahead of you", motion: "your hands push the shutters open onto the view" },
       { scene: "the wider world beyond the window", motion: "you lean out and look across it" },
+      { scene: "a doorway onto the street", motion: "you step through the door into the open" },
+      { scene: "a busy lane of the old city", motion: "you walk down the lane past the crowd" },
+      { scene: "a market stall of goods", motion: "your hand reaches toward the goods on the stall" },
+      { scene: "stone steps rising ahead", motion: "you climb the steps toward a landmark" },
     ];
-    const shots = arc.slice(0, n).map((s) => ({ ...s, audio: "quiet ambient room tone, then the world outside" }));
+    // Extend to n by cycling the "moving through the world" beats.
+    const shots = Array.from({ length: n }, (_, i) => ({
+      ...arc[Math.min(i, arc.length - 1)]!,
+      audio: "quiet ambient room tone, then the world outside",
+    }));
     return {
       title: `POV: you wake up in ${input.topic}`,
       description: `You wake up in ${input.topic}. Where should you wake up next?`,
@@ -267,7 +275,7 @@ export class MockLlmProvider implements LlmProvider {
       timeOfDay: "Dawn",
       role: "an ordinary person",
       shots,
-      facts: ["MOCK fact one about the moment", "MOCK fact two that lands"],
+      facts: ["MOCK fact one about the moment", "MOCK fact two that lands", "MOCK fact three"],
     };
   }
 

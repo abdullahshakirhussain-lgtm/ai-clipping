@@ -1186,7 +1186,8 @@ Call submit_cook.`,
   }
 
   async planPovShort(input: PlanPovInput): Promise<PovPlan> {
-    const maxShots = Math.max(2, Math.min(4, input.maxShots));
+    // A POV short is a full minute-plus journey: 8s per clip, so 10-14 clips.
+    const maxShots = Math.max(8, Math.min(16, input.maxShots));
     const result = await this.callTool<{
       title?: string;
       description?: string;
@@ -1198,23 +1199,28 @@ Call submit_cook.`,
       shots?: Array<{ scene?: string; motion?: string; audio?: string }>;
       facts?: string[];
     }>(
-      `You are the SHOT PLANNER for a "POV: you wake up in <a real time and place in history>" short-form video (9:16 vertical, first-person, hard cut every ~8 seconds, NO narration — native ambient sound + burned-in text only). The subject: "${input.topic}".
+      `You are the SHOT PLANNER for a "POV: you wake up in <a real time and place in history>" short-form video (9:16 vertical, first-person, hard cut every ~8 seconds, NO narration — native ambient sound + on-screen text only). The subject: "${input.topic}".
 
-This is an EDUCATIONAL immersion piece: the viewer literally wakes up inside a real historical moment and, in a few seconds, the world reveals itself. It must be HISTORICALLY GROUNDED and specific — real place, real date, real detail — not generic "medieval times".
+This is an EDUCATIONAL immersion piece and a FULL journey — it runs over a minute, so plan EXACTLY ${maxShots} beats (10-14 is the target; 8s each). It must be HISTORICALLY GROUNDED and specific — real place, real date, real detail — not generic "medieval times".
 
-Pin these OVERLAY facts (they get burned on screen, so keep them tight and true):
+Pin these OVERLAY facts (they get shown on screen, so keep them tight and true):
 - "place" — the exact place (city + specific spot), e.g. "Constantinople — a harbourside warehouse".
 - "date" — a specific date or year that matters, e.g. "29 May 1453" (pick a day with weight when the subject implies one).
 - "timeOfDay" — e.g. "Dawn".
 - "role" — who the viewer is, in-world, e.g. "a Genoese dock worker". First-person, ordinary person.
 
-Then "shots" — the ordered POV beats (${maxShots} of them). The ARC is always: wake in an intimate interior → rise → move toward an opening (window/door/hatch) → the wider world is REVEALED (the payoff shot). Each beat pins:
-- "scene": the STILL world in front of you at the start of the beat — a still-photograph description, no motion verbs (the dim room, the straw pallet, the shuttered window; then the quay, the ships, the skyline). Historically specific props and architecture.
-- "motion": ONE continuous ~8s FIRST-PERSON motion (sitting up, hands pushing off the bed, crossing to the shutters, the shutters swinging open onto the view). Written as motion.
-- "audio": the native ambient sound for this beat (a crackling lamp, floorboards, gulls and harbour bustle) — ambient only, never music or voices.
-Do NOT describe the protagonist's face or a third person standing in the scene — it is first-person. Do NOT mention art style — that is added later.
+Then "shots" — the ordered POV beats (EXACTLY ${maxShots}). The ARC is a continuous first-person JOURNEY through the day, not a single reveal:
+  1. WAKE in an intimate interior (the bed, the dim room).
+  2. RISE and cross to an opening (window/door) — the wider world is REVEALED (the early payoff).
+  3. STEP OUT and MOVE THROUGH the place: walk the street/dock/market, your hands touching real things (a door latch, market goods, a rope, coins), passing people and architecture, small encounters — a sequence of distinct first-person moments that TOUR the historical world.
+  4. END on a strong, memorable final image (a landmark up close, the harbour, a threshold).
+Every beat is a NEW location or action that moves you forward — never repeat the same view. Each beat pins:
+- "scene": the STILL world in front of you at the start of the beat — a still-photograph description, no motion verbs. Historically specific props and architecture, DIFFERENT each beat as you move.
+- "motion": ONE continuous ~8s FIRST-PERSON motion (sitting up, hands pushing off the bed, crossing to the shutters, stepping through a doorway, walking down a lane, reaching for a market stall, climbing steps). Written as motion, always moving forward through the world.
+- "audio": the native ambient sound for this beat (a crackling lamp, floorboards, gulls, market chatter, cart wheels on stone) — ambient only, never music or voices.
+Do NOT describe the protagonist's face or a third person as the subject — it is first-person (other people can appear around you). Do NOT mention art style — that is added later.
 
-Then "facts" — ${maxShots >= 3 ? "3 to 5" : "2 to 4"} SHORT informative lines (max ~8 words each) that teach the moment: what is happening this day, a number that lands (population, the size of a fleet), what is about to happen, a vivid true detail. These become on-screen captions. Real facts only.
+Then "facts" — 5 to 8 SHORT informative lines (max ~8 words each) that teach the moment: what is happening this day, a number that lands (population, the size of a fleet), what is about to happen, a vivid true detail. These become on-screen captions spread across the journey. Real facts only.
 
 Also give a scroll-stopping "title", a 1-2 sentence "description", and up to 6 "hashtags".
 Call submit_pov.`,
@@ -1271,7 +1277,7 @@ Call submit_pov.`,
       timeOfDay: String(result.timeOfDay ?? "").trim(),
       role: String(result.role ?? "").trim(),
       shots,
-      facts: (result.facts ?? []).map((f) => String(f).trim()).filter(Boolean).slice(0, 5),
+      facts: (result.facts ?? []).map((f) => String(f).trim()).filter(Boolean).slice(0, 8),
     };
   }
 

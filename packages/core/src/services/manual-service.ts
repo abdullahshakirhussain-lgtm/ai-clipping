@@ -156,7 +156,8 @@ export class ManualService {
    * fading captions — so nothing is burned in post.
    */
   private async planPov(input: ManualPlanRequest): Promise<ManualSpec> {
-    const maxShots = 3;
+    // A POV short is a minute-plus journey: 8s per clip → 12 clips ≈ 96s.
+    const maxShots = 12;
     const style = "stick-fpv";
     const anchor = styleAnchor(style);
     const plan = await this.llm.planPovShort({ topic: input.topic.trim(), maxShots });
