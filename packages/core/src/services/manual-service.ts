@@ -22,6 +22,10 @@ export interface ManualSpec {
   characterRefKey?: string;
   /** POV only: the cinematic intro hook the Veo prompt renders + fades. */
   hook?: string;
+  /** POV only: one-sentence summary shown for approval before the prompts. */
+  logline?: string;
+  /** POV only: short per-clip labels (what each beat shows), for the summary. */
+  beatLabels?: string[];
   /** POV only: the informative overlay lines (also asked for on-screen in Veo). */
   facts?: string[];
   /** Storage keys of uploaded clips, index-aligned to `clips` (null = pending). */
@@ -160,7 +164,11 @@ export class ManualService {
     const maxShots = 12;
     const style = "stick-fpv";
     const anchor = styleAnchor(style);
-    const plan = await this.llm.planPovShort({ topic: input.topic.trim(), maxShots });
+    const plan = await this.llm.planPovShort({
+      topic: input.topic.trim(),
+      direction: input.direction?.trim() || undefined,
+      maxShots,
+    });
 
     const hookParts = [plan.place, plan.date, plan.timeOfDay].map((s) => s.trim()).filter(Boolean);
     const hook = hookParts.join(" · ");
@@ -220,6 +228,8 @@ export class ManualService {
       clips,
       characterRefKey,
       hook: hook || undefined,
+      logline: plan.logline || undefined,
+      beatLabels: plan.shots.slice(0, maxShots).map((s) => s.scene),
       facts: plan.facts,
       uploaded: clips.map(() => null),
       category: input.category?.trim() || undefined,
@@ -266,6 +276,8 @@ export class ManualService {
       clips: spec.clips,
       characterRefUrl: spec.characterRefKey ? await this.storage.getUrl(spec.characterRefKey) : null,
       hook: spec.hook ?? null,
+      logline: spec.logline ?? null,
+      beatLabels: spec.beatLabels ?? [],
       facts: spec.facts ?? [],
       uploaded: spec.uploaded,
     };

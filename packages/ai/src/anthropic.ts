@@ -1192,6 +1192,7 @@ Call submit_cook.`,
       title?: string;
       description?: string;
       hashtags?: string[];
+      logline?: string;
       place?: string;
       date?: string;
       timeOfDay?: string;
@@ -1201,8 +1202,10 @@ Call submit_cook.`,
       facts?: string[];
     }>(
       `You are the SHOT PLANNER for a "POV: you wake up in <a real time and place in history>" short-form video (9:16 vertical, first-person, hard cut every ~8 seconds, NO narration — native ambient sound + on-screen text only). The subject: "${input.topic}".
-
+${input.direction?.trim() ? `\nCREATOR DIRECTION (honour this — the angle, tone, what to show or avoid): ${input.direction.trim()}\n` : ""}
 This is an EDUCATIONAL immersion piece and a FULL journey — it runs over a minute, so plan EXACTLY ${maxShots} beats (10-14 is the target; 8s each). It must be HISTORICALLY GROUNDED and specific — real place, real date, real detail — not generic "medieval times".
+
+First give a "logline" — ONE sentence describing what the viewer experiences start to finish (who they are, where/when they wake, and the journey they take). This is shown to the creator for APPROVAL before anything else, so make it a clear, honest summary of the whole short.
 
 Pin these OVERLAY facts (they get shown on screen, so keep them tight and true):
 - "place" — the exact place (city + specific spot), e.g. "Constantinople — a harbourside warehouse".
@@ -1242,6 +1245,7 @@ Call submit_pov.`,
             title: { type: "string" },
             description: { type: "string" },
             hashtags: { type: "array", items: { type: "string" } },
+            logline: { type: "string", description: "one-sentence summary of the whole short, for creator approval" },
             place: { type: "string" },
             date: { type: "string" },
             timeOfDay: { type: "string" },
@@ -1264,7 +1268,7 @@ Call submit_pov.`,
             },
             facts: { type: "array", items: { type: "string" }, description: "short true informative overlay lines" },
           },
-          required: ["title", "description", "hashtags", "place", "date", "timeOfDay", "role", "worldBible", "shots", "facts"],
+          required: ["title", "description", "hashtags", "logline", "place", "date", "timeOfDay", "role", "worldBible", "shots", "facts"],
         },
       },
       3000,
@@ -1285,6 +1289,7 @@ Call submit_pov.`,
       title: String(result.title ?? input.topic).slice(0, 120),
       description: String(result.description ?? ""),
       hashtags: hashList(result.hashtags),
+      logline: String(result.logline ?? "").trim(),
       place: String(result.place ?? input.topic).trim(),
       date: String(result.date ?? "").trim(),
       timeOfDay: String(result.timeOfDay ?? "").trim(),

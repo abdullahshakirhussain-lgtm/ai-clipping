@@ -327,6 +327,9 @@ export interface PovPlan {
   title: string;
   description: string;
   hashtags: string[];
+  /** One-sentence "what you experience" summary, shown for creator approval
+   *  BEFORE the full clip prompts are revealed. */
+  logline: string;
   /** Overlay hook parts. */
   place: string;
   date: string;
@@ -349,7 +352,9 @@ export interface PovPlan {
 export interface PlanPovInput {
   /** Place + when, e.g. "Constantinople, 1453" or free text. */
   topic: string;
-  /** Ceiling on beats (= clips). POV shorts stay tight (2-4). */
+  /** Optional creator direction — the angle/tone, what to show or avoid. */
+  direction?: string;
+  /** Ceiling on beats (= clips). A POV short is a minute-plus journey (10-14). */
   maxShots: number;
 }
 

@@ -63,10 +63,11 @@ function harness() {
         { prompt: "trout over open flame" },
       ],
     }),
-    planPovShort: async (input: { maxShots: number }) => ({
+    planPovShort: async (input: { maxShots: number; direction?: string }) => ({
       title: "POV: Constantinople, 1453",
       description: "desc",
       hashtags: ["#pov", "#history"],
+      logline: `You wake as a dock worker in Constantinople and walk to the walls.${input.direction ? ` (${input.direction})` : ""}`,
       place: "Constantinople",
       date: "29 May 1453",
       timeOfDay: "Dawn",
@@ -150,6 +151,9 @@ describe("ManualService", () => {
     // Hook + facts surface to the UI.
     expect(dto.hook).toBe("Constantinople · 29 May 1453 · Dawn");
     expect(dto.facts).toContain("50,000 people remain inside the walls");
+    // The approval summary: a logline + one label per beat.
+    expect(dto.logline).toContain("dock worker in Constantinople");
+    expect(dto.beatLabels!.length).toBe(dto.clips.length);
 
     const row = videos.get(dto.sourceVideoId)!;
     // POV keeps native clip audio — no voiceover synthesized.

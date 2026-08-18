@@ -270,6 +270,7 @@ export class MockLlmProvider implements LlmProvider {
       title: `POV: you wake up in ${input.topic}`,
       description: `You wake up in ${input.topic}. Where should you wake up next?`,
       hashtags: ["#pov", "#history", "#fyp"],
+      logline: `You wake as an ordinary person in ${input.topic} and walk out through the world as it comes alive around you.`,
       place: input.topic,
       date: "a real date",
       timeOfDay: "Dawn",

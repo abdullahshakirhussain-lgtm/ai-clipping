@@ -37,6 +37,11 @@ export const ManualPlanSchema = z.object({
   /** POV only: the cinematic intro hook ("Constantinople · 1453 · Dawn") that the
    *  Veo prompt renders and fades out. null for other formats. */
   hook: z.string().nullable().optional(),
+  /** POV only: one-sentence summary shown for approval before the prompts. */
+  logline: z.string().nullable().optional(),
+  /** POV only: a short one-line label per clip (what that beat shows) — the
+   *  approval summary lists these instead of the full verbose prompts. */
+  beatLabels: z.array(z.string()).optional(),
   /** POV only: the informative overlay lines the clips display, for the creator's
    *  reference (the Veo prompts already ask for them on screen). */
   facts: z.array(z.string()).optional(),

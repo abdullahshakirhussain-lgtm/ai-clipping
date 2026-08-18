@@ -11,6 +11,8 @@ type ManualPlan = {
   clips: { prompt: string; seconds: number }[];
   characterRefUrl: string | null;
   hook?: string | null;
+  logline?: string | null;
+  beatLabels?: string[];
   facts?: string[];
   uploaded: (string | null)[];
 };
@@ -31,6 +33,8 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
   const [planning, setPlanning] = useState(false);
   const [planSec, setPlanSec] = useState(0);
   const [plan, setPlan] = useState<ManualPlan | null>(null);
+  // POV shows a concept summary for approval before revealing the clip prompts.
+  const [approved, setApproved] = useState(false);
   const [step, setStep] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -58,13 +62,14 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
         {
           format,
           topic: topic.trim(),
-          direction: isVideo ? direction.trim() || undefined : undefined,
+          direction: isVideo || isPov ? direction.trim() || undefined : undefined,
           length,
           category: category || undefined,
         },
         { onTick: setPlanSec },
       );
       setPlan(p);
+      setApproved(false);
       setStep(0);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Couldn't plan");
@@ -121,6 +126,7 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
       setMsg("Assembling — it'll appear in the Library when done. Track it in the Video Queue.");
       await revalidateAll();
       setPlan(null);
+      setApproved(false);
       setTopic("");
       setStep(0);
     } catch (e) {
@@ -168,21 +174,27 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
             </p>
           )}
 
+          {(isVideo || isPov) && (
+            <label className="block mb-3">
+              <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Description (optional)</span>
+              <textarea
+                value={direction}
+                onChange={(e) => setDirection(e.target.value)}
+                rows={isPov ? 4 : 8}
+                maxLength={12000}
+                placeholder={
+                  isPov
+                    ? "what this one is about — the angle, what to show or avoid (e.g. 'the dread of the coming siege; walk from the harbour up to the land walls; end looking out at the Ottoman camp')"
+                    : "the path to take — what to write, the angle/tone, what to mention or avoid (e.g. 'a calm second-person pep-talk, concrete and practical, no clichés, end on one clear action'). Write as much as you like — a full brief is fine."
+                }
+                className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
+                style={{ borderColor: "var(--border)" }}
+              />
+            </label>
+          )}
+
           {isVideo && (
             <>
-              <label className="block mb-3">
-                <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Description (optional)</span>
-                <textarea
-                  value={direction}
-                  onChange={(e) => setDirection(e.target.value)}
-                  rows={8}
-                  maxLength={12000}
-                  placeholder="the path to take — what to write, the angle/tone, what to mention or avoid (e.g. 'a calm second-person pep-talk, concrete and practical, no clichés, end on one clear action'). Write as much as you like — a full brief is fine."
-                  className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
-                  style={{ borderColor: "var(--border)" }}
-                />
-              </label>
-
               <div className="flex items-center gap-2 mb-3">
                 <input
                   value={niche}
@@ -252,14 +264,47 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
         </>
       )}
 
-      {plan && (
+      {/* POV: review the concept before the prompts are revealed. */}
+      {plan && isPov && !approved && (
+        <>
+          <div className="mb-1 text-xs font-semibold" style={{ color: "var(--muted)" }}>Review the concept</div>
+          <div className="mb-3 p-3 rounded-lg surface-2 border" style={{ borderColor: "var(--border)" }}>
+            <div className="text-base font-semibold mb-1">{plan.title}</div>
+            {plan.hook && <div className="text-xs mb-2" style={{ color: "var(--muted)" }}>🎬 {plan.hook}</div>}
+            {plan.logline && <p className="text-sm mb-3">{plan.logline}</p>}
+            {plan.beatLabels && plan.beatLabels.length > 0 && (
+              <>
+                <div className="text-[11px] font-medium mb-1" style={{ color: "var(--muted)" }}>The {plan.beatLabels.length} beats ({plan.clips.length * 8}s total)</div>
+                <ol className="text-[12px] list-decimal pl-4 mb-3 space-y-0.5">
+                  {plan.beatLabels.map((b, i) => <li key={i}>{b}</li>)}
+                </ol>
+              </>
+            )}
+            {plan.facts && plan.facts.length > 0 && (
+              <>
+                <div className="text-[11px] font-medium mb-1" style={{ color: "var(--muted)" }}>On-screen facts</div>
+                <ul className="text-[11px] list-disc pl-4" style={{ color: "var(--muted)" }}>
+                  {plan.facts.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <Button onClick={() => { setApproved(true); setStep(0); }}>✅ Approve &amp; get the prompts</Button>
+            <Button variant="ghost" onClick={doPlan} disabled={planning}>{planning ? `Regenerating… ${planSec}s` : "↻ Regenerate"}</Button>
+            <Button variant="ghost" onClick={() => { setPlan(null); setApproved(false); }}>Start over</Button>
+          </div>
+        </>
+      )}
+
+      {plan && (!isPov || approved) && (
         <>
           {plan.characterRefUrl && (
             <div className="mb-4 flex items-start gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={plan.characterRefUrl} alt="character reference" className="rounded-lg border w-[120px]" style={{ borderColor: "var(--border)" }} />
               <div className="text-[11px]" style={{ color: "var(--muted)" }}>
-                <a href={plan.characterRefUrl} target="_blank" rel="noreferrer" className="underline">Open / save this character reference</a> and upload it to your gen platform (Flow/Higgsfield) so the same character carries across every clip.
+                <a href={plan.characterRefUrl} target="_blank" rel="noreferrer" className="underline">Open / save this character reference</a> and upload it to <strong>every</strong> clip on your gen platform (Flow/Higgsfield) so the hands{isPov ? " and sleeve" : ""} stay identical across the video.
               </div>
             </div>
           )}
@@ -335,7 +380,7 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
             <Button onClick={assemble} disabled={busy || !allUploaded}>
               {busy ? "Starting…" : allUploaded ? "🎬 Assemble the video" : `Upload all ${plan.clips.length} clips to assemble`}
             </Button>
-            <Button variant="ghost" onClick={() => { setPlan(null); setStep(0); }}>Start over</Button>
+            <Button variant="ghost" onClick={() => { setPlan(null); setApproved(false); setStep(0); }}>Start over</Button>
           </div>
         </>
       )}
