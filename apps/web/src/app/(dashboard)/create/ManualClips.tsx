@@ -271,17 +271,21 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
             <div className="text-base font-semibold mb-1">{plan.title}</div>
             {plan.hook && <div className="text-xs mb-2" style={{ color: "var(--muted)" }}>🎬 {plan.hook}</div>}
             {plan.logline && <p className="text-sm mb-3">{plan.logline}</p>}
-            {plan.beatLabels && plan.beatLabels.length > 0 && (
+            {plan.beatLabels && plan.beatLabels.length > 0 ? (
               <>
                 <div className="text-[11px] font-medium mb-1" style={{ color: "var(--muted)" }}>The {plan.beatLabels.length} beats ({plan.clips.length * 8}s total)</div>
                 <ol className="text-[12px] list-decimal pl-4 space-y-0.5">
                   {plan.beatLabels.map((b, i) => <li key={i}>{b}</li>)}
                 </ol>
               </>
+            ) : (
+              <div className="text-[12px]" style={{ color: "var(--danger, #e00)" }}>
+                The planner didn’t return any beats this time — hit Regenerate to try again.
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2 mb-4 flex-wrap">
-            <Button onClick={() => { setApproved(true); setStep(0); }}>✅ Approve &amp; get the prompts</Button>
+            <Button onClick={() => { setApproved(true); setStep(0); }} disabled={plan.clips.length === 0}>✅ Approve &amp; get the prompts</Button>
             <Button variant="ghost" onClick={doPlan} disabled={planning}>{planning ? `Regenerating… ${planSec}s` : "↻ Regenerate"}</Button>
             <Button variant="ghost" onClick={() => { setPlan(null); setApproved(false); }}>Start over</Button>
           </div>
@@ -337,7 +341,7 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
             <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>Video prompt — copy this into your gen platform</span>
             <textarea
               readOnly
-              value={plan.clips[step]!.prompt}
+              value={plan.clips[step]?.prompt ?? ""}
               rows={6}
               className="w-full px-2.5 py-2 rounded-lg surface-2 border outline-none text-[12px] leading-snug resize-y"
               style={{ borderColor: "var(--border)" }}

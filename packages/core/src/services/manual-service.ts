@@ -167,6 +167,11 @@ export class ManualService {
       direction: input.direction?.trim() || undefined,
       maxShots,
     });
+    // A plan with no beats can't be uploaded/assembled — fail loudly so the client
+    // shows an error to retry, rather than persisting a broken 0-clip plan.
+    if (plan.shots.length === 0) {
+      throw new Error("The POV planner returned no beats — try again or adjust the place/description.");
+    }
 
     const hookParts = [plan.place, plan.date, plan.timeOfDay].map((s) => s.trim()).filter(Boolean);
     const hook = hookParts.join(" · ");

@@ -1267,7 +1267,10 @@ Call submit_pov.`,
           required: ["title", "description", "hashtags", "logline", "place", "date", "timeOfDay", "role", "worldBible", "shots"],
         },
       },
-      3000,
+      // Generous budget: a dense worldBible + 12 beats (scene/motion/audio each) +
+      // logline is a lot of output. At 3000 it truncated mid-`shots`, yielding a
+      // plan with a logline but ZERO beats (which then crashed the upload view).
+      8000,
       // effort "high": the plan is the whole product — the reveal arc and the
       // factual grounding are what make the short land.
       { model: this.commentaryModel, effort: "high" },
