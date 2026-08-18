@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ImageProvider, LlmProvider } from "@clipfactory/ai";
-import { DEFAULT_STYLE, styledImagePrompt } from "@clipfactory/ai";
+import { DEFAULT_STYLE, styleAnchor, styledImagePrompt } from "@clipfactory/ai";
 import type { Repositories } from "@clipfactory/db";
 import type { Dispatcher } from "@clipfactory/queue";
 import type { ObjectStorage } from "@clipfactory/storage";
@@ -9,7 +9,7 @@ import type { ManualPlanDto, ManualPlanRequest } from "../contracts/manual.js";
 /** Manual clip spec persisted on the SourceVideo (kind="manual"). */
 export interface ManualSpec {
   manual: true;
-  format: "video" | "cook";
+  format: "video" | "cook" | "pov";
   title: string;
   description: string;
   hashtags: string[];
@@ -18,8 +18,12 @@ export interface ManualSpec {
   clips: Array<{ prompt: string; seconds: number }>;
   /** Video only: the full narration → voiceover synthesized at assemble time. */
   narrationText?: string;
-  /** Video only: storage key of the character reference image. */
+  /** Video/pov: storage key of the character reference image. */
   characterRefKey?: string;
+  /** POV only: the cinematic intro hook the Veo prompt renders + fades. */
+  hook?: string;
+  /** POV only: the informative overlay lines (also asked for on-screen in Veo). */
+  facts?: string[];
   /** Storage keys of uploaded clips, index-aligned to `clips` (null = pending). */
   uploaded: Array<string | null>;
   category?: string;
@@ -48,7 +52,9 @@ export class ManualService {
     const spec =
       input.format === "video"
         ? await this.planVideo(input)
-        : await this.planCook(input);
+        : input.format === "pov"
+          ? await this.planPov(input)
+          : await this.planCook(input);
 
     const video = await this.repos.sourceVideos.create({
       campaignId,
@@ -143,6 +149,77 @@ export class ManualService {
     };
   }
 
+  /**
+   * POV short: "you wake up in <place/time>". Trademark first-person stick-figure
+   * look, 9:16, native clip audio (NO voiceover). The place/date and the facts are
+   * rendered ON SCREEN BY VEO — a cinematic intro title that fades out, and brief
+   * fading captions — so nothing is burned in post.
+   */
+  private async planPov(input: ManualPlanRequest): Promise<ManualSpec> {
+    const maxShots = 3;
+    const style = "stick-fpv";
+    const anchor = styleAnchor(style);
+    const plan = await this.llm.planPovShort({ topic: input.topic.trim(), maxShots });
+
+    const hookParts = [plan.place, plan.date, plan.timeOfDay].map((s) => s.trim()).filter(Boolean);
+    const hook = hookParts.join(" · ");
+
+    const clips = plan.shots.slice(0, maxShots).map((s, i) => {
+      // On-screen text is rendered by the video model, then removed — like a film's
+      // establishing card. The opening beat carries the place/date title; later
+      // beats carry one short informative caption each.
+      const onScreen =
+        i === 0
+          ? `ON-SCREEN TEXT: as the shot opens, an elegant cinematic title fades in — "${plan.place}"${plan.date ? `, and below it "${plan.date}${plan.timeOfDay ? ` · ${plan.timeOfDay}` : ""}"` : ""} — held briefly like a film's establishing title card, then gently DISSOLVES AWAY before the shot ends. No other text.`
+          : plan.facts[i - 1]
+            ? `ON-SCREEN TEXT: a small clean caption fades in reading "${plan.facts[i - 1]}", holds about two seconds, then fades out. No other text.`
+            : `No on-screen text, no subtitles, no watermark.`;
+      const prompt = [
+        `First-person POV. You are ${plan.role || "an ordinary person"} in ${plan.place}.`,
+        `${s.scene}.`,
+        `Motion over ~8 seconds: ${s.motion}.`,
+        `Ambient sound: ${s.audio}.`,
+        onScreen,
+        `Style: ${anchor}`,
+        `Vertical 9:16 portrait.`,
+      ].join(" ");
+      return { prompt, seconds: 8 };
+    });
+
+    // A reference for the trademark hands so they read the same across clips.
+    let characterRefKey: string | undefined;
+    try {
+      const { image } = await this.images.generate({
+        prompt: styledImagePrompt(
+          "your own two flat cartoon stick-figure hands held up in front of you, palms toward the camera",
+          style,
+          `${plan.place}. ${plan.shots[0]?.scene ?? ""}`,
+          "portrait",
+        ),
+        size: "1024x1536",
+      });
+      characterRefKey = `manual-ref/${randomUUID()}.png`;
+      await this.storage.putBuffer(characterRefKey, image, "image/png");
+    } catch {
+      /* the reference is a convenience — a failure just omits it */
+    }
+
+    return {
+      manual: true,
+      format: "pov",
+      title: plan.title,
+      description: plan.description,
+      hashtags: plan.hashtags,
+      aspect: "9:16",
+      clips,
+      characterRefKey,
+      hook: hook || undefined,
+      facts: plan.facts,
+      uploaded: clips.map(() => null),
+      category: input.category?.trim() || undefined,
+    };
+  }
+
   /** Reload the plan for the step-through UI. */
   async status(sourceVideoId: string): Promise<ManualPlanDto> {
     const video = await this.repos.sourceVideos.byId(sourceVideoId);
@@ -182,6 +259,8 @@ export class ManualService {
       aspect: spec.aspect,
       clips: spec.clips,
       characterRefUrl: spec.characterRefKey ? await this.storage.getUrl(spec.characterRefKey) : null,
+      hook: spec.hook ?? null,
+      facts: spec.facts ?? [],
       uploaded: spec.uploaded,
     };
   }

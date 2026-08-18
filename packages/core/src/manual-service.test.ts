@@ -63,6 +63,21 @@ function harness() {
         { prompt: "trout over open flame" },
       ],
     }),
+    planPovShort: async () => ({
+      title: "POV: Constantinople, 1453",
+      description: "desc",
+      hashtags: ["#pov", "#history"],
+      place: "Constantinople",
+      date: "29 May 1453",
+      timeOfDay: "Dawn",
+      role: "a Genoese dock worker",
+      shots: [
+        { scene: "a dim harbourside room", motion: "you sit up", audio: "quiet room tone" },
+        { scene: "the shuttered window", motion: "you cross to it", audio: "floorboards" },
+        { scene: "the closed shutters", motion: "you push them open onto the harbour", audio: "gulls" },
+      ],
+      facts: ["The last dawn of the Roman Empire", "50,000 people remain inside the walls"],
+    }),
   } as never;
 
   const images = {
@@ -109,6 +124,30 @@ describe("ManualService", () => {
     expect(dto.format).toBe("cook");
     expect(dto.characterRefUrl).toBeNull();
     expect(dto.clips.length).toBeGreaterThan(0);
+  });
+
+  it("plans a POV short: 9:16, native audio (no narration), on-screen hook + facts baked into prompts", async () => {
+    const { svc, videos } = harness();
+    const dto = await svc.plan({ format: "pov", topic: "Constantinople, 1453", length: "short" });
+
+    expect(dto.format).toBe("pov");
+    expect(dto.aspect).toBe("9:16");
+    expect(dto.clips.length).toBe(3);
+    // The place/date title is rendered by the video model on the opening clip, then removed.
+    expect(dto.clips[0]!.prompt).toContain("ON-SCREEN TEXT");
+    expect(dto.clips[0]!.prompt).toContain("Constantinople");
+    expect(dto.clips[0]!.prompt).toContain("29 May 1453");
+    expect(dto.clips[0]!.prompt.toLowerCase()).toContain("dissolves");
+    // Later clips carry the informative fact captions.
+    expect(dto.clips[1]!.prompt).toContain("The last dawn of the Roman Empire");
+    // Hook + facts surface to the UI.
+    expect(dto.hook).toBe("Constantinople · 29 May 1453 · Dawn");
+    expect(dto.facts).toContain("50,000 people remain inside the walls");
+
+    const row = videos.get(dto.sourceVideoId)!;
+    // POV keeps native clip audio — no voiceover synthesized.
+    expect(row.storySpec.narrationText).toBeUndefined();
+    expect(row.storySpec.format).toBe("pov");
   });
 
   it("refuses to assemble until every clip is uploaded, then enqueues manual.assemble", async () => {

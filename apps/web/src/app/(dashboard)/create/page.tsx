@@ -143,7 +143,7 @@ export default function CreatePage() {
   const { data: cats } = useCategories();
   const categories = (cats ?? []).map((c) => c.name);
 
-  const [format, setFormat] = useState<"story" | "video" | "cook">("story");
+  const [format, setFormat] = useState<"story" | "video" | "pov" | "cook">("story");
   const [animShots, setAnimShots] = useState<AnimShot[]>([]);
   const [animMeta, setAnimMeta] = useState<
     { title: string; description: string; hashtags: string[]; setting: string; cast: string } | null
@@ -452,7 +452,7 @@ export default function CreatePage() {
 
       <Card className="mb-6 max-w-2xl">
         <div className="flex gap-1 mb-5 p-1 rounded-lg surface-2 border w-fit" style={{ borderColor: "var(--border)" }}>
-          {(["story", "video", "cook"] as const).map((f) => (
+          {(["story", "video", "pov", "cook"] as const).map((f) => (
             <button
               key={f}
               onClick={() => { setFormat(f); setMsg(null); }}
@@ -463,7 +463,9 @@ export default function CreatePage() {
                 ? "📖 Slideshow"
                 : f === "video"
                   ? "🎬 Video"
-                  : "🍳 Cooking"}
+                  : f === "pov"
+                    ? "🕶 POV Short"
+                    : "🍳 Cooking"}
             </button>
           ))}
         </div>
@@ -586,7 +588,7 @@ export default function CreatePage() {
         )}
 
 
-        {(format === "video" || format === "cook") && (
+        {(format === "video" || format === "cook" || format === "pov") && (
           <ManualClips format={format} categories={categories} />
         )}
 

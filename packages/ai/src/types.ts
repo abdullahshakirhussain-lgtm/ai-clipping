@@ -308,6 +308,44 @@ export interface PlanCookInput {
   aspectRatio?: string;
 }
 
+/** One POV beat: the environment to render + the motion + the ambient sound. */
+export interface PovShot {
+  /** The still world in front of you at the start of the beat (no motion verbs). */
+  scene: string;
+  /** The ~8s first-person motion (rise, turn, cross to the window, shutters open). */
+  motion: string;
+  /** Native ambient sound for this beat (no music, no voices). */
+  audio: string;
+}
+
+/**
+ * A "POV: you wake up in <place/time>" short — the trademark first-person format.
+ * Informative by design: `place`/`date`/`timeOfDay`/`role` and `facts` become the
+ * burned-in text overlays, so the short teaches while it immerses.
+ */
+export interface PovPlan {
+  title: string;
+  description: string;
+  hashtags: string[];
+  /** Overlay hook parts. */
+  place: string;
+  date: string;
+  timeOfDay: string;
+  /** Who the viewer is ("a dock worker", "a novice monk") — sets the POV context. */
+  role: string;
+  /** Ordered beats: wake → rise → cross → the world reveals itself. */
+  shots: PovShot[];
+  /** Short informative lines shown as overlays across the clips (the teaching part). */
+  facts: string[];
+}
+
+export interface PlanPovInput {
+  /** Place + when, e.g. "Constantinople, 1453" or free text. */
+  topic: string;
+  /** Ceiling on beats (= clips). POV shorts stay tight (2-4). */
+  maxShots: number;
+}
+
 /** A still handed to the video model as the clip's first frame. */
 export interface VideoSeedImage {
   png: Buffer;
@@ -612,6 +650,13 @@ export interface LlmProvider {
    * inconsistencies between cuts — retrying doesn't fix that, the script must.
    */
   planCookShots(input: PlanCookInput): Promise<CookPlan>;
+  /**
+   * Plan a "POV: you wake up in <place/time>" short — the trademark first-person
+   * format. Returns the structured overlay facts (place/date/role + teaching
+   * lines) and the ordered wake → reveal beats; the service composes each beat
+   * into a stick-figure-POV video prompt. Informative by design.
+   */
+  planPovShort(input: PlanPovInput): Promise<PovPlan>;
   /**
    * Break a beat's single image prompt into `count` successive MOMENTS of that
    * same beat, so a long sentence isn't one static picture. Returns one array

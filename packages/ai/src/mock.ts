@@ -14,6 +14,8 @@ import type {
   DetectHighlightsInput,
   ImageProvider,
   PlanCookInput,
+  PlanPovInput,
+  PovPlan,
   RefineImagePromptsInput,
   StoryScript,
   SuggestTopicsInput,
@@ -244,6 +246,28 @@ export class MockLlmProvider implements LlmProvider {
       description: `Cooking ${input.dish} outdoors, no talking. Follow for more.`,
       hashtags: ["#cooking", "#asmr", "#wild", "#fyp"],
       shots,
+    };
+  }
+
+  async planPovShort(input: PlanPovInput): Promise<PovPlan> {
+    const n = Math.max(2, Math.min(input.maxShots, 4));
+    const arc = [
+      { scene: "a dim interior, a low bed and shuttered window", motion: "you sit up, hands pushing off the bed" },
+      { scene: "the room around you, a chest and a lamp", motion: "you rise and cross toward the shutters" },
+      { scene: "the closed shutters ahead of you", motion: "your hands push the shutters open onto the view" },
+      { scene: "the wider world beyond the window", motion: "you lean out and look across it" },
+    ];
+    const shots = arc.slice(0, n).map((s) => ({ ...s, audio: "quiet ambient room tone, then the world outside" }));
+    return {
+      title: `POV: you wake up in ${input.topic}`,
+      description: `You wake up in ${input.topic}. Where should you wake up next?`,
+      hashtags: ["#pov", "#history", "#fyp"],
+      place: input.topic,
+      date: "a real date",
+      timeOfDay: "Dawn",
+      role: "an ordinary person",
+      shots,
+      facts: ["MOCK fact one about the moment", "MOCK fact two that lands"],
     };
   }
 

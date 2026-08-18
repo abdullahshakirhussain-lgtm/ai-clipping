@@ -1572,7 +1572,7 @@ export async function runCookGenerate(ctx: PipelineContext, sourceVideoId: strin
 
 /** Manual clip spec persisted on the SourceVideo (kind="manual"). */
 interface ManualSpecShape {
-  format: "video" | "cook";
+  format: "video" | "cook" | "pov";
   title: string;
   description?: string;
   hashtags?: string[];
@@ -1586,7 +1586,8 @@ interface ManualSpecShape {
  * Manual clip workflow — assemble the user's UPLOADED clips into the finished
  * video. No paid generation here (that happened externally); this just stitches:
  * VIDEO lays the auto voiceover over the clips (native audio dropped, no music);
- * COOK keeps the clips' native audio as-is.
+ * COOK and POV keep the clips' native audio as-is (POV's on-screen title/captions
+ * are rendered by the video model, not burned here).
  */
 export async function runManualAssemble(ctx: PipelineContext, sourceVideoId: string): Promise<void> {
   const moved = await ctx.repos.sourceVideos.transition(
@@ -1630,7 +1631,7 @@ export async function runManualAssemble(ctx: PipelineContext, sourceVideoId: str
       return;
     }
 
-    // 2. Assemble — video gets the auto voiceover; cook keeps native audio.
+    // 2. Assemble — video gets the auto voiceover; cook & pov keep native audio.
     await setProgress("Putting it together", 55);
     const outPath = join(workDir, "manual.mp4");
     if (spec.format === "video") {

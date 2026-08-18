@@ -7,7 +7,7 @@ import { z } from "zod";
  * platform and uploads them one-by-one; then the pipeline assembles the result.
  * Two formats share it: "video" (auto voiceover) and "cook" (native clip audio).
  */
-export const MANUAL_FORMATS = ["video", "cook"] as const;
+export const MANUAL_FORMATS = ["video", "cook", "pov"] as const;
 
 // ── Plan (background + poll — like Cook) ────────────────────────────────────
 export const ManualPlanRequestSchema = z.object({
@@ -32,8 +32,14 @@ export const ManualPlanSchema = z.object({
   title: z.string(),
   aspect: z.string(),
   clips: z.array(ManualClipSchema),
-  /** Character reference image URL (video only) to use on the gen platform. */
+  /** Character reference image URL (video/pov) to use on the gen platform. */
   characterRefUrl: z.string().nullable(),
+  /** POV only: the cinematic intro hook ("Constantinople · 1453 · Dawn") that the
+   *  Veo prompt renders and fades out. null for other formats. */
+  hook: z.string().nullable().optional(),
+  /** POV only: the informative overlay lines the clips display, for the creator's
+   *  reference (the Veo prompts already ask for them on screen). */
+  facts: z.array(z.string()).optional(),
   /** Storage keys already uploaded, index-aligned to clips (null = not yet). */
   uploaded: z.array(z.string().nullable()),
 });

@@ -10,6 +10,8 @@ type ManualPlan = {
   aspect: string;
   clips: { prompt: string; seconds: number }[];
   characterRefUrl: string | null;
+  hook?: string | null;
+  facts?: string[];
   uploaded: (string | null)[];
 };
 
@@ -18,7 +20,7 @@ type ManualPlan = {
  * prompts (+ voiceover/character for Video); you generate each clip on a free
  * platform and upload them one-by-one — copy prompt → upload → Next — then Assemble.
  */
-export function ManualClips({ format, categories }: { format: "video" | "cook"; categories: string[] }) {
+export function ManualClips({ format, categories }: { format: "video" | "cook" | "pov"; categories: string[] }) {
   const [topic, setTopic] = useState("");
   const [direction, setDirection] = useState("");
   const [length, setLength] = useState<"short" | "long">("short");
@@ -36,6 +38,14 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
   const [msg, setMsg] = useState<string | null>(null);
 
   const isVideo = format === "video";
+  const isPov = format === "pov";
+  const topicLabel = format === "cook" ? "Dish" : isPov ? "Place & year" : "Topic";
+  const topicPlaceholder =
+    format === "cook"
+      ? "e.g. trout grilled on a river stone"
+      : isPov
+        ? "e.g. Constantinople, 1453"
+        : "e.g. a discipline pep-talk for someone stuck on Wednesday";
 
   async function doPlan() {
     if (topic.trim().length < 3) return;
@@ -139,17 +149,24 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
       {!plan && (
         <>
           <label className="block mb-3">
-            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>{format === "cook" ? "Dish" : "Topic"}</span>
+            <span className="block text-xs mb-1" style={{ color: "var(--muted)" }}>{topicLabel}</span>
             <textarea
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               rows={2}
               maxLength={300}
-              placeholder={format === "cook" ? "e.g. trout grilled on a river stone" : "e.g. a discipline pep-talk for someone stuck on Wednesday"}
+              placeholder={topicPlaceholder}
               className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
               style={{ borderColor: topic.trim() ? "var(--primary)" : "var(--border)" }}
             />
           </label>
+          {isPov && (
+            <p className="text-[11px] mb-3 -mt-1" style={{ color: "var(--muted)" }}>
+              A first-person “you wake up in history” short. Give a place and a year — the
+              pipeline writes the wake-to-reveal beats and tells the video model to flash the
+              place &amp; date on screen like a film intro. Native audio, no voiceover.
+            </p>
+          )}
 
           {isVideo && (
             <>
@@ -197,18 +214,21 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
           )}
 
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--surface-2)" }}>
-              {(["short", "long"] as const).map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setLength(l)}
-                  className="px-3 py-1.5 rounded-md text-sm capitalize"
-                  style={{ background: length === l ? "var(--surface)" : "transparent", color: length === l ? "var(--text)" : "var(--muted)" }}
-                >
-                  {l === "short" ? "Short" : "Long form"}
-                </button>
-              ))}
-            </div>
+            {/* POV shorts are always short/9:16 — no length toggle. */}
+            {!isPov && (
+              <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--surface-2)" }}>
+                {(["short", "long"] as const).map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => setLength(l)}
+                    className="px-3 py-1.5 rounded-md text-sm capitalize"
+                    style={{ background: length === l ? "var(--surface)" : "transparent", color: length === l ? "var(--text)" : "var(--muted)" }}
+                  >
+                    {l === "short" ? "Short" : "Long form"}
+                  </button>
+                ))}
+              </div>
+            )}
             {categories.length > 0 && (
               <select
                 value={category}
@@ -226,7 +246,7 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
               {planning ? `Planning… ${planSec}s` : "🎬 Plan the clips"}
             </Button>
             <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-              Free — writes the script{format === "video" ? " + voiceover" : ""} and the per-clip prompts. You generate each clip on a free platform and upload it. No video generation is billed here.
+              Free — writes the script{isVideo ? " + voiceover" : isPov ? " + on-screen titles" : ""} and the per-clip prompts. You generate each clip on a free platform and upload it. No video generation is billed here.
             </span>
           </div>
         </>
@@ -241,6 +261,22 @@ export function ManualClips({ format, categories }: { format: "video" | "cook"; 
               <div className="text-[11px]" style={{ color: "var(--muted)" }}>
                 <a href={plan.characterRefUrl} target="_blank" rel="noreferrer" className="underline">Open / save this character reference</a> and upload it to your gen platform (Flow/Higgsfield) so the same character carries across every clip.
               </div>
+            </div>
+          )}
+
+          {isPov && (plan.hook || (plan.facts && plan.facts.length > 0)) && (
+            <div className="mb-4 p-3 rounded-lg surface-2 border" style={{ borderColor: "var(--border)" }}>
+              {plan.hook && (
+                <div className="text-sm font-semibold mb-1">🎬 On-screen intro: {plan.hook}</div>
+              )}
+              {plan.facts && plan.facts.length > 0 && (
+                <ul className="text-[11px] list-disc pl-4" style={{ color: "var(--muted)" }}>
+                  {plan.facts.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+              )}
+              <p className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>
+                The prompts ask the video model to flash these on screen and fade them out — no editing needed.
+              </p>
             </div>
           )}
 
