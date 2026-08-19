@@ -299,7 +299,15 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={plan.characterRefUrl} alt="character reference" className="rounded-lg border w-[120px]" style={{ borderColor: "var(--border)" }} />
               <div className="text-[11px]" style={{ color: "var(--muted)" }}>
-                <a href={plan.characterRefUrl} target="_blank" rel="noreferrer" className="underline">Open / save this character reference</a> and upload it to <strong>every</strong> clip on your gen platform (Flow/Higgsfield) so the hands{isPov ? " and sleeve" : ""} stay identical across the video.
+                {isPov ? (
+                  <>
+                    <a href={plan.characterRefUrl} target="_blank" rel="noreferrer" className="underline">Save this hands reference</a> and, in Google Flow, add it once as an <strong>Ingredient</strong> named “POV stick hands”. Reference that Ingredient on every clip and it locks the trademark hands across <strong>all</strong> your POV videos — it’s the same image every time, so you only set it up once.
+                  </>
+                ) : (
+                  <>
+                    <a href={plan.characterRefUrl} target="_blank" rel="noreferrer" className="underline">Open / save this character reference</a> and upload it to <strong>every</strong> clip on your gen platform (Flow/Higgsfield) so the character stays identical across the video.
+                  </>
+                )}
               </div>
             </div>
           )}

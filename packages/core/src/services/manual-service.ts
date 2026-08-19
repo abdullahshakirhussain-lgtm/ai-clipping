@@ -6,6 +6,17 @@ import type { Dispatcher } from "@clipfactory/queue";
 import type { ObjectStorage } from "@clipfactory/storage";
 import type { ManualPlanDto, ManualPlanRequest } from "../contracts/manual.js";
 
+/**
+ * The channel's trademark POV hands, as ONE canonical reference reused by every
+ * POV video (bump the version to reset it). Locking the hand DRAWING STYLE — not
+ * a specific outfit — is what stays constant across all videos; per-era clothing
+ * is handled by each clip's prompt. Kept plain-background so it drops cleanly into
+ * a Flow "Ingredient".
+ */
+const SIGNATURE_REF_KEY = "signature/pov-hands-v1.png";
+const SIGNATURE_REF_PROMPT =
+  "A clean character-reference image on a plain flat light-grey background: two hands with bare forearms, drawn as a BOLD FLAT 2D CARTOON — thick clean black outlines, simple flat white fill, a deliberate hand-drawn doodle (xkcd / comic style), NOT realistic, NOT shaded, NOT 3D. Both hands identical in style, palms toward the viewer, fingers relaxed, seen from a first-person angle as if they are your own hands held up in front of you. Nothing else in frame — only the two cartoon hands and forearms on the plain background. No text, no scene.";
+
 /** Manual clip spec persisted on the SourceVideo (kind="manual"). */
 export interface ManualSpec {
   manual: true;
@@ -202,23 +213,11 @@ export class ManualService {
       return { prompt, seconds: 8 };
     });
 
-    // A reference for the trademark hands so they read the same across clips.
-    let characterRefKey: string | undefined;
-    try {
-      const { image } = await this.images.generate({
-        prompt: styledImagePrompt(
-          "your own two flat cartoon stick-figure hands held up in front of you, palms toward the camera",
-          style,
-          `${plan.place}. ${plan.shots[0]?.scene ?? ""}`,
-          "portrait",
-        ),
-        size: "1024x1536",
-      });
-      characterRefKey = `manual-ref/${randomUUID()}.png`;
-      await this.storage.putBuffer(characterRefKey, image, "image/png");
-    } catch {
-      /* the reference is a convenience — a failure just omits it */
-    }
+    // ONE canonical trademark reference reused across EVERY pov video (not a fresh
+    // random one per video), so the hands read identically channel-wide and match a
+    // single Flow "Ingredient" the creator sets up once. Generated on first use,
+    // then cached at a fixed key.
+    const characterRefKey = await this.ensureSignatureRef();
 
     return {
       manual: true,
@@ -281,6 +280,22 @@ export class ManualService {
       beatLabels: spec.beatLabels ?? [],
       uploaded: spec.uploaded,
     };
+  }
+
+  /**
+   * The canonical trademark hands, generated ONCE and cached at a fixed key so
+   * every POV video hands the creator the identical reference (→ one stable Flow
+   * Ingredient). Returns undefined if generation fails (the reference is optional).
+   */
+  private async ensureSignatureRef(): Promise<string | undefined> {
+    try {
+      if (await this.storage.exists(SIGNATURE_REF_KEY)) return SIGNATURE_REF_KEY;
+      const { image } = await this.images.generate({ prompt: SIGNATURE_REF_PROMPT, size: "1024x1536" });
+      await this.storage.putBuffer(SIGNATURE_REF_KEY, image, "image/png");
+      return SIGNATURE_REF_KEY;
+    } catch {
+      return undefined;
+    }
   }
 
   private async getOrCreateCampaignId(): Promise<string> {

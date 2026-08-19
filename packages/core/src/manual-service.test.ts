@@ -90,6 +90,7 @@ function harness() {
   const storage = {
     putBuffer: async (key: string) => { stored.add(key); },
     putFile: async (key: string) => { stored.add(key); },
+    exists: async (key: string) => stored.has(key),
     getUrl: async (key: string) => `https://cdn.test/${key}`,
   } as never;
 
@@ -150,6 +151,11 @@ describe("ManualService", () => {
     expect(dto.clips.every((c) => c.prompt.includes("clear cold spring dawn"))).toBe(true);
     // Hook surfaces to the UI.
     expect(dto.hook).toBe("Constantinople · 29 May 1453 · Dawn");
+    // The trademark hands come from ONE canonical, cached reference reused by every
+    // POV video (not a fresh per-video image) — so it matches a single Flow Ingredient.
+    expect(dto.characterRefUrl).toContain("signature/pov-hands");
+    const dto2 = await svc.plan({ format: "pov", topic: "Edo, 1800", length: "short" });
+    expect(dto2.characterRefUrl).toBe(dto.characterRefUrl);
     // The approval summary: a logline + one label per beat.
     expect(dto.logline).toContain("dock worker in Constantinople");
     expect(dto.beatLabels!.length).toBe(dto.clips.length);
