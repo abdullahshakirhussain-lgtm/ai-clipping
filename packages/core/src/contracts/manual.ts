@@ -32,8 +32,11 @@ export const ManualPlanSchema = z.object({
   title: z.string(),
   aspect: z.string(),
   clips: z.array(ManualClipSchema),
-  /** Character reference image URL (video/pov) to use on the gen platform. */
+  /** First/single character reference image URL (back-compat). */
   characterRefUrl: z.string().nullable(),
+  /** All character reference image URLs — POV returns several trademark-hand poses
+   *  to feed one Flow Ingredient; video returns its single ref; cook returns none. */
+  characterRefUrls: z.array(z.string()).optional(),
   /** POV only: the cinematic intro hook ("Constantinople · 1453 · Dawn") that the
    *  Veo prompt renders and fades out. null for other formats. */
   hook: z.string().nullable().optional(),

@@ -13,9 +13,20 @@ import type { ManualPlanDto, ManualPlanRequest } from "../contracts/manual.js";
  * is handled by each clip's prompt. Kept plain-background so it drops cleanly into
  * a Flow "Ingredient".
  */
-const SIGNATURE_REF_KEY = "signature/pov-hands-v1.png";
-const SIGNATURE_REF_PROMPT =
-  "A clean character-reference image on a plain flat light-grey background: two hands with bare forearms, drawn as a BOLD FLAT 2D CARTOON — thick clean black outlines, simple flat white fill, a deliberate hand-drawn doodle (xkcd / comic style), NOT realistic, NOT shaded, NOT 3D. Both hands identical in style, palms toward the viewer, fingers relaxed, seen from a first-person angle as if they are your own hands held up in front of you. Nothing else in frame — only the two cartoon hands and forearms on the plain background. No text, no scene.";
+const SIGNATURE_VERSION = "v1";
+/**
+ * MULTIPLE canonical poses of the trademark hands — a Flow "Ingredient" is far more
+ * accurate when fed several reference images of the same subject from different
+ * angles. Each is generated once and cached; the set is reused by every POV video.
+ */
+const SIGNATURE_POSES = [
+  "both hands held up palms toward the viewer, fingers relaxed and slightly spread",
+  "both hands reaching forward as if to grasp or push something just ahead of you",
+  "both hands seen from above, resting relaxed and flat on a surface",
+];
+const signatureRefKey = (i: number) => `signature/pov-hands-${SIGNATURE_VERSION}-${i}.png`;
+const signatureRefPrompt = (pose: string) =>
+  `A clean character-reference image on a plain flat light-grey background: two hands with bare forearms, drawn as a BOLD FLAT 2D CARTOON — thick clean black outlines, simple flat white fill, a deliberate hand-drawn doodle (xkcd / comic style), NOT realistic, NOT shaded, NOT 3D. Both hands identical in style, ${pose}, seen from a first-person angle as if they are your own. Nothing else in frame — only the two cartoon hands and forearms on the plain background. No text, no scene.`;
 
 /** Manual clip spec persisted on the SourceVideo (kind="manual"). */
 export interface ManualSpec {
@@ -29,8 +40,10 @@ export interface ManualSpec {
   clips: Array<{ prompt: string; seconds: number }>;
   /** Video only: the full narration → voiceover synthesized at assemble time. */
   narrationText?: string;
-  /** Video/pov: storage key of the character reference image. */
+  /** Video/cook: storage key of the single character reference image. */
   characterRefKey?: string;
+  /** POV: storage keys of the multiple canonical trademark-hand references. */
+  characterRefKeys?: string[];
   /** POV only: the cinematic intro hook the Veo prompt renders + fades. */
   hook?: string;
   /** POV only: one-sentence summary shown for approval before the prompts. */
@@ -199,13 +212,23 @@ export class ManualService {
         i === 0
           ? `ON-SCREEN TEXT: as the shot opens, an elegant cinematic title fades in — "${plan.place}"${plan.date ? `, and below it "${plan.date}${plan.timeOfDay ? ` · ${plan.timeOfDay}` : ""}"` : ""} — held briefly like a film's establishing title card, then gently DISSOLVES AWAY before the shot ends. No other text.`
           : `No on-screen text, no subtitles, no captions, no watermark.`;
+      // Spatial link to the previous beat so the 12 clips read as one unbroken
+      // walk (each picks up where the last ended), not disjointed jumps.
+      const prev = i > 0 ? plan.shots[i - 1] : null;
+      const continues = prev
+        ? `CONTINUES the same unbroken walk with no cut in time — you have just come from "${prev.scene}"; pick up seamlessly from there, same place, same day, same weather and light.`
+        : "";
       const prompt = [
         `First-person POV. You are ${plan.role || "an ordinary person"} in ${plan.place}.`,
         bible ? `LOCKED WORLD (identical every clip): ${bible}` : "",
+        continues,
         `THIS BEAT — ${s.scene}.`,
         `Motion over ~8 seconds: ${s.motion}.`,
         `The camera stays STRICTLY first-person the entire clip — your own eyes looking forward; it NEVER pulls back, orbits, or cuts to a third-person/outside view, and your torso, head or full body are never shown (only forearms/hands from the lower edge).`,
         `Ambient sound: ${s.audio}.`,
+        // Period accuracy — Veo loves to add modern "detail" (AC units, wires) into
+        // rich historical interiors; forbid it explicitly so clips aren't wasted.
+        `PERIOD-ACCURATE, ${plan.date || "the stated era"}: absolutely NO anachronisms — no air-conditioning units, no vents or ducts, no electrical wires, outlets, switches, light bulbs or lamps with bulbs, no glass windows, no plastic, no metal railings, no machinery, no vehicles, no modern signage or printed lettering, nothing manufactured after that date. Every object must belong to the exact time and place.`,
         onScreen,
         `Style: ${anchor}`,
         `Vertical 9:16 portrait.`,
@@ -213,11 +236,10 @@ export class ManualService {
       return { prompt, seconds: 8 };
     });
 
-    // ONE canonical trademark reference reused across EVERY pov video (not a fresh
-    // random one per video), so the hands read identically channel-wide and match a
-    // single Flow "Ingredient" the creator sets up once. Generated on first use,
-    // then cached at a fixed key.
-    const characterRefKey = await this.ensureSignatureRef();
+    // The canonical trademark references (multiple poses) reused across EVERY pov
+    // video — the hands read identically channel-wide and feed one accurate Flow
+    // "Ingredient" the creator sets up once. Generated on first use, then cached.
+    const characterRefKeys = await this.ensureSignatureRefs();
 
     return {
       manual: true,
@@ -227,7 +249,7 @@ export class ManualService {
       hashtags: plan.hashtags,
       aspect: "9:16",
       clips,
-      characterRefKey,
+      characterRefKeys,
       hook: hook || undefined,
       logline: plan.logline || undefined,
       beatLabels: plan.shots.slice(0, maxShots).map((s) => s.scene),
@@ -268,13 +290,18 @@ export class ManualService {
   }
 
   private async toDto(sourceVideoId: string, spec: ManualSpec): Promise<ManualPlanDto> {
+    // POV carries multiple canonical refs; video/cook carry a single one. Normalise
+    // to a URL list, with characterRefUrl kept as the first for back-compat.
+    const keys = spec.characterRefKeys ?? (spec.characterRefKey ? [spec.characterRefKey] : []);
+    const characterRefUrls = await Promise.all(keys.map((k) => this.storage.getUrl(k)));
     return {
       sourceVideoId,
       format: spec.format,
       title: spec.title,
       aspect: spec.aspect,
       clips: spec.clips,
-      characterRefUrl: spec.characterRefKey ? await this.storage.getUrl(spec.characterRefKey) : null,
+      characterRefUrl: characterRefUrls[0] ?? null,
+      characterRefUrls,
       hook: spec.hook ?? null,
       logline: spec.logline ?? null,
       beatLabels: spec.beatLabels ?? [],
@@ -283,19 +310,26 @@ export class ManualService {
   }
 
   /**
-   * The canonical trademark hands, generated ONCE and cached at a fixed key so
-   * every POV video hands the creator the identical reference (→ one stable Flow
-   * Ingredient). Returns undefined if generation fails (the reference is optional).
+   * The canonical trademark hands as a SET of poses, generated once and cached so
+   * every POV video hands the creator the identical references (→ one stable, more
+   * accurate Flow Ingredient built from several images). A pose that fails to
+   * generate is skipped; the set can be empty (the reference is optional).
    */
-  private async ensureSignatureRef(): Promise<string | undefined> {
-    try {
-      if (await this.storage.exists(SIGNATURE_REF_KEY)) return SIGNATURE_REF_KEY;
-      const { image } = await this.images.generate({ prompt: SIGNATURE_REF_PROMPT, size: "1024x1536" });
-      await this.storage.putBuffer(SIGNATURE_REF_KEY, image, "image/png");
-      return SIGNATURE_REF_KEY;
-    } catch {
-      return undefined;
+  private async ensureSignatureRefs(): Promise<string[]> {
+    const keys: string[] = [];
+    for (let i = 0; i < SIGNATURE_POSES.length; i++) {
+      const key = signatureRefKey(i);
+      try {
+        if (!(await this.storage.exists(key))) {
+          const { image } = await this.images.generate({ prompt: signatureRefPrompt(SIGNATURE_POSES[i]!), size: "1024x1536" });
+          await this.storage.putBuffer(key, image, "image/png");
+        }
+        keys.push(key);
+      } catch {
+        /* skip this pose */
+      }
     }
+    return keys;
   }
 
   private async getOrCreateCampaignId(): Promise<string> {

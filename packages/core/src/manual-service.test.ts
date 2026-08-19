@@ -151,11 +151,15 @@ describe("ManualService", () => {
     expect(dto.clips.every((c) => c.prompt.includes("clear cold spring dawn"))).toBe(true);
     // Hook surfaces to the UI.
     expect(dto.hook).toBe("Constantinople · 29 May 1453 · Dawn");
-    // The trademark hands come from ONE canonical, cached reference reused by every
-    // POV video (not a fresh per-video image) — so it matches a single Flow Ingredient.
+    // The trademark hands come from canonical, cached references (multiple poses)
+    // reused by every POV video — matching one accurate Flow Ingredient.
     expect(dto.characterRefUrl).toContain("signature/pov-hands");
+    expect((dto.characterRefUrls ?? []).length).toBeGreaterThan(1);
     const dto2 = await svc.plan({ format: "pov", topic: "Edo, 1800", length: "short" });
-    expect(dto2.characterRefUrl).toBe(dto.characterRefUrl);
+    expect(dto2.characterRefUrls).toEqual(dto.characterRefUrls);
+    // Continuity: later clips reference the previous beat; every clip forbids anachronisms.
+    expect(dto.clips[1]!.prompt).toContain("CONTINUES");
+    expect(dto.clips.every((c) => c.prompt.includes("NO air-conditioning") || c.prompt.includes("no air-conditioning"))).toBe(true);
     // The approval summary: a logline + one label per beat.
     expect(dto.logline).toContain("dock worker in Constantinople");
     expect(dto.beatLabels!.length).toBe(dto.clips.length);

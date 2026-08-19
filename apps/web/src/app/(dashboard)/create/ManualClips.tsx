@@ -10,6 +10,7 @@ type ManualPlan = {
   aspect: string;
   clips: { prompt: string; seconds: number }[];
   characterRefUrl: string | null;
+  characterRefUrls?: string[];
   hook?: string | null;
   logline?: string | null;
   beatLabels?: string[];
@@ -294,23 +295,35 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
 
       {plan && (!isPov || approved) && (
         <>
-          {plan.characterRefUrl && (
-            <div className="mb-4 flex items-start gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={plan.characterRefUrl} alt="character reference" className="rounded-lg border w-[120px]" style={{ borderColor: "var(--border)" }} />
-              <div className="text-[11px]" style={{ color: "var(--muted)" }}>
-                {isPov ? (
-                  <>
-                    <a href={plan.characterRefUrl} target="_blank" rel="noreferrer" className="underline">Save this hands reference</a> and, in Google Flow, add it once as an <strong>Ingredient</strong> named “POV stick hands”. Reference that Ingredient on every clip and it locks the trademark hands across <strong>all</strong> your POV videos — it’s the same image every time, so you only set it up once.
-                  </>
-                ) : (
-                  <>
-                    <a href={plan.characterRefUrl} target="_blank" rel="noreferrer" className="underline">Open / save this character reference</a> and upload it to <strong>every</strong> clip on your gen platform (Flow/Higgsfield) so the character stays identical across the video.
-                  </>
-                )}
+          {(() => {
+            const refs = plan.characterRefUrls && plan.characterRefUrls.length > 0
+              ? plan.characterRefUrls
+              : plan.characterRefUrl ? [plan.characterRefUrl] : [];
+            if (refs.length === 0) return null;
+            return (
+              <div className="mb-4">
+                <div className="flex gap-2 mb-2 flex-wrap">
+                  {refs.map((url, i) => (
+                    <a key={i} href={url} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt={`character reference ${i + 1}`} className="rounded-lg border w-[100px]" style={{ borderColor: "var(--border)" }} />
+                    </a>
+                  ))}
+                </div>
+                <div className="text-[11px]" style={{ color: "var(--muted)" }}>
+                  {isPov ? (
+                    <>
+                      Save these {refs.length > 1 ? `${refs.length} hand references` : "hand references"} and, in Google Flow, add them once as a single <strong>Ingredient</strong> named “POV stick hands” (multiple images per Ingredient = more accurate). Reference that Ingredient on every clip — it locks the trademark hands across <strong>all</strong> your POV videos, so you only set it up once.
+                    </>
+                  ) : (
+                    <>
+                      <a href={refs[0]} target="_blank" rel="noreferrer" className="underline">Open / save this character reference</a> and upload it to <strong>every</strong> clip on your gen platform (Flow/Higgsfield) so the character stays identical across the video.
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {isPov && plan.hook && (
             <div className="mb-4 p-3 rounded-lg surface-2 border" style={{ borderColor: "var(--border)" }}>
