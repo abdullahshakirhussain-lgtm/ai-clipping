@@ -105,6 +105,19 @@ describe("continuous-narration timing (v3)", () => {
     // Captions come straight from the exact words.
     expect(captionSegments[0]!.words).toHaveLength(6);
   });
+
+  it("INCOMPLETE word timings fall back to proportional (no cadence collapse)", () => {
+    // Many-beat story but only a couple of word timings survived (a TTS chunk
+    // dropped its alignment). The old word path collapsed all but one beat to
+    // ~0.3s and dumped the rest on the last, giving a few 10s+ holds. The guard
+    // must instead split time proportionally so cadence stays healthy.
+    const many = Array.from({ length: 10 }, () => ({ text: "alpha beta gamma" })); // 30 words
+    const partial = [{ word: "alpha", start: 0, end: 1 }, { word: "beta", start: 1, end: 2 }]; // only 2
+    const { slideDurations } = planStoryTiming(many, 60, partial);
+    // Proportional: every beat equal (~6s each), none clamped to the 0.3s floor.
+    expect(Math.min(...slideDurations)).toBeGreaterThan(1);
+    expect(slideDurations.every((d) => Math.abs(d - 6) < 0.01)).toBe(true);
+  });
 });
 
 describe("planCallCaptions (two-speaker call captions)", () => {

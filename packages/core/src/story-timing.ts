@@ -33,8 +33,17 @@ export function planStoryTiming(
   words?: TtsWord[],
 ): StoryTiming {
   const counts = beats.map((b) => wordCount(b.text));
+  const totalBeatWords = counts.reduce((a, c) => a + c, 0);
 
-  if (words && words.length > 0) {
+  // The word path indexes into `words` by cumulative beat word count, so it only
+  // works when `words` is a near-complete timeline. A partial set (e.g. a TTS
+  // chunk that returned no alignment) makes the index overshoot, collapsing most
+  // beats to ~0s and dumping the rest on one beat — which then reads as a handful
+  // of very long stills. Require the timeline to cover most of the words before
+  // trusting it; otherwise use the robust proportional path.
+  const wordsAreComplete = !!words && words.length >= totalBeatWords * 0.8;
+
+  if (words && words.length > 0 && wordsAreComplete) {
     // Image cuts at the narration word that ends each beat.
     const times: number[] = [0];
     let cum = 0;

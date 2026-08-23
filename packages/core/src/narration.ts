@@ -103,6 +103,12 @@ export async function synthesizeNarration(input: {
   const files: string[] = [];
   const words: TtsWord[] = [];
   let offset = 0;
+  // Word timings are only usable if EVERY chunk returns them: the downstream
+  // timing indexes into `words` by cumulative word count, so a single chunk
+  // missing its alignment shifts every later index and collapses image cadence
+  // to a few long holds. If any chunk lacks words, we discard them all and let
+  // the caller fall back to proportional timing (correct, just less exact sync).
+  let allChunksHaveWords = true;
 
   for (let i = 0; i < chunks.length; i++) {
     const part = await input.tts.synthesize({
@@ -123,6 +129,8 @@ export async function synthesizeNarration(input: {
     const measured = (await probe(file).catch(() => ({ durationSec: 0 }))).durationSec;
     if (part.words?.length) {
       for (const w of part.words) words.push({ word: w.word, start: w.start + offset, end: w.end + offset });
+    } else {
+      allChunksHaveWords = false;
     }
     offset += measured;
     await input.onChunk?.(i + 1, chunks.length);
@@ -134,6 +142,8 @@ export async function synthesizeNarration(input: {
   return {
     audioFile,
     durationSec: probed.durationSec > 0 ? probed.durationSec : offset,
-    ...(words.length > 0 ? { words } : {}),
+    // Only expose word timings when the whole track is covered — a partial set is
+    // worse than none (it collapses image cadence; see allChunksHaveWords above).
+    ...(allChunksHaveWords && words.length > 0 ? { words } : {}),
   };
 }
