@@ -250,32 +250,25 @@ export class MockLlmProvider implements LlmProvider {
   }
 
   async planPovShort(input: PlanPovInput): Promise<PovPlan> {
-    const n = Math.max(8, Math.min(input.maxShots, 16));
+    const n = Math.max(5, Math.min(input.maxShots, 12));
     const arc = [
-      { scene: "a dim interior, a low bed and shuttered window", motion: "you sit up, hands pushing off the bed" },
-      { scene: "the room around you, a chest and a lamp", motion: "you rise and cross toward the shutters" },
-      { scene: "the closed shutters ahead of you", motion: "your hands push the shutters open onto the view" },
-      { scene: "the wider world beyond the window", motion: "you lean out and look across it" },
-      { scene: "a doorway onto the street", motion: "you step through the door into the open" },
-      { scene: "a busy lane of the old city", motion: "you walk down the lane past the crowd" },
-      { scene: "a market stall of goods", motion: "your hand reaches toward the goods on the stall" },
-      { scene: "stone steps rising ahead", motion: "you climb the steps toward a landmark" },
+      { scene: "the room in soft light, seen from where you rest", motion: "your hands come up and settle" },
+      { scene: "a large window with the world beyond", motion: "you cross to it and rest a hand on the sill" },
+      { scene: "a warm light source across the room", motion: "your hand reaches toward its glow" },
+      { scene: "a cup and a kettle on the side", motion: "your hands pour and cradle the warm cup" },
+      { scene: "a soft chair by the window", motion: "you sink back and draw a blanket over your lap" },
+      { scene: "a worn book resting on your lap", motion: "your hand opens it and turns a single page" },
     ];
-    // Extend to n by cycling the "moving through the world" beats.
     const shots = Array.from({ length: n }, (_, i) => ({
       ...arc[Math.min(i, arc.length - 1)]!,
-      audio: "quiet ambient room tone, then the world outside",
+      audio: "quiet ambient room tone",
     }));
     return {
-      title: `POV: you wake up in ${input.topic}`,
-      description: `You wake up in ${input.topic}. Where should you wake up next?`,
-      hashtags: ["#pov", "#history", "#fyp"],
-      logline: `You wake as an ordinary person in ${input.topic} and walk out through the world as it comes alive around you.`,
-      place: input.topic,
-      date: "a real date",
-      timeOfDay: "Dawn",
-      role: "an ordinary person",
-      worldBible: `MOCK world lock for ${input.topic}: clear cold dawn, low golden light from the east, your own flat stick-figure hands in a plain grey sleeve, same weather every clip.`,
+      title: `POV: ${input.topic}`,
+      description: `A quiet ${input.topic}. Sound on.`,
+      hashtags: ["#pov", "#cozy", "#asmr"],
+      logline: `A calm first-person loop of ${input.topic} — you move gently through the same place, moment to moment.`,
+      sceneBible: `MOCK scene lock for ${input.topic}: one warm interior, soft constant light, your own realistic hands in a plain cream sleeve, no face, native ambient sound, same look every clip.`,
       shots,
     };
   }

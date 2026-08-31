@@ -312,16 +312,16 @@ export interface PlanCookInput {
 export interface PovShot {
   /** The still world in front of you at the start of the beat (no motion verbs). */
   scene: string;
-  /** The ~8s first-person motion (rise, turn, cross to the window, shutters open). */
+  /** The ~8s first-person motion (reach for the mug, cross to the window, turn a page). */
   motion: string;
   /** Native ambient sound for this beat (no music, no voices). */
   audio: string;
 }
 
 /**
- * A "POV: you wake up in <place/time>" short — the trademark first-person format.
- * `place`/`date` become the opening on-screen title card (the only text on screen);
- * `role` and the world lock steer the writing. A minute-plus first-person journey.
+ * An experiential first-person POV short — a realistic, immersive "you are here"
+ * vibe piece (a rainy cabin morning, a quiet bookshop at closing). Native ambient
+ * sound, no narration, no on-screen text; the atmosphere is the whole product.
  */
 export interface PovPlan {
   title: string;
@@ -330,29 +330,23 @@ export interface PovPlan {
   /** One-sentence "what you experience" summary, shown for creator approval
    *  BEFORE the full clip prompts are revealed. */
   logline: string;
-  /** Overlay hook parts. */
-  place: string;
-  date: string;
-  timeOfDay: string;
-  /** Who the viewer is ("a dock worker", "a novice monk") — sets the POV context. */
-  role: string;
   /**
-   * The immutable world lock, repeated byte-identical on EVERY clip so 12
-   * separately-generated clips share one weather, time-of-day, light, season,
+   * The immutable scene lock, repeated byte-identical on EVERY clip so the
+   * separately-generated clips share one place, light, weather/atmosphere,
    * palette and the viewer's own clothing/hands. Continuity lives here — the
    * clips are generated apart, so anything unpinned drifts between cuts.
    */
-  worldBible: string;
-  /** Ordered beats: wake → rise → cross → the world reveals itself. */
+  sceneBible: string;
+  /** Ordered beats: a loop of immersive first-person moments in the one place. */
   shots: PovShot[];
 }
 
 export interface PlanPovInput {
-  /** Place + when, e.g. "Constantinople, 1453" or free text. */
+  /** The scene / vibe, e.g. "a rainy cabin morning in the woods". */
   topic: string;
-  /** Optional creator direction — the angle/tone, what to show or avoid. */
+  /** Optional creator direction — the mood/details to lean into or avoid. */
   direction?: string;
-  /** Ceiling on beats (= clips). A POV short is a minute-plus journey (10-14). */
+  /** Ceiling on beats (= clips). */
   maxShots: number;
 }
 
@@ -661,10 +655,10 @@ export interface LlmProvider {
    */
   planCookShots(input: PlanCookInput): Promise<CookPlan>;
   /**
-   * Plan a "POV: you wake up in <place/time>" short — the trademark first-person
-   * format. Returns the hook (place/date/role), the locked world bible and the
-   * ordered wake → journey beats; the service composes each beat into a
-   * stick-figure-POV video prompt. The place/date title is the only on-screen text.
+   * Plan an experiential "POV: you are here" short — a realistic, immersive vibe
+   * piece in one place (a rainy cabin morning, a quiet bookshop at closing).
+   * Returns a locked scene bible + a loop of calm first-person moments; the
+   * service composes each into a realistic-POV video prompt. Atmosphere, no plot.
    */
   planPovShort(input: PlanPovInput): Promise<PovPlan>;
   /**

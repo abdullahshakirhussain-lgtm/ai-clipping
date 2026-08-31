@@ -43,12 +43,12 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
 
   const isVideo = format === "video";
   const isPov = format === "pov";
-  const topicLabel = format === "cook" ? "Dish" : isPov ? "Place & year" : "Topic";
+  const topicLabel = format === "cook" ? "Dish" : isPov ? "Scene / vibe" : "Topic";
   const topicPlaceholder =
     format === "cook"
       ? "e.g. trout grilled on a river stone"
       : isPov
-        ? "e.g. Constantinople, 1453"
+        ? "e.g. a rainy cabin morning in the woods"
         : "e.g. a discipline pep-talk for someone stuck on Wednesday";
 
   async function doPlan() {
@@ -168,9 +168,9 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
           </label>
           {isPov && (
             <p className="text-[11px] mb-3 -mt-1" style={{ color: "var(--muted)" }}>
-              A first-person “you wake up in history” short. Give a place and a year — the
-              pipeline writes the wake-to-reveal beats and tells the video model to flash the
-              place &amp; date on screen like a film intro. Native audio, no voiceover.
+              An experiential first-person “you are here” short — a realistic, immersive vibe
+              in one place (a rainy cabin, a quiet bookshop at closing). The pipeline writes a
+              calm loop of first-person moments; native ambient sound, no voiceover, no text.
             </p>
           )}
 
@@ -184,7 +184,7 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
                 maxLength={12000}
                 placeholder={
                   isPov
-                    ? "what this one is about — the angle, what to show or avoid (e.g. 'the dread of the coming siege; walk from the harbour up to the land walls; end looking out at the Ottoman camp')"
+                    ? "the mood and details to lean into or avoid (e.g. 'steady rain, a wood stove, coffee and a book; slow and cosy; a sleeping dog by the fire; nothing modern in shot')"
                     : "the path to take — what to write, the angle/tone, what to mention or avoid (e.g. 'a calm second-person pep-talk, concrete and practical, no clichés, end on one clear action'). Write as much as you like — a full brief is fine."
                 }
                 className="w-full px-3 py-2 rounded-lg surface-2 border outline-none text-sm resize-none"
@@ -325,11 +325,11 @@ export function ManualClips({ format, categories }: { format: "video" | "cook" |
             );
           })()}
 
-          {isPov && plan.hook && (
+          {isPov && (
             <div className="mb-4 p-3 rounded-lg surface-2 border" style={{ borderColor: "var(--border)" }}>
-              <div className="text-sm font-semibold mb-1">🎬 On-screen intro: {plan.hook}</div>
+              <div className="text-sm font-semibold mb-1">Keep the place consistent</div>
               <p className="text-[11px]" style={{ color: "var(--muted)" }}>
-                The opening clip’s prompt asks the video model to flash this title and fade it out — it’s the only on-screen text. No editing needed.
+                Generate clip 1 first, then use its <strong>last frame as the first frame</strong> of the next clip (Flow’s frames-to-video) so the room, light and your sleeve stay identical across clips. Native ambient sound only — add music afterwards if you want.
               </p>
             </div>
           )}

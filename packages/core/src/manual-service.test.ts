@@ -64,20 +64,15 @@ function harness() {
       ],
     }),
     planPovShort: async (input: { maxShots: number; direction?: string }) => ({
-      title: "POV: Constantinople, 1453",
+      title: "POV: a rainy cabin morning",
       description: "desc",
-      hashtags: ["#pov", "#history"],
-      logline: `You wake as a dock worker in Constantinople and walk to the walls.${input.direction ? ` (${input.direction})` : ""}`,
-      place: "Constantinople",
-      date: "29 May 1453",
-      timeOfDay: "Dawn",
-      role: "a Genoese dock worker",
-      worldBible: "clear cold spring dawn, low golden light from the east, no clouds, your own flat stick-figure hands in a plain blue sleeve — identical every clip.",
-      // A full journey (10-14 beats), not a single reveal.
+      hashtags: ["#pov", "#cozy"],
+      logline: `A calm loop of a rainy cabin morning.${input.direction ? ` (${input.direction})` : ""}`,
+      sceneBible: "a warm wooden cabin, steady rain outside, cool daylight warmed by firelight, your own realistic hands in a cream knit sleeve — identical every clip.",
       shots: Array.from({ length: input.maxShots }, (_, i) => ({
-        scene: `historic beat ${i + 1}`,
+        scene: `cabin moment ${i + 1}`,
         motion: `first-person move ${i + 1}`,
-        audio: "harbour ambience",
+        audio: "rain and fire crackle",
       })),
     }),
   } as never;
@@ -129,39 +124,30 @@ describe("ManualService", () => {
     expect(dto.clips.length).toBeGreaterThan(0);
   });
 
-  it("plans a POV short: 9:16, native audio (no narration), place/date title as the only on-screen text", async () => {
+  it("plans an experiential POV short: realistic, 9:16, native audio, no on-screen text", async () => {
     const { svc, videos } = harness();
-    const dto = await svc.plan({ format: "pov", topic: "Constantinople, 1453", length: "short" });
+    const dto = await svc.plan({ format: "pov", topic: "a rainy cabin morning", length: "short" });
 
     expect(dto.format).toBe("pov");
     expect(dto.aspect).toBe("9:16");
-    // A POV short is a minute-plus journey — at least 10 clips (8s each).
-    expect(dto.clips.length).toBeGreaterThanOrEqual(10);
-    // The place/date title is rendered by the video model on the opening clip, then removed.
-    expect(dto.clips[0]!.prompt).toContain("ON-SCREEN TEXT");
-    expect(dto.clips[0]!.prompt).toContain("Constantinople");
-    expect(dto.clips[0]!.prompt).toContain("29 May 1453");
-    expect(dto.clips[0]!.prompt.toLowerCase()).toContain("dissolves");
-    // The ONLY on-screen text is the opening title — later clips are clean.
-    expect(dto.clips[1]!.prompt.toLowerCase()).toContain("no on-screen text");
-    expect(dto.clips.slice(1).every((c) => !c.prompt.includes("ON-SCREEN TEXT:"))).toBe(true);
-    // The locked world (weather/time/outfit) is repeated verbatim on EVERY clip so
-    // the separately-generated clips don't drift between cuts.
-    expect(dto.clips.every((c) => c.prompt.includes("plain blue sleeve"))).toBe(true);
-    expect(dto.clips.every((c) => c.prompt.includes("clear cold spring dawn"))).toBe(true);
-    // Hook surfaces to the UI.
-    expect(dto.hook).toBe("Constantinople · 29 May 1453 · Dawn");
-    // The trademark hands come from canonical, cached references (multiple poses)
-    // reused by every POV video — matching one accurate Flow Ingredient.
-    expect(dto.characterRefUrl).toContain("signature/pov-hands");
-    expect((dto.characterRefUrls ?? []).length).toBeGreaterThan(1);
-    const dto2 = await svc.plan({ format: "pov", topic: "Edo, 1800", length: "short" });
-    expect(dto2.characterRefUrls).toEqual(dto.characterRefUrls);
-    // Continuity: later clips reference the previous beat; every clip forbids anachronisms.
+    expect(dto.clips.length).toBeGreaterThan(0);
+    // Realistic first-person style, no historical/date scaffolding.
+    expect(dto.clips[0]!.prompt).toContain("Photorealistic cinematic FIRST-PERSON POV");
+    // NO on-screen text anywhere, and no title card.
+    expect(dto.clips.every((c) => c.prompt.includes("No on-screen text"))).toBe(true);
+    expect(dto.clips.some((c) => c.prompt.includes("ON-SCREEN TEXT"))).toBe(false);
+    // The locked scene (place/light/outfit) is repeated verbatim on EVERY clip.
+    expect(dto.clips.every((c) => c.prompt.includes("cream knit sleeve"))).toBe(true);
+    // Continuity link on later clips; native ambient audio, no music.
     expect(dto.clips[1]!.prompt).toContain("CONTINUES");
-    expect(dto.clips.every((c) => c.prompt.includes("NO air-conditioning") || c.prompt.includes("no air-conditioning"))).toBe(true);
+    expect(dto.clips.every((c) => c.prompt.includes("no music, no voices"))).toBe(true);
+    // No trademark hand reference for experiential POV.
+    expect(dto.characterRefUrl).toBeNull();
+    expect((dto.characterRefUrls ?? []).length).toBe(0);
+    // No anachronism / period scaffolding.
+    expect(dto.clips.some((c) => c.prompt.includes("anachronism"))).toBe(false);
     // The approval summary: a logline + one label per beat.
-    expect(dto.logline).toContain("dock worker in Constantinople");
+    expect(dto.logline).toContain("rainy cabin morning");
     expect(dto.beatLabels!.length).toBe(dto.clips.length);
 
     const row = videos.get(dto.sourceVideoId)!;

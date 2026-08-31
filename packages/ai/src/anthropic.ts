@@ -1186,71 +1186,50 @@ Call submit_cook.`,
   }
 
   async planPovShort(input: PlanPovInput): Promise<PovPlan> {
-    // A POV short is a full minute-plus journey: 8s per clip, so 10-14 clips.
-    const maxShots = Math.max(8, Math.min(16, input.maxShots));
+    // An experiential POV short: 8s per clip, a tight loop of moments (~6-10).
+    const maxShots = Math.max(5, Math.min(12, input.maxShots));
     const result = await this.callTool<{
       title?: string;
       description?: string;
       hashtags?: string[];
       logline?: string;
-      place?: string;
-      date?: string;
-      timeOfDay?: string;
-      role?: string;
-      worldBible?: string;
+      sceneBible?: string;
       shots?: Array<{ scene?: string; motion?: string; audio?: string }>;
     }>(
-      `You are the SHOT PLANNER for a "POV: you wake up in <a real time and place in history>" short-form video (9:16 vertical, first-person, hard cut every ~8 seconds, NO narration — native ambient sound + on-screen text only). The subject: "${input.topic}".
-${input.direction?.trim() ? `\nCREATOR DIRECTION (honour this — the angle, tone, what to show or avoid): ${input.direction.trim()}\n` : ""}
-This is an EDUCATIONAL immersion piece and a FULL journey — it runs over a minute, so plan EXACTLY ${maxShots} beats (10-14 is the target; 8s each). It must be HISTORICALLY GROUNDED and specific — real place, real date, real detail — not generic "medieval times".
+      `You are the SHOT PLANNER for an EXPERIENTIAL "POV: you are here" short-form video (9:16 vertical, first-person, realistic and cinematic, hard cut every ~8 seconds, NO narration and NO on-screen text — native ambient sound only). It is a mood/atmosphere piece: the viewer sinks into ONE place and simply *experiences* it. The scene: "${input.topic}".
+${input.direction?.trim() ? `\nCREATOR DIRECTION (honour this — the mood, details to lean into or avoid): ${input.direction.trim()}\n` : ""}
+Plan EXACTLY ${maxShots} beats (8s each). This is a LOOP of immersive first-person moments in the SAME place — not a journey or a story. There is no plot, no reveal, no twist; the payoff is the cosy, sensory atmosphere itself. It should feel like it could play on repeat.
 
-First give a "logline" — ONE sentence describing what the viewer experiences start to finish (who they are, where/when they wake, and the journey they take). This is shown to the creator for APPROVAL before anything else, so make it a clear, honest summary of the whole short.
+First give a "logline" — ONE sentence describing the vibe and what the viewer does across the beats (e.g. "A rainy morning alone in a cabin: you wake, feed the fire, pour coffee and settle by the window to read"). Shown to the creator for APPROVAL before anything else.
 
-Pin these HOOK details (ONLY the place + date appear on screen — as the opening title card; the rest steer the writing):
-- "place" — SHORT, for the on-screen title card: just the city (+ country), e.g. "Edo, Japan" or "Constantinople". Keep it a few words — put the specific spot (the warehouse, the back-lane lodging) in the worldBible, NOT here.
-- "date" — a specific date or year that matters, e.g. "29 May 1453" (pick a day with weight when the subject implies one).
-- "timeOfDay" — e.g. "Dawn".
-- "role" — who the viewer is, in-world, e.g. "a Genoese dock worker". First-person, ordinary person.
+Then "sceneBible" — ONE dense block, the IMMUTABLE look repeated on EVERY clip. The clips are generated SEPARATELY, so anything unpinned drifts between cuts. Lock all of:
+   - PLACE: the exact single setting and its fixed materials, furniture and key props (name the recurring objects — the mug, the chair, the stove — so they're identical every shot).
+   - LIGHT + TIME + WEATHER/ATMOSPHERE: the exact quality of light and the weather/mood, held constant (e.g. "a grey rainy morning, steady rain outside, cool daylight through the window warmed by orange firelight inside").
+   - YOUR OWN BODY: "your own realistic hands and forearms are the only body seen — ordinary natural skin, [state the plain clothing / a fixed sleeve colour, e.g. a chunky cream knit sweater]; no face, no reflection, no second person."
+   - PALETTE + CAMERA: the colour range and "photorealistic cinematic first-person eye-level POV, shallow depth of field, gentle handheld, 9:16 vertical".
+   - HARD RULES: "STRICTLY FIRST-PERSON every shot — the camera IS your own eyes and NEVER pulls back, orbits, or cuts to a third-person/outside view; your torso, head or full body are NEVER shown — only forearms and hands from the lower edge. Everything consistent across cuts; the light and weather never change; no on-screen text; no music, no voices — native ambient sound only."
 
-Then "worldBible" — ONE dense block, the IMMUTABLE look repeated on EVERY clip. The clips are generated SEPARATELY, so anything you leave unpinned drifts between cuts (the sky clears in one shot and rains the next, your sleeve changes colour). The whole journey happens over a short span of the SAME morning, so time and weather are CONSTANT — lock all of:
-   - PLACE: the exact setting and its architecture/materials, fixed.
-   - DATE + TIME OF DAY: e.g. "just after dawn"; and the EXACT LIGHT it gives — direction, height and quality (e.g. "low golden sunlight raking from the east, long soft shadows"). Keep this light identical every shot.
-   - WEATHER + SEASON: pin it explicitly (e.g. "clear cold early-spring air, a light breeze off the water, no clouds") — the SAME weather in every shot, never changing.
-   - YOUR OWN BODY: "your own hands and forearms are the only body seen, drawn as a simple flat cartoon stick figure, [state the plain clothing + a fixed sleeve colour]; no face, no reflection, no second protagonist." Keep the clothing/sleeve identical every shot.
-   - PALETTE + CAMERA: the colour range and "first-person eye-level POV, 9:16 vertical, natural handheld".
-   - PERIOD ACCURACY: name the era's forbidden anachronisms explicitly (the video model loves to sneak modern "detail" into rich historical interiors) — e.g. "NO air-conditioning units, vents or ducts, electrical wires, outlets, switches, light bulbs, glass windows, plastic, metal railings, machinery, vehicles, or modern signage/printed lettering; nothing manufactured after the stated date". Every object must belong to the exact time and place.
-   - HARD RULES: "STRICTLY FIRST-PERSON every shot — the camera IS your own eyes and NEVER pulls back, orbits, or cuts to a third-person/outside view; your torso, back, head, legs or full body are NEVER shown — only your forearms and hands enter from the lower edge. Everything consistent across cuts; the weather, light and time never change through the journey; no on-screen text except where a shot directs it; no music, no voices."
+Then "shots" — EXACTLY ${maxShots} immersive first-person moments in that place. Each is a small, calm, sensory action — no drama. Each beat pins:
+- "scene": the STILL world in front of you at the start of the beat — a still-photograph description, no motion verbs. Specific, tactile props and textures.
+- "motion": ONE continuous ~8s FIRST-PERSON motion the camera shows WITHOUT ever turning to look at yourself — forward-facing only: reaching a hand toward something, pouring, feeding the fire, turning a page, resting a hand on the sill, settling into a chair. Your hands/forearms may enter from the bottom, but the camera NEVER pulls back to reveal your body. AVOID motions that only read in third person (sitting up from lying flat, standing, turning to see your own back).
+- "audio": the native ambient sound for this beat (rain on glass, a crackling fire, a kettle, a page turning) — ambient only, never music or voices.
+Vary the moments so it isn't repetitive (wake / the window / the fire / coffee / settle / read), but keep them all calm and in the same place. Do NOT describe your face or a third person. Do NOT mention art style — added later. No on-screen text anywhere.
 
-Then "shots" — the ordered POV beats (EXACTLY ${maxShots}). The ARC is a continuous first-person JOURNEY through the day, not a single reveal:
-  1. WAKE looking FORWARD into the dim room — the camera already faces forward/level into the space (your eyes open on the room, or you are already sitting). Do NOT lie flat and haul yourself upright — that motion forces the camera to swing and the model breaks to a third-person shot of you. Keep it gentle and forward-facing: your hands simply come up and push the cover down and away from you.
-  2. RISE and cross to an opening (window/door) — the wider world is REVEALED (the early payoff).
-  3. STEP OUT and MOVE THROUGH the place: walk the street/dock/market, your hands touching real things (a door latch, market goods, a rope, coins), passing people and architecture, small encounters — a sequence of distinct first-person moments that TOUR the historical world.
-  4. END on a strong, memorable final image (a landmark up close, the harbour, a threshold).
-Every beat is a NEW location or action that moves you forward — never repeat the same view. CONTINUITY IS CRITICAL: the beats are ONE continuous, unbroken first-person walk in real time. Each beat must begin EXACTLY where the previous one ended, in physically ADJACENT locations in true walking order (room → its doorway → the lane just outside → the next shopfront along that lane → the canal at the end of it → the bridge over it). Never teleport across the city, never skip time, never jump to an unrelated spot — a viewer must believe it is one uninterrupted stroll. Each beat pins:
-- "scene": the STILL world in front of you at the start of the beat — a still-photograph description, no motion verbs. Historically specific props and architecture, DIFFERENT each beat as you move.
-- "motion": ONE continuous ~8s FIRST-PERSON motion the camera can show WITHOUT ever turning to look at yourself — forward-facing only: walking forward, reaching a hand out toward something, opening a door/shutter, looking across a view, climbing steps. Your hands/forearms may enter from the bottom, but the camera NEVER pulls back to reveal your body and NEVER shows a third-person view. AVOID motions that only read in third person (sitting up from lying flat, standing from a bow, turning to see your own back).
-- "audio": the native ambient sound for this beat (a crackling lamp, floorboards, gulls, market chatter, cart wheels on stone) — ambient only, never music or voices.
-Do NOT describe the protagonist's face or a third person as the subject — it is first-person (other people can appear around you). Do NOT mention art style — that is added later. There is NO on-screen text on any beat except the opening title card (place + date), which is added separately — do not put captions or writing into the scenes.
-
-Also give a scroll-stopping "title", a 1-2 sentence "description", and up to 6 "hashtags".
+Also give a gentle "title", a 1-2 sentence "description", and up to 6 "hashtags".
 Call submit_pov.`,
       {
         name: "submit_pov",
-        description: "Submit the historically grounded POV overlay facts and the wake→reveal journey beats.",
+        description: "Submit the experiential POV scene lock and the loop of immersive first-person moments.",
         input_schema: {
           type: "object",
           properties: {
             title: { type: "string" },
             description: { type: "string" },
             hashtags: { type: "array", items: { type: "string" } },
-            logline: { type: "string", description: "one-sentence summary of the whole short, for creator approval" },
-            place: { type: "string" },
-            date: { type: "string" },
-            timeOfDay: { type: "string" },
-            role: { type: "string" },
-            worldBible: {
+            logline: { type: "string", description: "one-sentence summary of the vibe, for creator approval" },
+            sceneBible: {
               type: "string",
-              description: "the immutable world lock — place, date/time+light, weather+season, the viewer's body/clothing, palette, camera, hard rules — repeated verbatim on every clip",
+              description: "the immutable scene lock — place+props, light+weather, the viewer's body/clothing, palette, camera, hard rules — repeated verbatim on every clip",
             },
             shots: {
               type: "array",
@@ -1265,15 +1244,12 @@ Call submit_pov.`,
               },
             },
           },
-          required: ["title", "description", "hashtags", "logline", "place", "date", "timeOfDay", "role", "worldBible", "shots"],
+          required: ["title", "description", "hashtags", "logline", "sceneBible", "shots"],
         },
       },
-      // Generous budget: a dense worldBible + 12 beats (scene/motion/audio each) +
-      // logline is a lot of output. At 3000 it truncated mid-`shots`, yielding a
-      // plan with a logline but ZERO beats (which then crashed the upload view).
+      // Generous budget: a dense sceneBible + up to 12 beats + logline is a lot of
+      // output; too small a cap truncates mid-`shots` and yields a beat-less plan.
       8000,
-      // effort "high": the plan is the whole product — the reveal arc and the
-      // factual grounding are what make the short land.
       { model: this.commentaryModel, effort: "high" },
     );
 
@@ -1290,11 +1266,7 @@ Call submit_pov.`,
       description: String(result.description ?? ""),
       hashtags: hashList(result.hashtags),
       logline: String(result.logline ?? "").trim(),
-      place: String(result.place ?? input.topic).trim(),
-      date: String(result.date ?? "").trim(),
-      timeOfDay: String(result.timeOfDay ?? "").trim(),
-      role: String(result.role ?? "").trim(),
-      worldBible: String(result.worldBible ?? "").trim(),
+      sceneBible: String(result.sceneBible ?? "").trim(),
       shots,
     };
   }

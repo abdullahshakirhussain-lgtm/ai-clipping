@@ -6,28 +6,6 @@ import type { Dispatcher } from "@clipfactory/queue";
 import type { ObjectStorage } from "@clipfactory/storage";
 import type { ManualPlanDto, ManualPlanRequest } from "../contracts/manual.js";
 
-/**
- * The channel's trademark POV hands, as ONE canonical reference reused by every
- * POV video (bump the version to reset it). Locking the hand DRAWING STYLE — not
- * a specific outfit — is what stays constant across all videos; per-era clothing
- * is handled by each clip's prompt. Kept plain-background so it drops cleanly into
- * a Flow "Ingredient".
- */
-const SIGNATURE_VERSION = "v1";
-/**
- * MULTIPLE canonical poses of the trademark hands — a Flow "Ingredient" is far more
- * accurate when fed several reference images of the same subject from different
- * angles. Each is generated once and cached; the set is reused by every POV video.
- */
-const SIGNATURE_POSES = [
-  "both hands held up palms toward the viewer, fingers relaxed and slightly spread",
-  "both hands reaching forward as if to grasp or push something just ahead of you",
-  "both hands seen from above, resting relaxed and flat on a surface",
-];
-const signatureRefKey = (i: number) => `signature/pov-hands-${SIGNATURE_VERSION}-${i}.png`;
-const signatureRefPrompt = (pose: string) =>
-  `A clean character-reference image on a plain flat light-grey background: two hands with bare forearms, drawn as a BOLD FLAT 2D CARTOON — thick clean black outlines, simple flat white fill, a deliberate hand-drawn doodle (xkcd / comic style), NOT realistic, NOT shaded, NOT 3D. Both hands identical in style, ${pose}, seen from a first-person angle as if they are your own. Nothing else in frame — only the two cartoon hands and forearms on the plain background. No text, no scene.`;
-
 /** Manual clip spec persisted on the SourceVideo (kind="manual"). */
 export interface ManualSpec {
   manual: true;
@@ -42,7 +20,7 @@ export interface ManualSpec {
   narrationText?: string;
   /** Video/cook: storage key of the single character reference image. */
   characterRefKey?: string;
-  /** POV: storage keys of the multiple canonical trademark-hand references. */
+  /** Optional: multiple character reference image keys (unused by experiential POV). */
   characterRefKeys?: string[];
   /** POV only: the cinematic intro hook the Veo prompt renders + fades. */
   hook?: string;
@@ -176,16 +154,15 @@ export class ManualService {
   }
 
   /**
-   * POV short: "you wake up in <place/time>". Trademark first-person stick-figure
-   * look, 9:16, native clip audio (NO voiceover). The ONLY on-screen text is the
-   * opening place/date title, rendered BY VEO as a cinematic card that fades out —
-   * nothing is burned in post, and no other captions appear.
+   * Experiential POV short: a realistic, immersive "you are here" vibe piece in
+   * ONE place (a rainy cabin morning, a quiet bookshop at closing). 9:16, native
+   * clip audio (no voiceover, no music), NO on-screen text — the atmosphere is the
+   * whole product. No character reference: the setting is held via the scene lock
+   * + last-frame chaining on the gen platform, not a trademark figure.
    */
   private async planPov(input: ManualPlanRequest): Promise<ManualSpec> {
-    // A POV short is a minute-plus journey: 8s per clip → 12 clips ≈ 96s.
-    const maxShots = 12;
-    const style = "stick-fpv";
-    const anchor = styleAnchor(style);
+    const maxShots = 8;
+    const anchor = styleAnchor("pov-real");
     const plan = await this.llm.planPovShort({
       topic: input.topic.trim(),
       direction: input.direction?.trim() || undefined,
@@ -194,52 +171,33 @@ export class ManualService {
     // A plan with no beats can't be uploaded/assembled — fail loudly so the client
     // shows an error to retry, rather than persisting a broken 0-clip plan.
     if (plan.shots.length === 0) {
-      throw new Error("The POV planner returned no beats — try again or adjust the place/description.");
+      throw new Error("The POV planner returned no beats — try again or adjust the scene/description.");
     }
 
-    const hookParts = [plan.place, plan.date, plan.timeOfDay].map((s) => s.trim()).filter(Boolean);
-    const hook = hookParts.join(" · ");
-
-    // The immutable world lock, prepended byte-identical to every clip so the 12
-    // separately-generated clips share one weather/time/light/outfit. Continuity
-    // across cuts lives here — the strongest lever when clips are made apart.
-    const bible = plan.worldBible.trim();
+    // The immutable scene lock, prepended byte-identical to every clip so the
+    // separately-generated clips share one place/light/atmosphere/outfit.
+    const bible = plan.sceneBible.trim();
     const clips = plan.shots.slice(0, maxShots).map((s, i) => {
-      // The ONLY on-screen text is the opening title (place + date), rendered by
-      // the video model like a film's establishing card, then dissolved away.
-      // Every other beat is clean — no captions, no subtitles.
-      const onScreen =
-        i === 0
-          ? `ON-SCREEN TEXT: as the shot opens, an elegant cinematic title fades in — "${plan.place}"${plan.date ? `, and below it "${plan.date}${plan.timeOfDay ? ` · ${plan.timeOfDay}` : ""}"` : ""} — held briefly like a film's establishing title card, then gently DISSOLVES AWAY before the shot ends. No other text.`
-          : `No on-screen text, no subtitles, no captions, no watermark.`;
-      // Spatial link to the previous beat so the 12 clips read as one unbroken
-      // walk (each picks up where the last ended), not disjointed jumps.
+      // Spatial link to the previous beat so the clips read as one continuous stay
+      // in the same place, each picking up where the last left off.
       const prev = i > 0 ? plan.shots[i - 1] : null;
       const continues = prev
-        ? `CONTINUES the same unbroken walk with no cut in time — you have just come from "${prev.scene}"; pick up seamlessly from there, same place, same day, same weather and light.`
+        ? `CONTINUES the same unbroken moment in the same place — you have just come from "${prev.scene}"; same light, same weather, no jump in time.`
         : "";
       const prompt = [
-        `First-person POV. You are ${plan.role || "an ordinary person"} in ${plan.place}.`,
-        bible ? `LOCKED WORLD (identical every clip): ${bible}` : "",
+        `First-person POV. ${plan.logline || `A calm moment in ${input.topic.trim()}.`}`,
+        bible ? `LOCKED SCENE (identical every clip): ${bible}` : "",
         continues,
         `THIS BEAT — ${s.scene}.`,
         `Motion over ~8 seconds: ${s.motion}.`,
         `The camera stays STRICTLY first-person the entire clip — your own eyes looking forward; it NEVER pulls back, orbits, or cuts to a third-person/outside view, and your torso, head or full body are never shown (only forearms/hands from the lower edge).`,
-        `Ambient sound: ${s.audio}.`,
-        // Period accuracy — Veo loves to add modern "detail" (AC units, wires) into
-        // rich historical interiors; forbid it explicitly so clips aren't wasted.
-        `PERIOD-ACCURATE, ${plan.date || "the stated era"}: absolutely NO anachronisms — no air-conditioning units, no vents or ducts, no electrical wires, outlets, switches, light bulbs or lamps with bulbs, no glass windows, no plastic, no metal railings, no machinery, no vehicles, no modern signage or printed lettering, nothing manufactured after that date. Every object must belong to the exact time and place.`,
-        onScreen,
+        `Ambient sound: ${s.audio}. Native sound only — no music, no voices.`,
+        `No on-screen text, no subtitles, no captions, no watermark.`,
         `Style: ${anchor}`,
         `Vertical 9:16 portrait.`,
       ].filter(Boolean).join(" ");
       return { prompt, seconds: 8 };
     });
-
-    // The canonical trademark references (multiple poses) reused across EVERY pov
-    // video — the hands read identically channel-wide and feed one accurate Flow
-    // "Ingredient" the creator sets up once. Generated on first use, then cached.
-    const characterRefKeys = await this.ensureSignatureRefs();
 
     return {
       manual: true,
@@ -249,8 +207,6 @@ export class ManualService {
       hashtags: plan.hashtags,
       aspect: "9:16",
       clips,
-      characterRefKeys,
-      hook: hook || undefined,
       logline: plan.logline || undefined,
       beatLabels: plan.shots.slice(0, maxShots).map((s) => s.scene),
       uploaded: clips.map(() => null),
@@ -307,29 +263,6 @@ export class ManualService {
       beatLabels: spec.beatLabels ?? [],
       uploaded: spec.uploaded,
     };
-  }
-
-  /**
-   * The canonical trademark hands as a SET of poses, generated once and cached so
-   * every POV video hands the creator the identical references (→ one stable, more
-   * accurate Flow Ingredient built from several images). A pose that fails to
-   * generate is skipped; the set can be empty (the reference is optional).
-   */
-  private async ensureSignatureRefs(): Promise<string[]> {
-    const keys: string[] = [];
-    for (let i = 0; i < SIGNATURE_POSES.length; i++) {
-      const key = signatureRefKey(i);
-      try {
-        if (!(await this.storage.exists(key))) {
-          const { image } = await this.images.generate({ prompt: signatureRefPrompt(SIGNATURE_POSES[i]!), size: "1024x1536" });
-          await this.storage.putBuffer(key, image, "image/png");
-        }
-        keys.push(key);
-      } catch {
-        /* skip this pose */
-      }
-    }
-    return keys;
   }
 
   private async getOrCreateCampaignId(): Promise<string> {
